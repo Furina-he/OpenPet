@@ -1,0 +1,22 @@
+{
+  "name": "@desksoul/plugin-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@desksoul/protocol": "workspace:*",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@desksoul/tsconfig": "workspace:*",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "extends": "@desksoul/tsconfig/node.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": true,
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
