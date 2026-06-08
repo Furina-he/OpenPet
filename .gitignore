@@ -9,3 +9,7 @@ target/
 src-tauri/target/
 src-tauri/gen/
 .desksoul/
+out/
+release/
+.vite/
+*.tsbuildinfo

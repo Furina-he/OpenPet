@@ -1,0 +1,9 @@
+appId: app.desksoul.desktop
+productName: DeskSoul
+directories:
+  output: release
+files:
+  - out/**/*
+win:
+  target: nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
