@@ -23,19 +23,6 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry / target
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            apps/desktop/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
@@ -48,6 +35,5 @@ jobs:
       - name: Test (TS / Vitest)
         run: pnpm -r test
 
-      - name: Test (Rust / cargo)
-        working-directory: apps/desktop/src-tauri
-        run: cargo test
+      - name: Build (electron-vite three-way)
+        run: pnpm --filter @desksoul/desktop build
