@@ -1,0 +1,27 @@
+{
+  "name": "@desksoul/spike-s3",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.4.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@desksoul/tsconfig": "workspace:*",
+    "@types/stats.js": "^0.17.3",
+    "@types/three": "^0.180.0",
+    "electron": "^30.0.0",
+    "electron-vite": "^2.3.0",
+    "stats.js": "^0.17.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3"
+  }
+}

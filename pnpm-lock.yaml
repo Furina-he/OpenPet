@@ -105,6 +105,40 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
 
+  apps/spikes/S3-vrm:
+    dependencies:
+      '@pixiv/three-vrm':
+        specifier: ^3.4.0
+        version: 3.5.3(three@0.180.0)
+      three:
+        specifier: ^0.180.0
+        version: 0.180.0
+    devDependencies:
+      '@desksoul/tsconfig':
+        specifier: workspace:*
+        version: link:../../../packages/tsconfig
+      '@types/stats.js':
+        specifier: ^0.17.3
+        version: 0.17.4
+      '@types/three':
+        specifier: ^0.180.0
+        version: 0.180.0
+      electron:
+        specifier: ^30.0.0
+        version: 30.5.1
+      electron-vite:
+        specifier: ^2.3.0
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39))
+      stats.js:
+        specifier: ^0.17.0
+        version: 0.17.0
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.2(@types/node@20.19.39)
+
   packages/plugin-sdk:
     dependencies:
       '@desksoul/protocol':
@@ -247,6 +281,9 @@ packages:
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
     engines: {node: '>= 8.9.0'}
+
+  '@dimforge/rapier3d-compat@0.12.0':
+    resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
 
   '@electron/asar@3.4.1':
     resolution: {integrity: sha512-i4/rNPRS84t0vSRa2HorerGRXWyF4vThfHesw0dmcWHp+cspK743UanA0suA5Q5y8kzY2y6YKrvbIUn69BCAiA==}
@@ -639,6 +676,62 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
+  '@pixiv/three-vrm-core@3.5.3':
+    resolution: {integrity: sha512-iZDOkOxOnvT8vGPE2SgNRee3fQw/u11y4MULE9VPXN/LKSf946aVi+YfVnnMBRdwMfQ2uBNHxUvkIQlRIkXnHQ==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm-materials-hdr-emissive-multiplier@3.5.3':
+    resolution: {integrity: sha512-CGPVBzjmrG4yoKkHl7w03/ZJj+RfzQ9LjzI623MYIN9O9YkYd5627ls8ZpkbwN+sgboz7eIx9BkoNfWtLmEVSw==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm-materials-mtoon@3.5.3':
+    resolution: {integrity: sha512-lZk2q8mOEzBBy70PP6dMtgaMXn0yXzI4IPja9qU4o0c9EjF0SzkNRXAVBNKqLkqDvInyLi+tYBxhcYpbA5DwcA==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm-materials-v0compat@3.5.3':
+    resolution: {integrity: sha512-wU2a38zQasKXaBzm9z0uyp2Ee5+xIJ1FHlVkEcBsZrJ9ri6V0vHkaE5yw5mKaUI6fIHd4GcHlTuWw0Y3pSGh8A==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm-node-constraint@3.5.3':
+    resolution: {integrity: sha512-rYrM6bNu/IheDtk4xQs+Rn7QgyBp9LmzGyhV48iR+SYXRatztagf/lvxLiB8v70ubVf+uNDEWb5HeVxDMhwjkA==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm-springbone@3.5.3':
+    resolution: {integrity: sha512-/C1PDrJaJt7Hd6qGfVEH00BHCKd/b8ElFj6VBphjdT02Qx8KoVCQH93PMkRcoD3PjqMvvr0FkH5N0cittfkgSA==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/three-vrm@3.5.3':
+    resolution: {integrity: sha512-BHvkyedh0RzvSEiwcOf+oOWPAwMGW0xLWQ2CSU+rX/j5E6aII9ool/j97QD67NPlCwBD6lrMRa9RrzEg3xgORA==}
+    peerDependencies:
+      three: '>=0.137'
+
+  '@pixiv/types-vrm-0.0@3.5.3':
+    resolution: {integrity: sha512-dkXmTqIxKC3A1AMs4Ts3DzlKN7SYab/d5QX9SvAwOUAe4wuafwzIYFzm+q85wNjlgSF4xuNuYIbqQfBcE7Mz0w==}
+
+  '@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0@3.5.3':
+    resolution: {integrity: sha512-G+g/Sw+/geG6xu6MYbb0mZFNTgczWXvLCs9CliXxhSKsXYE4SW9AbSlYqg9bPFA0fnNQN8vVQstnhO7FiL0ipg==}
+
+  '@pixiv/types-vrmc-materials-mtoon-1.0@3.5.3':
+    resolution: {integrity: sha512-8T6K2j5U7mEs4o5azXFUfXuiddS2gBxPj2Xe9ZVZnguMVsOcNdeiISHXF5CTyfT8UHKbCTfpsn4YgDGpqdXSmw==}
+
+  '@pixiv/types-vrmc-node-constraint-1.0@3.5.3':
+    resolution: {integrity: sha512-72RNVTbP0c4R57SWDT43xhwZE3r6vhUDxD7M34nlX+o2Wis/Kx+R+bnFCf4/proRt+52Xasp3J6l9KiMqCtZ2g==}
+
+  '@pixiv/types-vrmc-springbone-1.0@3.5.3':
+    resolution: {integrity: sha512-3+Zw++ga16UxHiCTtEbd5HTbtXV+kyQsqvURm8IpVD4XGoSz1e2QJJP+vrbNBzRb7nUKYj4bVOFWGnULSx8sZQ==}
+
+  '@pixiv/types-vrmc-springbone-extended-collider-1.0@3.5.3':
+    resolution: {integrity: sha512-DaKEfwWsV4xyu0wdWfJ/bPvYpAammj49n0em8JTy52TmOhUm5oTN0ZZ5cmgdL9PVqN9qmWUkOdnK1ck1Id2H3A==}
+
+  '@pixiv/types-vrmc-vrm-1.0@3.5.3':
+    resolution: {integrity: sha512-3HsBZWKXU/CnY2J6uAVuYmM0NPt/e5jroQZH85WYK0EzYmebqTmWKF/fllguNliJQAovdhn8sIA8NbHZoQvbUA==}
+
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
@@ -813,6 +906,9 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@tweenjs/tween.js@23.1.3':
+    resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
+
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
 
@@ -843,8 +939,17 @@ packages:
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
 
+  '@types/stats.js@0.17.4':
+    resolution: {integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==}
+
+  '@types/three@0.180.0':
+    resolution: {integrity: sha512-ykFtgCqNnY0IPvDro7h+9ZeLY+qjgUWv+qEvUt84grhenO60Hqd4hScHE7VTB9nOQ/3QM8lkbNE+4vKjEpUxKg==}
+
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
+
+  '@types/webxr@0.5.24':
+    resolution: {integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -909,6 +1014,7 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
+    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@vitejs/plugin-vue@5.2.4':
     resolution: {integrity: sha512-7Yx/SXSOcQq5HiiV3orevHUFn+pmMB4cgbEkDYgnkUWb0WfeQ/wa2yFv6D5ICiCQOVpjA7vYDXrC7AGO8yjDHA==}
@@ -980,6 +1086,9 @@ packages:
 
   '@vue/shared@3.5.33':
     resolution: {integrity: sha512-5vR2QIlmaLG77Ygd4pMP6+SGQ5yox9VhtnbDWTy9DzMzdmeLxZ1QqxrywEZ9sa1AVubfIJyaCG3ytyWU81ufcQ==}
+
+  '@webgpu/types@0.1.70':
+    resolution: {integrity: sha512-LFiNHHKMvmAEvwVew3JLJmTdShhbdwRFSImUshGhE2mGE8ybQzIo63l5uRp+YKnNx+8Qno8Kf6gN+DKMreIJCA==}
 
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
@@ -1522,6 +1631,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   file-entry-cache@6.0.1:
     resolution: {integrity: sha512-7Gps/XWymbLk2QLYK4NzpMOrYjMhdIxXuIvy2QBsLE6ljuodKvdkWs/cpyJJ3CVIVpH0Oi1Hvg1ovbMzLdFBBg==}
     engines: {node: ^10.12.0 || >=12.0.0}
@@ -1898,6 +2010,9 @@ packages:
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
+
+  meshoptimizer@0.22.0:
+    resolution: {integrity: sha512-IebiK79sqIy+E4EgOr+CAw+Ke8hAspXKzBd0JdgEmPHiAwmvEj2S4h1rfvo+o/BnfEYd/jAOg5IeeIjzlzSnDg==}
 
   micromatch@4.0.8:
     resolution: {integrity: sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA==}
@@ -2276,6 +2391,9 @@ packages:
     resolution: {integrity: sha512-jH9EhtKIjuXZ2cWxmXS8ZP80XyC3iasQxMDV8jzhNJpfDb7VbQLVW4Wvsxz9QZvzV+G4YoSfBUVKDOyxLzi/sg==}
     engines: {node: '>= 6'}
 
+  stats.js@0.17.0:
+    resolution: {integrity: sha512-hNKz8phvYLPEcRkeG1rsGmV5ChMjKDAWU7/OJJdDErPBNChQXxCo3WZurGpnWc6gZhAzEPFad1aVgyOANH1sMw==}
+
   std-env@3.10.0:
     resolution: {integrity: sha512-5GS12FdOZNliM5mAOxFRg7Ir0pWz8MdpYm6AY6VPkGpbA7ZzmbzNcBJQ0GPvvyWgcY7QAhCgf9Uy89I03faLkg==}
 
@@ -2334,6 +2452,9 @@ packages:
 
   text-table@0.2.0:
     resolution: {integrity: sha512-N+8UisAXDGk8PFXP4HAzVR9nbfmVJ3zYLAWiTIoqC5v5isinhr+r5uaO8+7r3BMfuNIufIsA7RdpVgacC2cSpw==}
+
+  three@0.180.0:
+    resolution: {integrity: sha512-o+qycAMZrh+TsE01GqWUxUIKR1AL0S8pq7zDkYOQw8GqfX8b8VoCKYUoHbhiX5j+7hr8XsuHDVU6+gkQJQKg9w==}
 
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
@@ -2750,6 +2871,8 @@ snapshots:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
 
+  '@dimforge/rapier3d-compat@0.12.0': {}
+
   '@electron/asar@3.4.1':
     dependencies:
       commander: 5.1.0
@@ -3040,6 +3163,65 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
+  '@pixiv/three-vrm-core@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrm-0.0': 3.5.3
+      '@pixiv/types-vrmc-vrm-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm-materials-hdr-emissive-multiplier@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm-materials-mtoon@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrm-0.0': 3.5.3
+      '@pixiv/types-vrmc-materials-mtoon-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm-materials-v0compat@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrm-0.0': 3.5.3
+      '@pixiv/types-vrmc-materials-mtoon-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm-node-constraint@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrmc-node-constraint-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm-springbone@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/types-vrm-0.0': 3.5.3
+      '@pixiv/types-vrmc-springbone-1.0': 3.5.3
+      '@pixiv/types-vrmc-springbone-extended-collider-1.0': 3.5.3
+      three: 0.180.0
+
+  '@pixiv/three-vrm@3.5.3(three@0.180.0)':
+    dependencies:
+      '@pixiv/three-vrm-core': 3.5.3(three@0.180.0)
+      '@pixiv/three-vrm-materials-hdr-emissive-multiplier': 3.5.3(three@0.180.0)
+      '@pixiv/three-vrm-materials-mtoon': 3.5.3(three@0.180.0)
+      '@pixiv/three-vrm-materials-v0compat': 3.5.3(three@0.180.0)
+      '@pixiv/three-vrm-node-constraint': 3.5.3(three@0.180.0)
+      '@pixiv/three-vrm-springbone': 3.5.3(three@0.180.0)
+      three: 0.180.0
+
+  '@pixiv/types-vrm-0.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-materials-hdr-emissive-multiplier-1.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-materials-mtoon-1.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-node-constraint-1.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-springbone-1.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-springbone-extended-collider-1.0@3.5.3': {}
+
+  '@pixiv/types-vrmc-vrm-1.0@3.5.3': {}
+
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
@@ -3146,6 +3328,8 @@ snapshots:
   '@turbo/windows-arm64@2.9.7':
     optional: true
 
+  '@tweenjs/tween.js@23.1.3': {}
+
   '@types/cacheable-request@6.0.3':
     dependencies:
       '@types/http-cache-semantics': 4.2.0
@@ -3185,8 +3369,22 @@ snapshots:
     dependencies:
       '@types/node': 20.19.39
 
+  '@types/stats.js@0.17.4': {}
+
+  '@types/three@0.180.0':
+    dependencies:
+      '@dimforge/rapier3d-compat': 0.12.0
+      '@tweenjs/tween.js': 23.1.3
+      '@types/stats.js': 0.17.4
+      '@types/webxr': 0.5.24
+      '@webgpu/types': 0.1.70
+      fflate: 0.8.3
+      meshoptimizer: 0.22.0
+
   '@types/verror@1.10.11':
     optional: true
+
+  '@types/webxr@0.5.24': {}
 
   '@types/yauzl@2.10.3':
     dependencies:
@@ -3393,6 +3591,8 @@ snapshots:
       vue: 3.5.33(typescript@5.6.3)
 
   '@vue/shared@3.5.33': {}
+
+  '@webgpu/types@0.1.70': {}
 
   '@xmldom/xmldom@0.9.10': {}
 
@@ -4106,6 +4306,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fflate@0.8.3: {}
+
   file-entry-cache@6.0.1:
     dependencies:
       flat-cache: 3.2.0
@@ -4494,6 +4696,8 @@ snapshots:
 
   merge2@1.4.1: {}
 
+  meshoptimizer@0.22.0: {}
+
   micromatch@4.0.8:
     dependencies:
       braces: 3.0.3
@@ -4849,6 +5053,8 @@ snapshots:
 
   stat-mode@1.0.0: {}
 
+  stats.js@0.17.0: {}
+
   std-env@3.10.0: {}
 
   string-width@4.2.3:
@@ -4920,6 +5126,8 @@ snapshots:
       fs-extra: 10.1.0
 
   text-table@0.2.0: {}
+
+  three@0.180.0: {}
 
   tinybench@2.9.0: {}
 
