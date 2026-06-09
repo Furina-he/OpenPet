@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S2 · Worker RPC Spike</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 24px;
+        background: #f6f6f6;
+        color: #0f0f0f;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 16px;
+        margin-right: 8px;
+        cursor: pointer;
+      }
+      #log {
+        margin-top: 16px;
+        white-space: pre-wrap;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 12px;
+        min-height: 160px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>S2 · Main ↔ Worker RPC</h2>
+    <button id="ping">sys.ping</button>
+    <button id="kill">模拟 Worker 崩溃</button>
+    <div id="log"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
