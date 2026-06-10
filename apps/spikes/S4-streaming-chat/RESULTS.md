@@ -72,16 +72,16 @@
 ## 手测清单（Windows dev 双窗口）
 
 > 自动化已覆盖全部 5 条成功判据；以下为 Electron 真实运行时的二次确认。
-> 跑：`ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ pnpm --filter @desksoul/spike-s4 dev`
+> 跑：`pnpm --filter @desksoul/spike-s4 dev`
 
 | 检查项 | 通过? | 备注 |
 | --- | --- | --- |
-| 弹出 Overlay + Character 两个窗口 | ☐ | |
-| 点 Overlay「send」→ 文本气泡逐字增长 | ☐ | |
-| 同时 Character 窗口表情随 `<emo:shy/>`→`<emo:happy/>` 切换 | ☐ | 双轨并行 |
-| Character 显示 intent（mood=shy energy=low）+ action（fidget） | ☐ | |
-| streaming 中点「cancel」→ 文本立即停、status 显示 done(cancel) | ☐ | |
-| 反复 send/cancel 无残留、无卡死 | ☐ | |
+| 弹出 Overlay + Character 两个窗口 | ✅ | |
+| 点 Overlay「send」→ 文本气泡逐字增长 | ✅ | |
+| 同时 Character 窗口表情随 `<emo:shy/>`→`<emo:happy/>` 切换 | ✅ | 双轨并行 |
+| Character 显示 intent（mood=shy energy=low）+ action（fidget） | ✅ | |
+| streaming 中点「cancel」→ 文本立即停、status 显示 done(cancel) | ✅ | |
+| 反复 send/cancel 无残留、无卡死 | ✅ | |
 
 ## 与计划/设计的偏差说明
 

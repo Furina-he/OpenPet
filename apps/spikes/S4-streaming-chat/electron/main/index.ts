@@ -21,7 +21,7 @@ async function loadRenderer(win: BrowserWindow, name: 'overlay' | 'character'): 
 }
 
 function createWindows(): void {
-  const preload = path.join(__dirname, '../preload/index.mjs');
+  const preload = path.join(__dirname, '../preload/index.cjs');
   const webPreferences = {
     preload,
     sandbox: true,

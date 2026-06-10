@@ -16,7 +16,7 @@ declare global {
 const SESSION_ID = 's4-demo';
 
 const bubble = document.getElementById('bubble') as HTMLDivElement;
-const status = document.getElementById('status') as HTMLDivElement;
+const status = document.getElementById('meta') as HTMLDivElement;
 const sendBtn = document.getElementById('send') as HTMLButtonElement;
 const cancelBtn = document.getElementById('cancel') as HTMLButtonElement;
 
