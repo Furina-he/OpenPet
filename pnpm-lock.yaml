@@ -192,6 +192,27 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
 
+  apps/spikes/S5-sandbox:
+    devDependencies:
+      '@desksoul/tsconfig':
+        specifier: workspace:*
+        version: link:../../../packages/tsconfig
+      electron:
+        specifier: ^30.0.0
+        version: 30.5.1
+      electron-vite:
+        specifier: ^2.3.0
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39))
+      typescript:
+        specifier: ~5.6.2
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.2(@types/node@20.19.39)
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.39)
+
   packages/plugin-sdk:
     dependencies:
       '@desksoul/protocol':
