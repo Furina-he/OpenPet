@@ -1,162 +1,164 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+/**
+ * SessionStore — Main 内会话历史（chat.snapshot 的数据源）。
+ *
+ * 记录干净文本（BehaviorParser 剥离标签后），不含 behavior 事件。
+ * seq：每 session 的 delta 单调序号，appendDelta 返回；渲染端快照重建时以
+ * `seq <= snapshot.seq` 丢弃缓冲的重复流事件（chat.stream wire 参数带 seq）。
+ *
+ * 持久化：JSON 文件节流落盘（M6 换 SQLite 后删除此路径）。
+ *  - appendUser / finishAssistant 触发节流写（默认 500ms），dispose 冲洗。
+ *  - delta 不触发写：流式中途 Main 崩溃丢当轮 partial，可接受（M6 消除）。
+ *  - seq 不持久化：重启后没有跨进程的流，从 0 重新计数即可。
+ * 纯模块（不依赖 Electron），路径由构造注入。
+ */
+import fs from 'node:fs';
+import path from 'node:path';
 
-interface Message {
+export interface StoredMessage {
   role: 'user' | 'assistant';
-  content: string;
-  seq: number;
-  sealed?: boolean;
+  text: string;
+  finishReason: 'stop' | 'cancel' | 'error' | null;
 }
 
-interface Session {
-  nextSeq: number;
-  messages: Message[];
-  unsealedIndex?: number;
-}
-
-interface PersistFormat {
-  version: 1;
-  sessions: Record<string, { nextSeq: number; messages: Message[] }>;
-}
-
-export interface Snapshot {
-  messages: Message[];
+export interface SessionSnapshot {
+  sessionId: string;
+  messages: StoredMessage[];
   streaming: boolean;
+  seq: number;
+}
+
+export interface SessionStoreOptions {
+  /** 提供则启用 JSON 持久化。 */
+  persistPath?: string;
+  /** 落盘节流间隔（默认 500ms；测试调小）。 */
+  persistDelayMs?: number;
+}
+
+interface PersistShape {
+  version: 1;
+  sessions: Record<string, StoredMessage[]>;
 }
 
 export class SessionStore {
-  private sessions = new Map<string, Session>();
-  private persistTimer: NodeJS.Timeout | null = null;
-  private readonly THROTTLE_MS = 500;
+  private readonly sessions = new Map<string, StoredMessage[]>();
+  private readonly seqs = new Map<string, number>();
+  private readonly persistPath: string | undefined;
+  private readonly persistDelayMs: number;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly persistPath: string) {
-    this.loadSync();
+  constructor(opts: SessionStoreOptions = {}) {
+    this.persistPath = opts.persistPath;
+    this.persistDelayMs = opts.persistDelayMs ?? 500;
+    if (this.persistPath) this.loadSync(this.persistPath);
   }
 
-  appendUser(sessionId: string, content: string): number {
-    const sess = this.getOrCreate(sessionId);
-    const seq = sess.nextSeq++;
-    sess.messages.push({ role: 'user', content, seq });
-    this.schedulePersist();
-    return seq;
-  }
-
-  beginAssistant(sessionId: string): number {
-    const sess = this.getOrCreate(sessionId);
-    const seq = sess.nextSeq++;
-    sess.messages.push({ role: 'assistant', content: '', seq, sealed: false });
-    sess.unsealedIndex = sess.messages.length - 1;
-    return seq;
-  }
-
-  appendDelta(sessionId: string, delta: string): number {
-    const sess = this.getOrCreate(sessionId);
-    if (sess.unsealedIndex === undefined) {
-      const seq = this.beginAssistant(sessionId);
-      sess.unsealedIndex = sess.messages.length - 1;
+  private loadSync(file: string): void {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch {
+      return; // 首次启动无文件
     }
-    const msg = sess.messages[sess.unsealedIndex!];
-    msg.content += delta;
-    return msg.seq;
+    try {
+      const data = JSON.parse(raw) as PersistShape;
+      if (data.version !== 1) return;
+      for (const [id, messages] of Object.entries(data.sessions)) {
+        // 防御：上个进程异常退出可能留下未封口的 assistant 消息 → 封为 error
+        for (const m of messages) {
+          if (m.role === 'assistant' && m.finishReason === null) m.finishReason = 'error';
+        }
+        this.sessions.set(id, messages);
+      }
+    } catch (e) {
+      console.warn('[session-store] corrupt persist file ignored:', e);
+    }
   }
 
-  finishAssistant(sessionId: string): void {
-    const sess = this.sessions.get(sessionId);
-    if (!sess || sess.unsealedIndex === undefined) return;
-    const msg = sess.messages[sess.unsealedIndex];
-    msg.sealed = true;
-    delete sess.unsealedIndex;
+  appendUser(sessionId: string, text: string): void {
+    this.messagesOf(sessionId).push({ role: 'user', text, finishReason: null });
+    this.schedulePersist();
+  }
+
+  beginAssistant(sessionId: string): void {
+    this.messagesOf(sessionId).push({ role: 'assistant', text: '', finishReason: null });
+  }
+
+  /** 累积当前流式回复；返回本 session 单调递增的 delta 序号。 */
+  appendDelta(sessionId: string, text: string): number {
+    const messages = this.messagesOf(sessionId);
+    let last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant' || last.finishReason !== null) {
+      // 防御：delta 本身就是 assistant 回合存在的证据，缺 begin 时补一条
+      last = { role: 'assistant', text: '', finishReason: null };
+      messages.push(last);
+    }
+    last.text += text;
+    const seq = (this.seqs.get(sessionId) ?? 0) + 1;
+    this.seqs.set(sessionId, seq);
+    return seq;
+  }
+
+  finishAssistant(sessionId: string, reason: 'stop' | 'cancel' | 'error'): void {
+    const messages = this.sessions.get(sessionId);
+    const last = messages?.[messages.length - 1];
+    if (last && last.role === 'assistant' && last.finishReason === null) {
+      last.finishReason = reason;
+    }
     this.schedulePersist();
   }
 
   isStreaming(sessionId: string): boolean {
-    const sess = this.sessions.get(sessionId);
-    return sess?.unsealedIndex !== undefined;
+    const messages = this.sessions.get(sessionId);
+    const last = messages?.[messages.length - 1];
+    return !!last && last.role === 'assistant' && last.finishReason === null;
   }
 
-  snapshot(sessionId: string, limit?: number): Snapshot {
-    const sess = this.sessions.get(sessionId);
-    if (!sess) return { messages: [], streaming: false };
-
-    let msgs = sess.messages;
-    if (limit !== undefined && msgs.length > limit) {
-      msgs = msgs.slice(-limit);
-    }
-
+  snapshot(sessionId: string, limit = 50): SessionSnapshot {
+    const messages = this.sessions.get(sessionId) ?? [];
     return {
-      messages: msgs.map((m) => ({ ...m })),
-      streaming: sess.unsealedIndex !== undefined,
+      sessionId,
+      messages: messages.slice(-limit).map((m) => ({ ...m })),
+      streaming: this.isStreaming(sessionId),
+      seq: this.seqs.get(sessionId) ?? 0,
     };
   }
 
+  private messagesOf(sessionId: string): StoredMessage[] {
+    let list = this.sessions.get(sessionId);
+    if (!list) {
+      list = [];
+      this.sessions.set(sessionId, list);
+    }
+    return list;
+  }
+
+  private schedulePersist(): void {
+    if (!this.persistPath || this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.writeSync();
+    }, this.persistDelayMs);
+  }
+
+  private writeSync(): void {
+    if (!this.persistPath) return;
+    const data: PersistShape = { version: 1, sessions: Object.fromEntries(this.sessions) };
+    const tmp = `${this.persistPath}.tmp`;
+    try {
+      fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
+      fs.writeFileSync(tmp, JSON.stringify(data), 'utf8');
+      fs.renameSync(tmp, this.persistPath); // 原子替换，避免半截 JSON
+    } catch (e) {
+      console.warn('[session-store] persist failed:', e);
+    }
+  }
+
+  /** 退出前冲洗未落盘的变更。 */
   dispose(): void {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
       this.persistTimer = null;
-    }
-    this.writeSync();
-  }
-
-  private getOrCreate(sessionId: string): Session {
-    let sess = this.sessions.get(sessionId);
-    if (!sess) {
-      sess = { nextSeq: 1, messages: [] };
-      this.sessions.set(sessionId, sess);
-    }
-    return sess;
-  }
-
-  private schedulePersist(): void {
-    if (this.persistTimer) return;
-    this.persistTimer = setTimeout(() => {
-      this.persistTimer = null;
       this.writeSync();
-    }, this.THROTTLE_MS);
-  }
-
-  private loadSync(): void {
-    try {
-      const raw = readFileSync(this.persistPath, 'utf8');
-      const data: PersistFormat = JSON.parse(raw);
-      for (const [id, sess] of Object.entries(data.sessions)) {
-        let unsealedIndex: number | undefined;
-        for (let i = sess.messages.length - 1; i >= 0; i--) {
-          const msg = sess.messages[i];
-          if (msg.role === 'assistant' && msg.sealed === false) {
-            msg.content = '[流式中断]';
-            msg.sealed = true;
-            break;
-          }
-        }
-        this.sessions.set(id, {
-          nextSeq: sess.nextSeq,
-          messages: sess.messages,
-          unsealedIndex,
-        });
-      }
-    } catch {
-      // 文件不存在或损坏，从空开始
-    }
-  }
-
-  private writeSync(): void {
-    const data: PersistFormat = {
-      version: 1,
-      sessions: {},
-    };
-    for (const [id, sess] of this.sessions) {
-      data.sessions[id] = {
-        nextSeq: sess.nextSeq,
-        messages: sess.messages,
-      };
-    }
-    try {
-      mkdirSync(dirname(this.persistPath), { recursive: true });
-      const tmp = `${this.persistPath}.tmp`;
-      writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-      writeFileSync(this.persistPath, readFileSync(tmp));
-    } catch {
-      // 持久化失败不阻塞运行
     }
   }
 }
