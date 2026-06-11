@@ -10,7 +10,7 @@ describe('SessionStore - 会话记录', () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'session-store-test-'));
-    store = new SessionStore(join(testDir, 'sessions.json'));
+    store = new SessionStore({ persistPath: join(testDir, 'sessions.json') });
   });
 
   afterEach(() => {
@@ -19,29 +19,29 @@ describe('SessionStore - 会话记录', () => {
   });
 
   it('records user message', () => {
-    const seq = store.appendUser('sess1', 'Hello');
-    expect(seq).toBe(1);
+    store.appendUser('sess1', 'Hello');
     const snap = store.snapshot('sess1');
     expect(snap.messages).toHaveLength(1);
-    expect(snap.messages[0]).toMatchObject({ role: 'user', content: 'Hello', seq: 1 });
+    expect(snap.messages[0]).toMatchObject({ role: 'user', text: 'Hello', finishReason: null });
     expect(snap.streaming).toBe(false);
+    expect(snap.seq).toBe(0);
   });
 
   it('accumulates deltas, seals on finish', () => {
     store.appendUser('sess1', 'Hi');
-    const seq1 = store.beginAssistant('sess1');
-    expect(seq1).toBe(2);
-    store.appendDelta('sess1', 'Hel');
+    store.beginAssistant('sess1');
+    const seq1 = store.appendDelta('sess1', 'Hel');
+    expect(seq1).toBe(1);
     store.appendDelta('sess1', 'lo');
     const snap1 = store.snapshot('sess1');
     expect(snap1.streaming).toBe(true);
     expect(snap1.messages).toHaveLength(2);
-    expect(snap1.messages[1]).toMatchObject({ role: 'assistant', content: 'Hello', seq: 2 });
+    expect(snap1.messages[1]).toMatchObject({ role: 'assistant', text: 'Hello', finishReason: null });
 
-    store.finishAssistant('sess1');
+    store.finishAssistant('sess1', 'stop');
     const snap2 = store.snapshot('sess1');
     expect(snap2.streaming).toBe(false);
-    expect(snap2.messages[1]).toMatchObject({ role: 'assistant', content: 'Hello', seq: 2 });
+    expect(snap2.messages[1]).toMatchObject({ role: 'assistant', text: 'Hello', finishReason: 'stop' });
   });
 
   it('snapshot reports streaming=true with the unsealed partial message', () => {
@@ -50,21 +50,20 @@ describe('SessionStore - 会话记录', () => {
     store.appendDelta('sess1', 'Par');
     const snap = store.snapshot('sess1');
     expect(snap.streaming).toBe(true);
-    expect(snap.messages[1].content).toBe('Par');
+    expect(snap.messages[1].text).toBe('Par');
   });
 
   it('snapshot limit keeps only the most recent N messages', () => {
     store.appendUser('sess1', 'msg1');
     store.beginAssistant('sess1');
-    store.finishAssistant('sess1');
+    store.finishAssistant('sess1', 'stop');
     store.appendUser('sess1', 'msg2');
     store.beginAssistant('sess1');
-    store.finishAssistant('sess1');
+    store.finishAssistant('sess1', 'stop');
     store.appendUser('sess1', 'msg3');
 
     const snap = store.snapshot('sess1', 3);
     expect(snap.messages).toHaveLength(3);
-    expect(snap.messages.map((m) => m.seq)).toEqual([3, 4, 5]);
   });
 
   it('snapshot of an unknown session is empty, not an error', () => {
@@ -78,10 +77,8 @@ describe('SessionStore - 会话记录', () => {
     store.appendUser('sess2', 'B');
     const snap1 = store.snapshot('sess1');
     const snap2 = store.snapshot('sess2');
-    expect(snap1.messages[0].seq).toBe(1);
-    expect(snap2.messages[0].seq).toBe(1);
-    expect(snap1.messages[0].content).toBe('A');
-    expect(snap2.messages[0].content).toBe('B');
+    expect(snap1.messages[0].text).toBe('A');
+    expect(snap2.messages[0].text).toBe('B');
   });
 
   it('defensively opens an assistant message when a delta arrives without begin', () => {
@@ -89,16 +86,16 @@ describe('SessionStore - 会话记录', () => {
     store.appendDelta('sess1', 'Auto');
     const snap = store.snapshot('sess1');
     expect(snap.messages).toHaveLength(2);
-    expect(snap.messages[1]).toMatchObject({ role: 'assistant', content: 'Auto', seq: 2 });
+    expect(snap.messages[1]).toMatchObject({ role: 'assistant', text: 'Auto', finishReason: null });
     expect(snap.streaming).toBe(true);
   });
 
   it('snapshot returns copies — mutating them does not corrupt the store', () => {
     store.appendUser('sess1', 'Original');
     const snap1 = store.snapshot('sess1');
-    snap1.messages[0].content = 'Mutated';
+    snap1.messages[0].text = 'Mutated';
     const snap2 = store.snapshot('sess1');
-    expect(snap2.messages[0].content).toBe('Original');
+    expect(snap2.messages[0].text).toBe('Original');
   });
 });
 
@@ -116,53 +113,50 @@ describe('SessionStore - JSON 持久化', () => {
   });
 
   it('persists after the throttle delay and reloads in a fresh instance', async () => {
-    const store1 = new SessionStore(persistPath);
+    const store1 = new SessionStore({ persistPath, persistDelayMs: 500 });
     store1.appendUser('sess1', 'Persisted');
     store1.beginAssistant('sess1');
-    store1.finishAssistant('sess1');
+    store1.finishAssistant('sess1', 'stop');
 
     await new Promise((resolve) => setTimeout(resolve, 600));
     store1.dispose();
 
-    const store2 = new SessionStore(persistPath);
+    const store2 = new SessionStore({ persistPath });
     const snap = store2.snapshot('sess1');
     expect(snap.messages).toHaveLength(2);
-    expect(snap.messages[0].content).toBe('Persisted');
+    expect(snap.messages[0].text).toBe('Persisted');
     store2.dispose();
   });
 
   it('dispose flushes pending writes synchronously', () => {
-    const store = new SessionStore(persistPath);
+    const store = new SessionStore({ persistPath });
     store.appendUser('sess1', 'Flush');
     store.dispose();
 
     const raw = readFileSync(persistPath, 'utf8');
     const data = JSON.parse(raw);
-    expect(data.sessions.sess1.messages[0].content).toBe('Flush');
+    expect(data.sessions.sess1[0].text).toBe('Flush');
   });
 
   it('seals a persisted unsealed assistant message as error on load', () => {
     const corrupt = {
       version: 1,
       sessions: {
-        sess1: {
-          nextSeq: 3,
-          messages: [
-            { role: 'user', content: 'Hi', seq: 1 },
-            { role: 'assistant', content: 'Partial', seq: 2, sealed: false },
-          ],
-        },
+        sess1: [
+          { role: 'user', text: 'Hi', finishReason: null },
+          { role: 'assistant', text: 'Partial', finishReason: null },
+        ],
       },
     };
     mkdirSync(testDir, { recursive: true });
     writeFileSync(persistPath, JSON.stringify(corrupt), 'utf8');
 
-    const store = new SessionStore(persistPath);
+    const store = new SessionStore({ persistPath });
     const snap = store.snapshot('sess1');
     expect(snap.messages[1]).toMatchObject({
       role: 'assistant',
-      content: '[流式中断]',
-      seq: 2,
+      text: 'Partial',
+      finishReason: 'error',
     });
     expect(snap.streaming).toBe(false);
     store.dispose();
@@ -172,14 +166,14 @@ describe('SessionStore - JSON 持久化', () => {
     mkdirSync(testDir, { recursive: true });
     writeFileSync(persistPath, 'not json', 'utf8');
 
-    const store = new SessionStore(persistPath);
+    const store = new SessionStore({ persistPath });
     const snap = store.snapshot('anySess');
     expect(snap.messages).toEqual([]);
     store.dispose();
   });
 
   it('missing file means first boot — no throw', () => {
-    const store = new SessionStore(join(testDir, 'nonexistent.json'));
+    const store = new SessionStore({ persistPath: join(testDir, 'nonexistent.json') });
     const snap = store.snapshot('sess1');
     expect(snap.messages).toEqual([]);
     store.dispose();
