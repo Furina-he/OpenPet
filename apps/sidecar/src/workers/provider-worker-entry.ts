@@ -12,28 +12,19 @@
  * observes `signal` between chunks and ends with `finishReason: 'cancel'`.
  */
 import { parentPort, type MessagePort } from 'node:worker_threads';
-import { mockProviderChat, type ChatEvent } from './mock-provider.js';
+import type {
+  ChatStartFrame,
+  ChatCancelFrame,
+  ProviderInboundFrame,
+  ChatEventFrame,
+} from '@desksoul/protocol';
+import { mockProviderChat } from './mock-provider.js';
 
-export interface StartMessage {
-  kind: 'chat.start';
-  requestId: string;
-  sessionId: string;
-  intervalMs?: number;
-}
-
-export interface CancelMessage {
-  kind: 'chat.cancel';
-  requestId: string;
-}
-
-export type InboundMessage = StartMessage | CancelMessage;
-
-export interface EventMessage {
-  kind: 'chat.event';
-  requestId: string;
-  sessionId: string;
-  event: ChatEvent;
-}
+// 兼容别名：帧定义已收口到 @desksoul/protocol（单一真源）。
+export type StartMessage = ChatStartFrame;
+export type CancelMessage = ChatCancelFrame;
+export type InboundMessage = ProviderInboundFrame;
+export type EventMessage = ChatEventFrame;
 
 /**
  * Wires a MessagePort to the mock provider. Returns nothing; lives for the
