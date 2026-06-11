@@ -24,6 +24,16 @@ export const Methods = {
     result: z.object({ ok: z.literal(true) }),
   },
 
+  // --- request/response: Renderer → Main（窗口自操作；Main 端以 sender 定位窗口）---
+  'app.window.setClickThrough': {
+    params: z.object({ ignore: z.boolean() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'app.window.moveBy': {
+    params: z.object({ dx: z.number(), dy: z.number() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+
   // --- notification: Main → UI Overlay Renderer ---
   'chat.stream': {
     params: z.object({ sessionId: z.string(), text: z.string() }),

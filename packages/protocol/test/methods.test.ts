@@ -61,3 +61,19 @@ describe('method registry', () => {
     ).toEqual({ name: 'fidget', durationMs: 1800 });
   });
 });
+
+describe('app.window.* methods', () => {
+  it('validates setClickThrough params', () => {
+    const m = Methods['app.window.setClickThrough'];
+    expect(m.params.safeParse({ ignore: true }).success).toBe(true);
+    expect(m.params.safeParse({ ignore: 'yes' }).success).toBe(false);
+    expect(m.params.safeParse({}).success).toBe(false);
+  });
+
+  it('validates moveBy params', () => {
+    const m = Methods['app.window.moveBy'];
+    expect(m.params.safeParse({ dx: 3, dy: -2 }).success).toBe(true);
+    expect(m.params.safeParse({ dx: 3 }).success).toBe(false);
+    expect(m.params.safeParse({ dx: 'a', dy: 0 }).success).toBe(false);
+  });
+});
