@@ -17,10 +17,10 @@ describe('ConversationCore dual-channel split', () => {
       { type: 'done', finishReason: 'stop' },
     ]);
     expect(out).toEqual([
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'hi ' } },
-      { channel: 'behavior.applyEmotion', params: { name: 'shy', weight: 1.0 } },
-      { channel: 'chat.stream', params: { sessionId: 's1', text: ' there' } },
-      { channel: 'chat.done', params: { sessionId: 's1', finishReason: 'stop' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'hi ' } },
+      { channel: 'behavior.applyEmotion', sessionId: 's1', params: { name: 'shy', weight: 1.0 } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: ' there' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'stop' } },
     ]);
   });
 
@@ -31,10 +31,14 @@ describe('ConversationCore dual-channel split', () => {
       { type: 'done', finishReason: 'stop' },
     ]);
     expect(out).toEqual([
-      { channel: 'chat.stream', params: { sessionId: 's1', text: '我在想' } },
-      { channel: 'behavior.playAction', params: { name: 'fidget', durationMs: 1500 } },
-      { channel: 'chat.stream', params: { sessionId: 's1', text: '好' } },
-      { channel: 'chat.done', params: { sessionId: 's1', finishReason: 'stop' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: '我在想' } },
+      {
+        channel: 'behavior.playAction',
+        sessionId: 's1',
+        params: { name: 'fidget', durationMs: 1500 },
+      },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: '好' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'stop' } },
     ]);
   });
 
@@ -44,9 +48,9 @@ describe('ConversationCore dual-channel split', () => {
       { type: 'done', finishReason: 'stop' },
     ]);
     expect(out).toEqual([
-      { channel: 'behavior.setIntent', params: { mood: 'shy', energy: 'low' } },
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'hello' } },
-      { channel: 'chat.done', params: { sessionId: 's1', finishReason: 'stop' } },
+      { channel: 'behavior.setIntent', sessionId: 's1', params: { mood: 'shy', energy: 'low' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'hello' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'stop' } },
     ]);
   });
 
@@ -56,26 +60,25 @@ describe('ConversationCore dual-channel split', () => {
       { type: 'done', finishReason: 'cancel' },
     ]);
     expect(out).toEqual([
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'bye ' } },
-      { channel: 'chat.stream', params: { sessionId: 's1', text: '<emo:' } },
-      { channel: 'chat.done', params: { sessionId: 's1', finishReason: 'cancel' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'bye ' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: '<emo:' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'cancel' } },
     ]);
   });
 
   it('keeps per-session parser buffers independent', () => {
     const out: Notification[] = [];
     const core = new ConversationCore((n) => out.push(n));
-    // interleave a half-tag in s1 with a complete tag in s2
     core.handleEvent('s1', { type: 'delta', text: 'a<emo:' });
     core.handleEvent('s2', { type: 'delta', text: 'b<emo:sad/>c' });
     core.handleEvent('s1', { type: 'delta', text: 'happy/>d' });
     expect(out).toEqual([
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'a' } },
-      { channel: 'chat.stream', params: { sessionId: 's2', text: 'b' } },
-      { channel: 'behavior.applyEmotion', params: { name: 'sad', weight: 1.0 } },
-      { channel: 'chat.stream', params: { sessionId: 's2', text: 'c' } },
-      { channel: 'behavior.applyEmotion', params: { name: 'happy', weight: 1.0 } },
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'd' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'a' } },
+      { channel: 'chat.stream', sessionId: 's2', params: { sessionId: 's2', text: 'b' } },
+      { channel: 'behavior.applyEmotion', sessionId: 's2', params: { name: 'sad', weight: 1.0 } },
+      { channel: 'chat.stream', sessionId: 's2', params: { sessionId: 's2', text: 'c' } },
+      { channel: 'behavior.applyEmotion', sessionId: 's1', params: { name: 'happy', weight: 1.0 } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'd' } },
     ]);
   });
 
@@ -85,8 +88,57 @@ describe('ConversationCore dual-channel split', () => {
       { type: 'done', finishReason: 'error' },
     ]);
     expect(out).toEqual([
-      { channel: 'chat.stream', params: { sessionId: 's1', text: 'partial' } },
-      { channel: 'chat.done', params: { sessionId: 's1', finishReason: 'error' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'partial' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'error' } },
+    ]);
+  });
+});
+
+describe('ConversationCore cancel semantics (M2)', () => {
+  it('drops deltas arriving after cancel(), but still emits the done', () => {
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'before ' });
+    core.cancel('s1');
+    core.handleEvent('s1', { type: 'delta', text: 'late <emo:shy/>' });
+    core.handleEvent('s1', { type: 'done', finishReason: 'cancel' });
+    expect(out).toEqual([
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'before ' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'cancel' } },
+    ]);
+  });
+
+  it('discards the buffered half-tag on cancel instead of flushing it as text', () => {
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'hi <emo:' });
+    core.cancel('s1');
+    core.handleEvent('s1', { type: 'done', finishReason: 'cancel' });
+    expect(out).toEqual([
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'hi ' } },
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'cancel' } },
+    ]);
+  });
+
+  it('clears the cancelling mark on done so the next stream flows again', () => {
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.cancel('s1');
+    core.handleEvent('s1', { type: 'done', finishReason: 'cancel' });
+    core.handleEvent('s1', { type: 'delta', text: 'fresh' });
+    expect(out).toEqual([
+      { channel: 'chat.done', sessionId: 's1', params: { sessionId: 's1', finishReason: 'cancel' } },
+      { channel: 'chat.stream', sessionId: 's1', params: { sessionId: 's1', text: 'fresh' } },
+    ]);
+  });
+
+  it('cancel only silences its own session', () => {
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.cancel('s1');
+    core.handleEvent('s2', { type: 'delta', text: 'other' });
+    expect(out).toEqual([
+      { channel: 'chat.stream', sessionId: 's2', params: { sessionId: 's2', text: 'other' } },
     ]);
   });
 });
