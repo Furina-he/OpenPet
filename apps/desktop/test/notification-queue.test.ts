@@ -11,8 +11,12 @@ function emotion(sessionId: string, name: string) {
 }
 
 describe('NotificationQueue', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('delivers a pushed notification on the next flush tick', () => {
     const sent: Sent[] = [];
