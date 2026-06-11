@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { JsonRpcRequest, JsonRpcResponse } from './jsonrpc.js';
 
 /**
  * Worker MessagePort 帧协议 — Main ⇄ Provider Worker 的单一真源。
@@ -41,8 +42,42 @@ export const ChatEventFrame = z.object({
 });
 export type ChatEventFrame = z.infer<typeof ChatEventFrame>;
 
-export const ProviderInboundFrame = z.discriminatedUnion('kind', [ChatStartFrame, ChatCancelFrame]);
+/**
+ * Worker → Main：插件请求（JSON-RPC 信封）。id 必须是数字才能与响应关联——
+ * 这条通道上没有 notification 语义，全部是 request/response。
+ */
+export const PluginRequestFrame = z.object({
+  kind: z.literal('plugin.request'),
+  rpc: z.object({
+    jsonrpc: z.literal('2.0'),
+    id: z.number(),
+    method: z.string(),
+    params: z.unknown().optional(),
+  }),
+});
+export type PluginRequestFrame = z.infer<typeof PluginRequestFrame>;
+
+/** Main → Worker：插件响应（result 与 error 互斥，沿用 JSON-RPC 形状）。 */
+export const PluginResponseFrame = z.object({
+  kind: z.literal('plugin.response'),
+  rpc: z.object({
+    jsonrpc: z.literal('2.0'),
+    id: z.number(),
+    result: z.unknown().optional(),
+    error: z.object({ code: z.number(), message: z.string() }).optional(),
+  }),
+});
+export type PluginResponseFrame = z.infer<typeof PluginResponseFrame>;
+
+export const ProviderInboundFrame = z.discriminatedUnion('kind', [
+  ChatStartFrame,
+  ChatCancelFrame,
+  PluginResponseFrame,
+]);
 export type ProviderInboundFrame = z.infer<typeof ProviderInboundFrame>;
 
-export const ProviderOutboundFrame = ChatEventFrame;
-export type ProviderOutboundFrame = ChatEventFrame;
+export const ProviderOutboundFrame = z.discriminatedUnion('kind', [
+  ChatEventFrame,
+  PluginRequestFrame,
+]);
+export type ProviderOutboundFrame = z.infer<typeof ProviderOutboundFrame>;

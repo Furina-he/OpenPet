@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 import { createAppWindows, rendererTargets, type AppWindows } from './windows.js';
 import { registerIpcRouter } from './ipc-router.js';
@@ -15,7 +16,11 @@ app.whenReady().then(() => {
     '@desksoul/sidecar/dist/workers/provider-worker-entry.js',
   );
   wins = createAppWindows();
-  router = registerIpcRouter({ targets: rendererTargets(wins), providerEntryPath });
+  router = registerIpcRouter({
+    targets: rendererTargets(wins),
+    providerEntryPath,
+    persistPath: path.join(app.getPath('userData'), 'sessions.json'),
+  });
 
   // settings 常驻 hidden，不算"还开着"；两个可见窗口都关 = 退出。
   const maybeQuit = (): void => {

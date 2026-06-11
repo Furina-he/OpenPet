@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-DeskSoul 是桌面常驻的 AI 角色伙伴（桌宠 + AI 内核 + 角色/插件生态）。当前处于 **Phase 0/1（脚手架 + Tech Spike）** 阶段，仅实现了协议骨架和 sidecar 的 `sys.ping`。完整产品需求见 `PRD.md`，架构权威来源是 `docs/plans/2026-05-01-desksoul-tech-design.md`（v0.2 Electron Pivot），任务清单见 `docs/plans/2026-05-01-desksoul-impl-plan.md`。
+DeskSoul 是桌面常驻的 AI 角色伙伴（桌宠 + AI 内核 + 角色/插件生态）。当前处于 **Phase 2（MVP 切片）** 阶段：M1（架构骨架 + spike 迁移）、M2（IPC 四命名空间 + 取消 + 背压 + chat.snapshot 恢复）已完成，下一个里程碑是 M3（行为协议生产化）。完整产品需求见 `PRD.md`，架构权威来源是 `docs/plans/2026-05-01-desksoul-tech-design.md`（v0.2 Electron Pivot），任务清单见 `docs/plans/2026-05-01-desksoul-impl-plan.md`。
 
 > 注意：实现计划要求用 `superpowers:executing-plans` 按任务逐条推进，提交遵循 Conventional Commits（`feat:` `fix:` `chore:` `test:` `docs:` `refactor:`）。
 

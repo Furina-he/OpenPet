@@ -13,3 +13,4 @@ export {
   type CancelMessage,
   type EventMessage,
 } from './workers/provider-worker-entry.js';
+export { createPluginClient, type PluginClient } from './plugin-client.js';

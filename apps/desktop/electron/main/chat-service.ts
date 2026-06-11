@@ -1,0 +1,116 @@
+/**
+ * ChatService — chat 域的 Main 侧编排（纯模块，不依赖 Electron）。
+ *
+ * 管线：ProviderHost(worker 监督) → ConversationCore(双轨拆分) →
+ *       SessionStore(记录/快照/seq) + NotificationQueue(背压) → broadcast。
+ *
+ * 取消三层传播（tech-design §3 要点 3）：renderer 发 chat.cancel 后——
+ *   ① core.cancel：迟到 delta 丢弃（半截标签 buffer 一并废弃）
+ *   ② queue.dropSession：待发通知瞬间清空 → UI 立即停
+ *   ③ host.cancel：协作取消 + 200ms watchdog 强杀兜底
+ * done(cancel) 回流时封口存储并 urgent flush，全链路 ≤ 宽限期。
+ *
+ * plugin.*（Worker → Main）经 PluginGateway 校验分发；M5 扩展为多 worker。
+ */
+import { ConversationCore, type Notification } from './conversation-core.js';
+import { ProviderHost, type ProviderHostOptions } from './provider-host.js';
+import { SessionStore, type SessionSnapshot } from './session-store.js';
+import { NotificationQueue, type NotificationQueueOptions } from './notification-queue.js';
+import {
+  createPluginGateway,
+  type PluginGateway,
+  type PluginGatewayDeps,
+} from './plugin-gateway.js';
+import { RpcError } from './router.js';
+
+export interface ChatServiceOptions {
+  providerEntryPath: string;
+  broadcast: (channel: string, params: unknown) => void;
+  /** 会话历史 JSON 持久化路径；缺省纯内存（测试）。 */
+  persistPath?: string;
+  queue?: NotificationQueueOptions;
+  host?: ProviderHostOptions;
+  plugins?: PluginGatewayDeps;
+}
+
+export class ChatService {
+  private readonly store: SessionStore;
+  private readonly queue: NotificationQueue;
+  private readonly core: ConversationCore;
+  private readonly host: ProviderHost;
+  readonly plugins: PluginGateway;
+
+  constructor(opts: ChatServiceOptions) {
+    this.store = new SessionStore(opts.persistPath ? { persistPath: opts.persistPath } : {});
+    this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
+    this.plugins = createPluginGateway(opts.plugins ?? {});
+    this.core = new ConversationCore((n) => this.onNotification(n));
+    this.host = new ProviderHost(
+      opts.providerEntryPath,
+      (sessionId, event) => this.core.handleEvent(sessionId, event),
+      { ...(opts.host ?? {}), onPluginRequest: (frame) => this.plugins.handle(frame) },
+    );
+  }
+
+  send(sessionId: string, text: string): { ok: true } {
+    if (this.store.isStreaming(sessionId)) {
+      throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
+    }
+    try {
+      this.host.send(sessionId);
+    } catch {
+      throw new RpcError(-32002, 'provider unavailable (worker restarting)');
+    }
+    // host.send 成功才入账：失败的发送不进历史
+    this.store.appendUser(sessionId, text);
+    this.store.beginAssistant(sessionId);
+    return { ok: true };
+  }
+
+  cancel(sessionId: string): { ok: true } {
+    // 无在途流时不设 cancelling 标记——否则标记无 done 来清，会吞掉下一个流
+    if (!this.store.isStreaming(sessionId)) return { ok: true };
+    this.core.cancel(sessionId); // ①
+    this.queue.dropSession(sessionId); // ②
+    this.host.cancel(sessionId); // ③
+    return { ok: true };
+  }
+
+  snapshot(sessionId: string, limit?: number): SessionSnapshot {
+    return this.store.snapshot(sessionId, limit);
+  }
+
+  private onNotification(n: Notification): void {
+    switch (n.channel) {
+      case 'chat.stream': {
+        // 先入账拿 seq 再入队：保证 snapshot.seq ≥ 一切已广播/待广播的 seq
+        const seq = this.store.appendDelta(n.sessionId, n.params.text);
+        this.queue.push({
+          channel: n.channel,
+          sessionId: n.sessionId,
+          params: { ...n.params, seq },
+        });
+        return;
+      }
+      case 'chat.done':
+        this.store.finishAssistant(n.sessionId, n.params.finishReason);
+        this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params }, {
+          urgent: true,
+        });
+        return;
+      default:
+        this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params });
+    }
+  }
+
+  /** 仅测试：模拟 provider worker 崩溃。 */
+  killWorkerForTest(): void {
+    this.host.killWorkerForTest();
+  }
+
+  async dispose(): Promise<void> {
+    this.queue.dispose();
+    this.store.dispose();
+    await this.host.dispose();
+  }
+}
