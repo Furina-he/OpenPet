@@ -4,6 +4,9 @@
 //   → broadcast → overlay 收 chat.stream/chat.done、character 收 behavior.applyEmotion
 // 退出码 0 = 验收通过。M8 会升级为 Playwright with Electron 跑 packaged app。
 //
+// M2 追加：cancel 全链路（瞬停 + done(cancel)）、chat.stream 带 seq、
+// overlay 崩溃自愈后经 chat.snapshot 自动重建会话视图。
+//
 // 运行：pnpm --filter @desksoul/desktop exec electron test/e2e-smoke.mjs
 //（先 pnpm build；file:// 模式下 VRM 模型不可达 → character 走 fallback 脸，
 //  与判据无关：判据是 behavior.* 通道驱动 renderer，不是渲染形态。）
@@ -149,6 +152,74 @@ async function main() {
   );
   console.log(`[smoke] post-crash character probes: ${JSON.stringify(recovered)}`);
   console.log('[smoke] PASS: crash isolation + recovery verified');
+
+  // ---- M2-1: cancel 全链路（流式中取消 → 瞬停 + done(cancel)）----
+  await overlay.webContents.executeJavaScript(`
+    window.__cancel = { text: '', done: null, seqOk: true };
+    window.desksoul.on('chat.stream', (p) => {
+      if (p.sessionId !== 'smoke-cancel') return;
+      if (typeof p.seq !== 'number') window.__cancel.seqOk = false;
+      window.__cancel.text += p.text;
+    });
+    window.desksoul.on('chat.done', (p) => {
+      if (p.sessionId === 'smoke-cancel') window.__cancel.done = p.finishReason;
+    });
+    window.desksoul.rpc('chat.send', { sessionId: 'smoke-cancel', text: 'cancel me' });
+    'ok';
+  `);
+  await waitFor(
+    () => overlay.webContents.executeJavaScript('window.__cancel.text.length > 0'),
+    'first delta before cancel',
+  );
+  const cancelStart = Date.now();
+  await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('chat.cancel', { sessionId: 'smoke-cancel' })`,
+  );
+  const cancelled = await waitFor(
+    () => overlay.webContents.executeJavaScript('window.__cancel').then((s) => (s.done ? s : null)),
+    'cancel done',
+  );
+  const cancelMs = Date.now() - cancelStart;
+  if (cancelled.done !== 'cancel') return fail(`expected cancel done, got ${cancelled.done}`);
+  if (!cancelled.seqOk) return fail('chat.stream payload missing numeric seq');
+  if (cancelMs > 1500) return fail(`cancel took ${cancelMs}ms (200ms 链路 + IPC/CI 余量也不该这么久)`);
+  await new Promise((r) => setTimeout(r, 400)); // 留出迟到 delta 的窗口
+  const textAfter = await overlay.webContents.executeJavaScript('window.__cancel.text');
+  if (textAfter !== cancelled.text) return fail('text kept growing after cancel');
+  console.log(`[smoke] PASS: cancel round-trip ${cancelMs}ms, stream frozen after cancel`);
+
+  // ---- M2-2: chat.snapshot 重建（overlay 崩溃自愈 → App.vue 自动恢复历史）----
+  // 用 App.vue 的真实 session（default）跑一轮完整对话，让真实 UI 路径渲染它
+  await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('chat.send', { sessionId: 'default', text: '快照测试' })`,
+  );
+  await waitFor(
+    () => overlay.webContents.executeJavaScript(`document.body.innerText.includes('热可可')`),
+    'default session reply rendered in overlay UI',
+  );
+  const snap = await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('chat.snapshot', { sessionId: 'default' })`,
+  );
+  if (typeof snap?.seq !== 'number' || snap.streaming !== false)
+    return fail(`bad snapshot shape: ${JSON.stringify(snap)}`);
+  const lastMsg = snap.messages[snap.messages.length - 1];
+  if (
+    lastMsg?.role !== 'assistant' ||
+    !lastMsg.text.includes('热可可') ||
+    lastMsg.finishReason !== 'stop'
+  )
+    return fail(`bad snapshot tail: ${JSON.stringify(lastMsg)}`);
+  console.log('[smoke] chat.snapshot shape ok');
+
+  overlay.webContents.forcefullyCrashRenderer();
+  await waitFor(
+    () =>
+      overlay.webContents
+        .executeJavaScript(`document.body.innerText.includes('热可可')`)
+        .catch(() => false),
+    'overlay rebuilt history from chat.snapshot after crash',
+  );
+  console.log('[smoke] PASS: overlay crashed & rebuilt conversation via chat.snapshot');
   app.exit(0);
 }
 
