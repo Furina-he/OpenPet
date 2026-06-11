@@ -10,18 +10,26 @@
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder --dir",
     "release": "electron-vite build && electron-builder",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "vue-tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "@desksoul/protocol": "workspace:^",
+    "@desksoul/sidecar": "workspace:^",
+    "@pixiv/three-vrm": "^3.4.0",
+    "three": "^0.180.0",
+    "vue": "^3.5.13",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/three": "^0.180.0",
     "@vitejs/plugin-vue": "^5.2.1",
     "electron": "^30.0.0",
     "electron-builder": "^24.13.0",
     "electron-vite": "^2.3.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
+    "vitest": "^1.6.0",
     "vue-tsc": "^2.1.10"
   }
 }

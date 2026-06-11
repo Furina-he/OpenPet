@@ -1,27 +1,35 @@
-import { app, BrowserWindow } from 'electron';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { app } from 'electron';
+import { createRequire } from 'node:module';
+import { createAppWindows, rendererTargets, type AppWindows } from './windows.js';
+import { registerIpcRouter } from './ipc-router.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
-async function createWindow() {
-  const win = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+let wins: AppWindows | null = null;
+let router: { dispose: () => Promise<void> } | null = null;
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    await win.loadURL(process.env.ELECTRON_RENDERER_URL);
-  } else {
-    await win.loadFile(path.join(__dirname, '../renderer/index.html'));
-  }
-}
+app.whenReady().then(() => {
+  // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
+  //（turbo 的 ^build 保证 dist 先于 desktop 构建存在）。
+  const providerEntryPath = require.resolve(
+    '@desksoul/sidecar/dist/workers/provider-worker-entry.js',
+  );
+  wins = createAppWindows();
+  router = registerIpcRouter({ targets: rendererTargets(wins), providerEntryPath });
 
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => process.platform !== 'darwin' && app.quit());
+  // settings 常驻 hidden，不算"还开着"；两个可见窗口都关 = 退出。
+  const maybeQuit = (): void => {
+    if (wins && wins.character.isDestroyed() && wins.overlay.isDestroyed()) app.quit();
+  };
+  wins.character.on('closed', maybeQuit);
+  wins.overlay.on('closed', maybeQuit);
+});
+
+app.on('before-quit', () => {
+  void router?.dispose();
+  router = null;
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

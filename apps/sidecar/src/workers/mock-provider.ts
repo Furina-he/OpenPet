@@ -8,9 +8,10 @@
  * exactly the incremental-parsing case the BehaviorParser must survive.
  */
 
-export type ChatEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'done'; finishReason: 'stop' | 'cancel' };
+import type { ChatEvent } from '@desksoul/protocol';
+
+// 帧类型已收口到 @desksoul/protocol（单一真源）；re-export 维持既有 import 路径兼容。
+export type { ChatEvent };
 
 /** Scripted chunks; tags are split across chunks on purpose (see `<act:` below). */
 export const MOCK_SCRIPT: readonly string[] = [

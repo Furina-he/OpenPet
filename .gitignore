@@ -13,3 +13,6 @@ out/
 release/
 .vite/
 *.tsbuildinfo
+
+# VRM models are fetched locally, never committed (28MB+)
+apps/desktop/public/models/

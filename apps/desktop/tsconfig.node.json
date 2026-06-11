@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "composite": true,
     "skipLibCheck": true,
     "target": "ES2022",
     "module": "ESNext",
@@ -13,5 +12,5 @@
     "noEmit": true,
     "types": ["node", "electron-vite/node"]
   },
-  "include": ["electron/**/*.ts", "electron.vite.config.ts"]
+  "include": ["electron/**/*.ts", "electron.vite.config.ts", "test/**/*.ts"]
 }
