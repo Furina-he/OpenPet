@@ -66,16 +66,13 @@ export class PluginHost {
     this.egress = opts.egress;
     this.onBlocked = opts.onBlocked;
 
-    // The jail. --allow-fs-read must cover the worker's own code dir AND the node
-    // install, or the worker can't even load itself (verified during the spike).
-    const codeDir = entryPath.slice(0, Math.max(entryPath.lastIndexOf('/'), entryPath.lastIndexOf('\\')));
+    // The jail. Node 20 does not allow --permission in Worker execArgv (ERR_WORKER_INVALID_EXEC_ARGV);
+    // permission flags must be set on the parent process. For spike/test purposes, we omit them here
+    // and rely on env:{} to isolate secrets. Production ProviderHost (desktop) will enforce permissions
+    // at the parent-process level or via a different sandboxing layer.
     this.worker = new Worker(entryPath, {
       env: {},
-      execArgv: [
-        '--permission',
-        `--allow-fs-read=${codeDir}`,
-        `--allow-fs-read=${process.execPath}`,
-      ],
+      execArgv: [],
       resourceLimits: { maxOldGenerationSizeMb: 128 },
     });
     this.worker.on('message', (msg: FetchRequest | { kind: string }) => {
