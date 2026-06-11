@@ -35,6 +35,7 @@ export function attachProviderServer(port: MessagePort): void {
   const inflight = new Map<string, AbortController>();
 
   port.on('message', (msg: InboundMessage) => {
+    if (msg.kind === 'plugin.response') return; // plugin-client 的事，与流式服务无关
     if (msg.kind === 'chat.cancel') {
       inflight.get(msg.requestId)?.abort();
       return;

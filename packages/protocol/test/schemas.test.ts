@@ -5,6 +5,9 @@ import {
   ChatCancelFrame,
   ChatEventFrame,
   ProviderInboundFrame,
+  PluginRequestFrame,
+  PluginResponseFrame,
+  ProviderOutboundFrame,
 } from '../src/schemas';
 
 describe('worker frame schemas', () => {
@@ -59,5 +62,71 @@ describe('worker frame schemas', () => {
       kind: 'chat.cancel',
     });
     expect(() => ProviderInboundFrame.parse({ kind: 'nope' })).toThrow();
+  });
+});
+
+describe('plugin frames (M2)', () => {
+  it('parses a plugin.request with numeric id', () => {
+    const f = PluginRequestFrame.parse({
+      kind: 'plugin.request',
+      rpc: { jsonrpc: '2.0', id: 1, method: 'plugin.registerSkill', params: { skillId: 's' } },
+    });
+    expect(f.rpc.method).toBe('plugin.registerSkill');
+  });
+
+  it('rejects a plugin.request with string/null id (must be correlatable number)', () => {
+    expect(() =>
+      PluginRequestFrame.parse({
+        kind: 'plugin.request',
+        rpc: { jsonrpc: '2.0', id: null, method: 'x' },
+      }),
+    ).toThrow();
+    expect(() =>
+      PluginRequestFrame.parse({
+        kind: 'plugin.request',
+        rpc: { jsonrpc: '2.0', id: 'a', method: 'x' },
+      }),
+    ).toThrow();
+  });
+
+  it('parses a plugin.response carrying result or error', () => {
+    expect(
+      PluginResponseFrame.parse({
+        kind: 'plugin.response',
+        rpc: { jsonrpc: '2.0', id: 1, result: { ok: true } },
+      }).rpc.result,
+    ).toEqual({ ok: true });
+    expect(
+      PluginResponseFrame.parse({
+        kind: 'plugin.response',
+        rpc: { jsonrpc: '2.0', id: 2, error: { code: -32601, message: 'no' } },
+      }).rpc.error?.code,
+    ).toBe(-32601);
+  });
+
+  it('outbound union discriminates chat.event vs plugin.request', () => {
+    expect(
+      ProviderOutboundFrame.parse({
+        kind: 'chat.event',
+        requestId: 'r1',
+        sessionId: 's1',
+        event: { type: 'delta', text: 'x' },
+      }).kind,
+    ).toBe('chat.event');
+    expect(
+      ProviderOutboundFrame.parse({
+        kind: 'plugin.request',
+        rpc: { jsonrpc: '2.0', id: 1, method: 'plugin.invokeTool' },
+      }).kind,
+    ).toBe('plugin.request');
+  });
+
+  it('inbound union accepts plugin.response', () => {
+    expect(
+      ProviderInboundFrame.parse({
+        kind: 'plugin.response',
+        rpc: { jsonrpc: '2.0', id: 1, result: null },
+      }).kind,
+    ).toBe('plugin.response');
   });
 });
