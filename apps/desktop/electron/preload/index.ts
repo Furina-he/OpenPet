@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// 三个 renderer 共用的唯一 Node 表面：JSON-RPC `rpc(...)` + 通知订阅 `on(channel, cb)`
+//（返回退订函数）。不漏 ipcRenderer 本体（sandbox + contextIsolation）。
 contextBridge.exposeInMainWorld('desksoul', {
   rpc: (method: string, params?: unknown) =>
     ipcRenderer.invoke('desksoul:rpc', { method, params }),
