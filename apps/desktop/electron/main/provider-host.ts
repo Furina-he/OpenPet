@@ -16,7 +16,13 @@
  * `cancel`，其余收 `error`。UI 因此永不挂起。
  */
 import { Worker } from 'node:worker_threads';
-import type { ChatEvent, ChatStartFrame, ProviderOutboundFrame } from '@desksoul/protocol';
+import type {
+  ChatEvent,
+  ChatStartFrame,
+  ProviderOutboundFrame,
+  PluginRequestFrame,
+  PluginResponseFrame,
+} from '@desksoul/protocol';
 
 export interface ProviderHostOptions {
   /** 协作取消的宽限期，超时强杀（默认 200ms）。 */
@@ -31,6 +37,8 @@ export interface ProviderHostOptions {
   onForceTerminate?: (requestId: string) => void;
   /** 观测钩子：调度重启时触发（参数为本次等待 ms）。 */
   onRespawnScheduled?: (waitMs: number) => void;
+  /** Worker → Main 的 plugin.request 处理器（PluginGateway.handle）；缺省一律 -32601。 */
+  onPluginRequest?: (frame: PluginRequestFrame) => Promise<PluginResponseFrame>;
 }
 
 interface Inflight {
@@ -51,6 +59,9 @@ export class ProviderHost {
   private readonly intervalMs: number | undefined;
   private readonly onForceTerminate: ((requestId: string) => void) | undefined;
   private readonly onRespawnScheduled: ((waitMs: number) => void) | undefined;
+  private readonly onPluginRequest:
+    | ((frame: PluginRequestFrame) => Promise<PluginResponseFrame>)
+    | undefined;
 
   constructor(
     private readonly entryPath: string,
@@ -64,6 +75,7 @@ export class ProviderHost {
     this.intervalMs = opts.intervalMs;
     this.onForceTerminate = opts.onForceTerminate;
     this.onRespawnScheduled = opts.onRespawnScheduled;
+    this.onPluginRequest = opts.onPluginRequest;
     this.spawn();
   }
 
@@ -77,6 +89,10 @@ export class ProviderHost {
     this.worker = worker;
     worker.on('message', (msg: ProviderOutboundFrame) => {
       this.backoff = this.base; // 收到任何消息 = 健康证明，此刻才重置退避
+      if (msg.kind === 'plugin.request') {
+        void this.dispatchPluginRequest(worker, msg);
+        return;
+      }
       this.onWorkerMessage(msg);
     });
     // error 与 exit 可能对同一次死亡都触发；onDeath 以 worker 身份去重。
@@ -84,12 +100,42 @@ export class ProviderHost {
     worker.on('exit', () => this.onDeath(worker));
   }
 
-  private onWorkerMessage(msg: ProviderOutboundFrame): void {
-    if (msg.kind !== 'chat.event') return;
+  private onWorkerMessage(msg: Extract<ProviderOutboundFrame, { kind: 'chat.event' }>): void {
     const entry = this.inflight.get(msg.requestId);
     if (!entry) return; // 已被 force-terminate / 死亡清算掉
     this.onEvent(msg.sessionId, msg.event);
     if (msg.event.type === 'done') this.settle(msg.requestId);
+  }
+
+  /** plugin.request → gateway → 响应帧回 worker。worker 已换代/已 dispose 则丢弃响应。 */
+  private async dispatchPluginRequest(worker: Worker, frame: PluginRequestFrame): Promise<void> {
+    const respond = (res: PluginResponseFrame): void => {
+      if (this.worker === worker && !this.disposed) worker.postMessage(res);
+    };
+    if (!this.onPluginRequest) {
+      respond({
+        kind: 'plugin.response',
+        rpc: {
+          jsonrpc: '2.0',
+          id: frame.rpc.id,
+          error: { code: -32601, message: 'plugin gateway unavailable' },
+        },
+      });
+      return;
+    }
+    try {
+      respond(await this.onPluginRequest(frame));
+    } catch (e) {
+      // gateway 契约是永不 reject；这里只是双保险
+      respond({
+        kind: 'plugin.response',
+        rpc: {
+          jsonrpc: '2.0',
+          id: frame.rpc.id,
+          error: { code: -32000, message: e instanceof Error ? e.message : String(e) },
+        },
+      });
+    }
   }
 
   /** 意外死亡：清算 inflight（合成 error done），按指数退避重生。 */

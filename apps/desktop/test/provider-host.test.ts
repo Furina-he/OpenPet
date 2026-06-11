@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChatEvent } from '@desksoul/protocol';
 import { ProviderHost } from '../electron/main/provider-host';
+import { createPluginGateway } from '../electron/main/plugin-gateway';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -11,6 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROVIDER_ENTRY = require.resolve('@desksoul/sidecar/dist/workers/provider-worker-entry.js');
 const WEDGED_ENTRY = path.join(__dirname, 'fixtures/wedged-worker.mjs');
 const CRASH_ENTRY = path.join(__dirname, 'fixtures/crash-worker.mjs');
+const PLUGIN_ENTRY = path.join(__dirname, 'fixtures/plugin-worker.mjs');
 
 type Collected = { sessionId: string; event: ChatEvent };
 
@@ -188,5 +190,43 @@ describe('ProviderHost · supervision (S2 semantics)', () => {
     await sleep(150);
 
     expect(waits).toEqual([50, 50]);
+  });
+});
+
+describe('ProviderHost · plugin.* dispatch (M2)', () => {
+  it('routes worker plugin requests through the gateway and back', async () => {
+    const gateway = createPluginGateway({ tools: new Map([['echo', (args: unknown) => args]]) });
+    const events: Collected[] = [];
+    host = new ProviderHost(PLUGIN_ENTRY, (sessionId, event) => events.push({ sessionId, event }), {
+      onPluginRequest: (f) => gateway.handle(f),
+    });
+    host.send('p1');
+    await untilDone(events, 'p1');
+    const delta = events.find((e) => e.event.type === 'delta')!.event as {
+      type: 'delta';
+      text: string;
+    };
+    expect(JSON.parse(delta.text)).toEqual({
+      register: { ok: true },
+      permission: { granted: false },
+      echo: { value: { hi: 1 } },
+      missing: { errorCode: -32601 },
+      badParams: { errorCode: -32602 },
+    });
+    expect(gateway.skills.get('demo')).toEqual({ title: 'Demo Skill' });
+  });
+
+  it('answers -32601 to every plugin request when no gateway is wired', async () => {
+    const events: Collected[] = [];
+    host = new ProviderHost(PLUGIN_ENTRY, (sessionId, event) => events.push({ sessionId, event }));
+    host.send('p2');
+    await untilDone(events, 'p2');
+    const delta = events.find((e) => e.event.type === 'delta')!.event as {
+      type: 'delta';
+      text: string;
+    };
+    const out = JSON.parse(delta.text);
+    expect(out.register).toEqual({ errorCode: -32601 });
+    expect(out.echo).toEqual({ errorCode: -32601 });
   });
 });
