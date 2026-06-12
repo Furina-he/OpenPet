@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BehaviorParser,
   BEHAVIOR_LIMITS,
+  type BehaviorEvent,
   type BehaviorWarnReason,
 } from '../src/behavior-parser';
 
@@ -485,5 +486,165 @@ describe('hasPendingInput (M3, ConversationCore stale-flush 的武装依据)', (
     expect([...p.feed('a<emo:')]).toEqual([{ type: 'text', text: 'a' }]);
     expect([...p.flush()]).toEqual([{ type: 'text', text: '<emo:' }]);
     expect([...p.feed('<emo:happy/>')]).toEqual([{ type: 'emotion', name: 'happy', weight: 1.0 }]);
+  });
+});
+
+// ---------- 切分不变性（性质测试） ----------
+
+function mergeText(events: BehaviorEvent[]): BehaviorEvent[] {
+  const out: BehaviorEvent[] = [];
+  for (const e of events) {
+    const last = out[out.length - 1];
+    if (e.type === 'text' && last?.type === 'text') {
+      out[out.length - 1] = { type: 'text', text: last.text + e.text };
+    } else if (e.type !== 'text' || e.text !== '') {
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+function runChunks(chunks: readonly string[]): { events: BehaviorEvent[]; warns: string[] } {
+  const warns: string[] = [];
+  const p = new BehaviorParser({ onWarn: (reason) => warns.push(reason) });
+  const events: BehaviorEvent[] = [];
+  for (const c of chunks) events.push(...p.feed(c));
+  events.push(...p.flush());
+  return { events: mergeText(events), warns };
+}
+
+const SPLIT_SAMPLES: readonly string[] = [
+  // 1 tech-design §4.1 原例
+  '[intent mood=shy energy=low]\n嗯……<emo:shy/>我在想，<act:fidget dur=1800/>要不要请你喝杯热可可？<emo:happy/>',
+  // 2 纯文本
+  'hello world, nothing special here',
+  // 3 单标签
+  '<emo:happy/>',
+  // 4 全标签家族混排
+  'a<emo:sad w=0.6/>b<act:wave/>c<wait ms=500/>d<say:greet/>e[尾巴]',
+  // 5 marker 噪声（数学/比较符）
+  'i<3 you & a<b but x>y still fine',
+  // 6 方括号噪声（markdown / 数组）
+  '[链接](https://example.com) 和 arr[0] 以及 [random brackets]',
+  // 7 未注册 taglike
+  'pre<bogus:x/>mid<div>post',
+  // 8 malformed 注册标签
+  '<emo:bad name/>oops<wait foo/>and[intent mood=x]tail',
+  // 9 中途 intent（误用）
+  '[intent mood=a energy=b]开头正常[intent mood=c energy=d]中途要降级',
+  // 10 前导空白 + intent
+  '  \n\t[intent mood=calm energy=high]前导空白后仍算段首',
+  // 11 数值越界 clamp
+  '<emo:happy w=1.5/>强烈<wait ms=99999/>久等<act:spin dur=99999999/>',
+  // 12 双开角
+  'x<<emo:shy/>y',
+  // 13 连发标签
+  '<emo:shy/><act:sigh/><wait ms=100/><say:hum/>',
+  // 14 半截收尾（flush 路径）
+  '正文说到一半<emo:',
+  // 15 长文本 + 标签
+  'x'.repeat(140) + '<emo:happy/>' + 'y'.repeat(40),
+  // 16 溢出路径（未闭合超长）
+  '<' + 'a'.repeat(140),
+  // 17 中文标点不是 marker
+  '《书名》〈角标〉【方头】，全都只是文本。',
+  // 18 emoji（UTF-16 代理对在切分点被劈开也要无损）
+  '😊开心<emo:happy/>🎉庆祝<act:jump/>完',
+  // 19 邻接 intent + 立即标签
+  '[intent mood=happy energy=high]<emo:happy/>!',
+  // 20 嵌套标签（误用）：内层先闭合 → 外层成 malformed 原样放行，内层后的尾巴是纯文本
+  '前<emo:ha<act:wave/>ppy/>后',
+];
+
+describe('流式切分不变性（性质测试：任意切分 ≡ 整串）', () => {
+  it.each(SPLIT_SAMPLES.map((s, i) => [i + 1, s] as const))(
+    'sample #%i: every binary split, char-by-char, and thirds agree with whole-string',
+    (_i, sample) => {
+      const whole = runChunks([sample]);
+      for (let cut = 1; cut < sample.length; cut++) {
+        const split = runChunks([sample.slice(0, cut), sample.slice(cut)]);
+        expect(split.events).toEqual(whole.events);
+        expect(split.warns).toEqual(whole.warns);
+      }
+      const chars = runChunks(sample.split(''));
+      expect(chars.events).toEqual(whole.events);
+      expect(chars.warns).toEqual(whole.warns);
+      const t = Math.max(1, Math.floor(sample.length / 3));
+      const thirds = runChunks([sample.slice(0, t), sample.slice(t, 2 * t), sample.slice(2 * t)]);
+      expect(thirds.events).toEqual(whole.events);
+      expect(thirds.warns).toEqual(whole.warns);
+    },
+  );
+
+  it('tag syntax never leaks into text events for clean samples', () => {
+    // 对不含误用的样例（#1/3/4/13/19），text 事件里不允许残留任何注册标签语法
+    for (const sample of [
+      SPLIT_SAMPLES[0]!,
+      SPLIT_SAMPLES[2]!,
+      SPLIT_SAMPLES[3]!,
+      SPLIT_SAMPLES[12]!,
+      SPLIT_SAMPLES[18]!,
+    ]) {
+      const { events, warns } = runChunks([sample]);
+      expect(warns).toEqual([]);
+      for (const e of events) {
+        if (e.type === 'text') {
+          expect(e.text).not.toMatch(
+            /<emo:[\w-]+\s*\/>|<act:[\w-]+|<wait ms=\d+\s*\/>|<say:[\w-]+\s*\/>|^\[intent /,
+          );
+        }
+      }
+    }
+  });
+});
+
+// ---------- flush 行为与钩子安全 ----------
+
+describe('flush & hook edge cases (M3)', () => {
+  it('flush mid-stream then continue: subsequent tags still parse', () => {
+    const p = new BehaviorParser();
+    void [...p.feed('a<act:')]; // 半截
+    expect([...p.flush()]).toEqual([{ type: 'text', text: '<act:' }]);
+    expect([...p.feed('<act:wave/>')]).toEqual([{ type: 'action', name: 'wave', durationMs: null }]);
+  });
+
+  it('flush with a viable [ prefix releases it as text', () => {
+    const p = new BehaviorParser();
+    void [...p.feed('x[inte')];
+    expect([...p.flush()]).toEqual([{ type: 'text', text: '[inte' }]);
+  });
+
+  it('flushing twice is idempotent', () => {
+    const p = new BehaviorParser();
+    void [...p.feed('y<emo:')];
+    void [...p.flush()];
+    expect([...p.flush()]).toEqual([]);
+  });
+
+  it('empty feed is a no-op', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('')]).toEqual([]);
+    expect(p.hasPendingInput()).toBe(false);
+  });
+
+  it('whitespace-only stream stays head (intent after it is still valid)', () => {
+    const p = new BehaviorParser();
+    void [...p.feed('   ')];
+    expect([...p.feed('[intent mood=a energy=b]')]).toEqual([
+      { type: 'intent', mood: 'a', energy: 'b' },
+    ]);
+  });
+
+  it('warn hook is optional everywhere (all warn paths run without onWarn)', () => {
+    const p = new BehaviorParser();
+    const all = [
+      ...p.feed('<emo:x w=9/>'), // value-clamped
+      ...p.feed('<bogus:y/>'), // unregistered
+      ...p.feed('<wait zzz/>'), // malformed
+      ...p.feed('t[intent mood=a energy=b]'), // misplaced
+      ...p.feed('<' + 'q'.repeat(140)), // overflow
+      ...p.flush(),
+    ];
+    expect(all.length).toBeGreaterThan(0); // 不炸即过，事件细节由上面各组覆盖
   });
 });
