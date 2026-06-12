@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startCursorPublisher, CURSOR_INTERVAL_MS } from '../electron/main/cursor-publisher';
+import {
+  startCursorPublisher,
+  CURSOR_INTERVAL_MS,
+  CURSOR_KEEPALIVE_MS,
+} from '../electron/main/cursor-publisher';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -9,7 +13,7 @@ afterEach(() => {
 });
 
 describe('startCursorPublisher', () => {
-  it('emits the first sample immediately, then only on change', () => {
+  it('emits the first sample immediately, then only on change (within keepalive window)', () => {
     const sent: Array<{ x: number; y: number }> = [];
     let cursor = { x: 10, y: 20 };
     const pub = startCursorPublisher({ getCursor: () => cursor, send: (p) => sent.push(p) });
@@ -28,6 +32,17 @@ describe('startCursorPublisher', () => {
 
   it('polls at ~30Hz', () => {
     expect(CURSOR_INTERVAL_MS).toBe(33);
+  });
+
+  it('re-sends a keepalive frame when idle >2s (renderer 崩溃自愈后能拿到朝向)', () => {
+    const sent: Array<{ x: number; y: number }> = [];
+    const cursor = { x: 7, y: 8 };
+    const pub = startCursorPublisher({ getCursor: () => cursor, send: (p) => sent.push(p) });
+    expect(sent).toHaveLength(1);
+    vi.advanceTimersByTime(CURSOR_KEEPALIVE_MS + CURSOR_INTERVAL_MS * 2);
+    expect(sent.length).toBeGreaterThanOrEqual(2); // 静止也周期重发
+    expect(sent[sent.length - 1]).toEqual({ x: 7, y: 8 });
+    pub.stop();
   });
 
   it('stop() halts polling', () => {
