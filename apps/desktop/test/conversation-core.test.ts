@@ -269,3 +269,135 @@ describe('ConversationCore M3: say stub / warn wiring / stale flush', () => {
     expect(out).toEqual([]);
   });
 });
+
+describe('ConversationCore M3: <wait/> 发射门（文本流停顿）', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function textOf(n: Notification): string {
+    return n.channel === 'chat.stream' ? n.params.text : `[${n.channel}]`;
+  }
+
+  it('delays text after <wait ms=500/> by exactly 500ms', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=500/>b' });
+    expect(out.map(textOf)).toEqual(['a']);
+    vi.advanceTimersByTime(499);
+    expect(out.map(textOf)).toEqual(['a']);
+    vi.advanceTimersByTime(1);
+    expect(out.map(textOf)).toEqual(['a', 'b']);
+  });
+
+  it('chains two waits cumulatively and keeps order', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=100/>b<wait ms=200/>c' });
+    vi.advanceTimersByTime(100);
+    expect(out.map(textOf)).toEqual(['a', 'b']);
+    vi.advanceTimersByTime(199);
+    expect(out.map(textOf)).toEqual(['a', 'b']);
+    vi.advanceTimersByTime(1);
+    expect(out.map(textOf)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('behavior events queue behind the gate too (no reordering around text)', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=100/><emo:happy/>b' });
+    expect(out.map((n) => n.channel)).toEqual(['chat.stream']);
+    vi.advanceTimersByTime(100);
+    expect(out.map((n) => n.channel)).toEqual([
+      'chat.stream',
+      'behavior.applyEmotion',
+      'chat.stream',
+    ]);
+  });
+
+  it('done waits for the gate to drain (UI never sees done before its text)', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=300/>b' });
+    core.handleEvent('s1', { type: 'done', finishReason: 'stop' });
+    expect(out.map((n) => n.channel)).toEqual(['chat.stream']);
+    vi.advanceTimersByTime(300);
+    expect(out.map((n) => n.channel)).toEqual(['chat.stream', 'chat.stream', 'chat.done']);
+    expect(out[2]!.params).toMatchObject({ finishReason: 'stop' });
+  });
+
+  it('wait ms=0 is a no-op (no timer, instant passthrough)', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=0/>b' });
+    expect(out.map(textOf)).toEqual(['a', 'b']);
+  });
+
+  it('cancel while gated WITHOUT pending done: drops queued text, host done seals later', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=5000/>never-shown' });
+    core.cancel('s1');
+    vi.advanceTimersByTime(10_000);
+    expect(out.map(textOf)).toEqual(['a']); // 排队文本被丢弃
+    core.handleEvent('s1', { type: 'done', finishReason: 'cancel' }); // host 合成
+    expect(out.at(-1)).toMatchObject({ channel: 'chat.done', params: { finishReason: 'cancel' } });
+  });
+
+  it('cancel while gated WITH pending done: synthesizes done(cancel) immediately, no deadlock', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=5000/>tail' });
+    core.handleEvent('s1', { type: 'done', finishReason: 'stop' }); // 流已结束，done 压在门后
+    core.cancel('s1');
+    // 立即封口：done(cancel)，且不再发 tail
+    expect(out.at(-1)).toEqual({
+      channel: 'chat.done',
+      sessionId: 's1',
+      params: { sessionId: 's1', finishReason: 'cancel' },
+    });
+    vi.advanceTimersByTime(10_000);
+    expect(out.filter((n) => n.channel === 'chat.done')).toHaveLength(1);
+    // 且 cancelling 无残留：下一个流正常
+    core.handleEvent('s1', { type: 'delta', text: 'fresh' });
+    expect(out.at(-1)).toMatchObject({ channel: 'chat.stream', params: { text: 'fresh' } });
+  });
+
+  it('gates are per-session independent', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=1000/>slow' });
+    core.handleEvent('s2', { type: 'delta', text: 'quick' });
+    expect(out.map((n) => n.sessionId)).toEqual(['s1', 's2']);
+    expect(out.map(textOf)).toEqual(['a', 'quick']);
+  });
+
+  it('stale flush text queues behind an open gate (order preserved)', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=1000/>b<emo:' }); // 半截 + 门开着
+    vi.advanceTimersByTime(STALE_FLUSH_MS); // stale flush 在门内排队
+    expect(out.map(textOf)).toEqual(['a']);
+    vi.advanceTimersByTime(1000 - STALE_FLUSH_MS);
+    expect(out.map(textOf)).toEqual(['a', 'b', '<emo:']);
+  });
+
+  it('dispose clears gate timers (no late emissions)', () => {
+    vi.useFakeTimers();
+    const out: Notification[] = [];
+    const core = new ConversationCore((n) => out.push(n));
+    core.handleEvent('s1', { type: 'delta', text: 'a<wait ms=1000/>b' });
+    core.dispose();
+    vi.advanceTimersByTime(5000);
+    expect(out.map(textOf)).toEqual(['a']);
+  });
+});
