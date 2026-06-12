@@ -1,0 +1,18 @@
+{
+  "id": "default",
+  "name": "小灵",
+  "version": "0.1.0",
+  "engine": "vrm",
+  "model": "model.vrm",
+  "emotions": {
+    "happy": { "happy": 1 },
+    "sad": { "sad": 1 },
+    "angry": { "angry": 1 },
+    "surprised": { "surprised": 1 },
+    "relaxed": { "relaxed": 1 },
+    "shy": { "happy": 0.45, "relaxed": 0.55 },
+    "curious": { "surprised": 0.35, "happy": 0.25 },
+    "sleepy": { "relaxed": 0.85 }
+  },
+  "actions": ["wave", "nod", "shake", "fidget", "stretch", "sigh", "jump", "tilt"]
+}
