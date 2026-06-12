@@ -11,6 +11,8 @@
 //（先 pnpm build；file:// 模式下 VRM 模型不可达 → character 走 fallback 脸，
 //  与判据无关：判据是 behavior.* 通道驱动 renderer，不是渲染形态。）
 import { app, BrowserWindow } from 'electron';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 const TIMEOUT_MS = 20_000;
 
@@ -43,6 +45,10 @@ async function waitFor(probe, what, timeoutMs = TIMEOUT_MS) {
 }
 
 async function main() {
+  // e2e 幂等：清掉上次运行持久化的会话历史。否则 App.vue 启动即重建旧的
+  // '热可可' 回复，M2-2 的等待条件被旧 DOM 提前满足，快照会拍在流式中途。
+  rmSync(join(app.getPath('userData'), 'sessions.json'), { force: true });
+
   // 启动真实 app（whenReady 内创建三窗口 + 注册路由）
   await import('../out/main/index.js');
   await app.whenReady();
@@ -189,14 +195,23 @@ async function main() {
   console.log(`[smoke] PASS: cancel round-trip ${cancelMs}ms, stream frozen after cancel`);
 
   // ---- M2-2: chat.snapshot 重建（overlay 崩溃自愈 → App.vue 自动恢复历史）----
-  // 用 App.vue 的真实 session（default）跑一轮完整对话，让真实 UI 路径渲染它
-  await overlay.webContents.executeJavaScript(
-    `window.desksoul.rpc('chat.send', { sessionId: 'default', text: '快照测试' })`,
-  );
+  // 用 App.vue 的真实 session（default）跑一轮完整对话，让真实 UI 路径渲染它。
+  // 等待条件用 chat.done 通知（真条件）而非 DOM 文本——DOM 是代理信号，
+  // 与 done 之间隔着一个 chunk 间隔的竞态窗口。
+  await overlay.webContents.executeJavaScript(`
+    window.__snapDone = null;
+    window.desksoul.on('chat.done', (p) => { if (p.sessionId === 'default') window.__snapDone = p.finishReason; });
+    window.desksoul.rpc('chat.send', { sessionId: 'default', text: '快照测试' });
+    'ok';
+  `);
   await waitFor(
-    () => overlay.webContents.executeJavaScript(`document.body.innerText.includes('热可可')`),
-    'default session reply rendered in overlay UI',
+    () => overlay.webContents.executeJavaScript('window.__snapDone'),
+    'default session done',
   );
+  const renderedOk = await overlay.webContents.executeJavaScript(
+    `document.body.innerText.includes('热可可')`,
+  );
+  if (!renderedOk) return fail('default session reply not rendered in overlay UI');
   const snap = await overlay.webContents.executeJavaScript(
     `window.desksoul.rpc('chat.snapshot', { sessionId: 'default' })`,
   );
