@@ -318,6 +318,32 @@ async function main() {
     return fail(`idle action name: ${idleAction?.name}`);
   }
   console.log(`[smoke] M4 idleTimeout → playAction(${idleAction.name}) round-trip ok`);
+
+  // ---- M4-6: 长按拖拽（连续 moveBy）不得累积放大窗口 ----
+  // Windows 非 100% DPI 缩放下 setPosition 每次调用有 DIP↔物理像素舍入漂移，
+  // 30Hz 拖拽迅速累积成"模型越拖越大"（125% 缩放实测 40 次涨 36×53px）。
+  // 修复后 moveBy 以 Main 持有的期望尺寸 setBounds 锁定；读回值仍可能有 ±1px
+  // 的量化噪声（边界舍入），但不随次数累积 —— 80 次后仍须 ≤1px。
+  const dragBefore = character.getBounds();
+  for (let i = 0; i < 80; i++) {
+    await character.webContents.executeJavaScript(
+      `window.desksoul.rpc('app.window.moveBy', { dx: 2, dy: 1 })`,
+    );
+  }
+  const dragAfter = character.getBounds();
+  if (
+    Math.abs(dragAfter.width - dragBefore.width) > 1 ||
+    Math.abs(dragAfter.height - dragBefore.height) > 1
+  ) {
+    return fail(
+      `drag must not resize: ${dragBefore.width}x${dragBefore.height} → ${dragAfter.width}x${dragAfter.height}`,
+    );
+  }
+  if (dragAfter.x === dragBefore.x && dragAfter.y === dragBefore.y) {
+    return fail('drag did not move the window at all');
+  }
+  character.setBounds(dragBefore); // 复位站位
+  console.log('[smoke] M4 drag keeps window size locked ok');
   console.log('[smoke] PASS: M1+M2+M4 acceptance');
   app.exit(0);
 }

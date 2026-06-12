@@ -15,7 +15,7 @@ import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { createCharacterService } from './character-service.js';
 import { createIdleResponder } from './idle-responder.js';
-import { scaledBounds } from './window-scale.js';
+import { scaledBounds, CHARACTER_BASE_SIZE } from './window-scale.js';
 
 export interface IpcRouterDeps {
   targets: () => WebContents[];
@@ -50,6 +50,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   });
   const characters = createCharacterService(deps.charactersRoot);
   const idleResponder = createIdleResponder(sendToCharacter);
+  // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
+  // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
+  //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。
+  let characterSize: { width: number; height: number } = { ...CHARACTER_BASE_SIZE };
 
   const router = createRouter<RpcContext>({
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
@@ -59,7 +63,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     'character.current': () => characters.current(),
     'character.setScale': (p) => {
       const win = deps.characterWindow();
-      if (win && !win.isDestroyed()) win.setBounds(scaledBounds(win.getBounds(), p.scale));
+      if (win && !win.isDestroyed()) {
+        const b = scaledBounds(win.getBounds(), p.scale);
+        characterSize = { width: b.width, height: b.height };
+        win.setBounds(b);
+      }
       return { ok: true as const };
     },
     'character.idleTimeout': (p) => {
@@ -73,7 +81,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     'app.window.moveBy': (p, ctx) => {
       if (ctx.win) {
         const [x, y] = ctx.win.getPosition();
-        ctx.win.setPosition(x + Math.round(p.dx), y + Math.round(p.dy));
+        const nx = x + Math.round(p.dx);
+        const ny = y + Math.round(p.dy);
+        if (ctx.win === deps.characterWindow()) {
+          ctx.win.setBounds({ x: nx, y: ny, ...characterSize });
+        } else {
+          ctx.win.setPosition(nx, ny);
+        }
       }
       return { ok: true as const };
     },
