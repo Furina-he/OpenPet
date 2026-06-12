@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { BehaviorParser } from '../src/behavior-parser';
+import {
+  BehaviorParser,
+  BEHAVIOR_LIMITS,
+  type BehaviorWarnReason,
+} from '../src/behavior-parser';
+
+function collectWarns(): {
+  warns: Array<{ reason: BehaviorWarnReason; raw: string }>;
+  onWarn: (reason: BehaviorWarnReason, raw: string) => void;
+} {
+  const warns: Array<{ reason: BehaviorWarnReason; raw: string }> = [];
+  return { warns, onWarn: (reason, raw) => warns.push({ reason, raw }) };
+}
 
 describe('BehaviorParser', () => {
   it('emits text delta only when no tag', () => {
@@ -120,5 +132,101 @@ describe('BehaviorParser', () => {
       { type: 'emotion', name: 'sad', weight: 1.0 },
       { type: 'action', name: 'sigh', durationMs: null },
     ]);
+  });
+});
+
+describe('say tag (M3, V1+ 语音的解析层 stub)', () => {
+  it('parses <say:clip/> into a say event', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('a<say:greet/>b')]).toEqual([
+      { type: 'text', text: 'a' },
+      { type: 'say', clip: 'greet' },
+      { type: 'text', text: 'b' },
+    ]);
+  });
+
+  it('say interleaves with other tags', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('<emo:happy/><say:hi/><act:wave/>')]).toEqual([
+      { type: 'emotion', name: 'happy', weight: 1.0 },
+      { type: 'say', clip: 'hi' },
+      { type: 'action', name: 'wave', durationMs: null },
+    ]);
+  });
+
+  it('say with extra params is not a say tag (falls back to literal text)', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('<say:hi w=1/>')]).toEqual([{ type: 'text', text: '<say:hi w=1/>' }]);
+  });
+});
+
+describe('numeric clamps (M3)', () => {
+  it('exports BEHAVIOR_LIMITS', () => {
+    expect(BEHAVIOR_LIMITS).toMatchObject({
+      emotionWeightMax: 1,
+      actionDurationMaxMs: 60_000,
+      waitMaxMs: 10_000,
+      maxTagLength: 128,
+    });
+  });
+
+  it('keeps in-range weight, accepts leading-dot decimals', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('<emo:sad w=0.6/><emo:soft w=.5/><emo:zero w=0/>')]).toEqual([
+      { type: 'emotion', name: 'sad', weight: 0.6 },
+      { type: 'emotion', name: 'soft', weight: 0.5 },
+      { type: 'emotion', name: 'zero', weight: 0 },
+    ]);
+  });
+
+  it('clamps w>1 to 1 and warns value-clamped', () => {
+    const { warns, onWarn } = collectWarns();
+    const p = new BehaviorParser({ onWarn });
+    expect([...p.feed('<emo:happy w=1.5/>')]).toEqual([
+      { type: 'emotion', name: 'happy', weight: 1 },
+    ]);
+    expect(warns).toEqual([{ reason: 'value-clamped', raw: '<emo:happy w=1.5/>' }]);
+  });
+
+  it('clamps wait ms to 10s and warns', () => {
+    const { warns, onWarn } = collectWarns();
+    const p = new BehaviorParser({ onWarn });
+    expect([...p.feed('<wait ms=999999/>')]).toEqual([{ type: 'wait', ms: 10_000 }]);
+    expect(warns.map((w) => w.reason)).toEqual(['value-clamped']);
+  });
+
+  it('clamps act dur to 60s and warns', () => {
+    const { warns, onWarn } = collectWarns();
+    const p = new BehaviorParser({ onWarn });
+    expect([...p.feed('<act:dance dur=99999999/>')]).toEqual([
+      { type: 'action', name: 'dance', durationMs: 60_000 },
+    ]);
+    expect(warns.map((w) => w.reason)).toEqual(['value-clamped']);
+  });
+
+  it('in-range boundary values pass without warn', () => {
+    const { warns, onWarn } = collectWarns();
+    const p = new BehaviorParser({ onWarn });
+    expect([
+      ...p.feed('<wait ms=10000/><act:hold dur=60000/><act:tap dur=0/><wait ms=0/>'),
+    ]).toEqual([
+      { type: 'wait', ms: 10_000 },
+      { type: 'action', name: 'hold', durationMs: 60_000 },
+      { type: 'action', name: 'tap', durationMs: 0 },
+      { type: 'wait', ms: 0 },
+    ]);
+    expect(warns).toEqual([]);
+  });
+
+  it('rejects double-dot weight as a non-tag (literal text)', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('<emo:sad w=1.2.3/>')]).toEqual([
+      { type: 'text', text: '<emo:sad w=1.2.3/>' },
+    ]);
+  });
+
+  it('constructor without options never throws on clamp paths', () => {
+    const p = new BehaviorParser();
+    expect([...p.feed('<emo:x w=5/>')]).toEqual([{ type: 'emotion', name: 'x', weight: 1 }]);
   });
 });
