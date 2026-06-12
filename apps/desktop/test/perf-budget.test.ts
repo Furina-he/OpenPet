@@ -46,6 +46,15 @@ describe('measureSceneBudget', () => {
     scene.add(meshWithTriangles(1, new THREE.Texture()));
     expect(measureSceneBudget(scene).textureBytes).toBe(0);
   });
+
+  it('finds textures inside ShaderMaterial uniforms (VRM MToon 形态)', () => {
+    const tex = fakeTexture(512, 256); // 512KB
+    const mesh = meshWithTriangles(1);
+    mesh.material = new THREE.ShaderMaterial({ uniforms: { map: { value: tex } } });
+    const scene = new THREE.Object3D();
+    scene.add(mesh);
+    expect(measureSceneBudget(scene).textureBytes).toBe(512 * 256 * 4);
+  });
 });
 
 describe('checkBudget', () => {

@@ -31,13 +31,24 @@ export function measureSceneBudget(root: THREE.Object3D): SceneBudget {
       for (const value of Object.values(mat)) {
         if ((value as THREE.Texture)?.isTexture) textures.add(value as THREE.Texture);
       }
+      // ShaderMaterial 系（VRM 的 MToonMaterial）纹理在 uniforms 里，不是自有属性
+      const uniforms = (mat as THREE.ShaderMaterial).uniforms;
+      if (uniforms) {
+        for (const u of Object.values(uniforms)) {
+          if ((u?.value as THREE.Texture)?.isTexture) textures.add(u.value as THREE.Texture);
+        }
+      }
     }
   });
 
   let textureBytes = 0;
+  const seenImages = new Set<object>(); // 多个 Texture 包装同一 image 时按像素源去重
   for (const tex of textures) {
     const img = tex.image as { width?: number; height?: number } | undefined;
-    if (img?.width && img?.height) textureBytes += img.width * img.height * 4; // RGBA8 估算
+    if (!img || !img.width || !img.height) continue;
+    if (seenImages.has(img)) continue;
+    seenImages.add(img);
+    textureBytes += img.width * img.height * 4; // RGBA8 估算
   }
   return { triangles, textureBytes };
 }

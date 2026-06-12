@@ -100,6 +100,7 @@ export async function createVrmRuntime(
         VRMUtils.removeUnnecessaryVertices(gltf.scene);
         VRMUtils.combineSkeletons(gltf.scene);
         VRMUtils.combineMorphs(v);
+        VRMUtils.rotateVRM0(v); // VRM 0.x 模型面朝 +Z：转 180° 面向相机（VRM 1.0 是 no-op）
         v.scene.traverse((obj) => {
           obj.frustumCulled = false;
         });
