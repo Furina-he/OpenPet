@@ -136,3 +136,39 @@ describe('app.window.* methods', () => {
     expect(m.params.safeParse({ dx: 'a', dy: 0 }).success).toBe(false);
   });
 });
+
+describe('character.* + behavior.lookAt (M4)', () => {
+  it('character.current takes empty params and returns manifest envelope', () => {
+    expect(Methods['character.current'].params.safeParse({}).success).toBe(true);
+    const r = Methods['character.current'].result.safeParse({
+      characterId: 'default',
+      manifest: {
+        id: 'default',
+        name: '小灵',
+        version: '0.1.0',
+        engine: 'vrm',
+        model: 'model.vrm',
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('character.setScale bounds scale to [0.5, 2]', () => {
+    expect(Methods['character.setScale'].params.safeParse({ scale: 1 }).success).toBe(true);
+    expect(Methods['character.setScale'].params.safeParse({ scale: 0.5 }).success).toBe(true);
+    expect(Methods['character.setScale'].params.safeParse({ scale: 2 }).success).toBe(true);
+    expect(Methods['character.setScale'].params.safeParse({ scale: 0.4 }).success).toBe(false);
+    expect(Methods['character.setScale'].params.safeParse({ scale: 2.1 }).success).toBe(false);
+  });
+
+  it('character.idleTimeout requires positive integer idleMs', () => {
+    expect(Methods['character.idleTimeout'].params.safeParse({ idleMs: 90000 }).success).toBe(true);
+    expect(Methods['character.idleTimeout'].params.safeParse({ idleMs: 0 }).success).toBe(false);
+    expect(Methods['character.idleTimeout'].params.safeParse({ idleMs: 1.5 }).success).toBe(false);
+  });
+
+  it('behavior.lookAt is a notification with screen coords', () => {
+    expect(Methods['behavior.lookAt'].params.safeParse({ x: 100, y: -3 }).success).toBe(true);
+    expect(Methods['behavior.lookAt'].params.safeParse({ x: 'a', y: 0 }).success).toBe(false);
+  });
+});

@@ -10,6 +10,7 @@
 import { BrowserWindow, screen, type WebContents } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CHARACTER_BASE_SIZE } from './window-scale.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(__dirname, '../preload/index.cjs');
@@ -44,10 +45,10 @@ export function createAppWindows(): AppWindows {
   const margin = 24;
 
   const character = new BrowserWindow({
-    width: 320,
-    height: 480,
-    x: workArea.x + workArea.width - 320 - margin,
-    y: workArea.y + workArea.height - 480 - margin,
+    width: CHARACTER_BASE_SIZE.width,
+    height: CHARACTER_BASE_SIZE.height,
+    x: workArea.x + workArea.width - CHARACTER_BASE_SIZE.width - margin,
+    y: workArea.y + workArea.height - CHARACTER_BASE_SIZE.height - margin,
     frame: false,
     transparent: true,
     resizable: false,
@@ -66,7 +67,7 @@ export function createAppWindows(): AppWindows {
   const overlay = new BrowserWindow({
     width: 420,
     height: 560,
-    x: workArea.x + workArea.width - 320 - margin - 420 - 16,
+    x: workArea.x + workArea.width - CHARACTER_BASE_SIZE.width - margin - 420 - 16,
     y: workArea.y + workArea.height - 560 - margin,
     webPreferences: {
       preload: PRELOAD,

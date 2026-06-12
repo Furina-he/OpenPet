@@ -1,13 +1,21 @@
-import { app } from 'electron';
+import { app, screen, protocol } from 'electron';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { createAppWindows, rendererTargets, type AppWindows } from './windows.js';
 import { registerIpcRouter } from './ipc-router.js';
+import { assetSchemePrivileges, registerAssetProtocol } from './asset-protocol.js';
+import { startCursorPublisher } from './cursor-publisher.js';
 
 const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 必须在 app ready 前注册（Electron 限制）；ready 后调用会静默不生效。
+protocol.registerSchemesAsPrivileged(assetSchemePrivileges());
 
 let wins: AppWindows | null = null;
 let router: { dispose: () => Promise<void> } | null = null;
+let cursorPublisher: { stop: () => void } | null = null;
 
 app.whenReady().then(() => {
   // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
@@ -15,11 +23,27 @@ app.whenReady().then(() => {
   const providerEntryPath = require.resolve(
     '@desksoul/sidecar/dist/workers/provider-worker-entry.js',
   );
+  // 角色包根：dev 在仓库 apps/desktop/characters（out/main 的上两级）；
+  // 打包后 electron-builder extraResources 落在 resources/characters。
+  const charactersRoot = app.isPackaged
+    ? path.join(process.resourcesPath, 'characters')
+    : path.join(__dirname, '../../characters');
+
+  registerAssetProtocol(charactersRoot);
   wins = createAppWindows();
   router = registerIpcRouter({
     targets: rendererTargets(wins),
+    characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
+    charactersRoot,
     providerEntryPath,
     persistPath: path.join(app.getPath('userData'), 'sessions.json'),
+  });
+  cursorPublisher = startCursorPublisher({
+    getCursor: () => screen.getCursorScreenPoint(),
+    send: (p) => {
+      const win = wins && !wins.character.isDestroyed() ? wins.character : null;
+      win?.webContents.send('desksoul:notify:behavior.lookAt', p);
+    },
   });
 
   // settings 常驻 hidden，不算"还开着"；两个可见窗口都关 = 退出。
@@ -31,6 +55,8 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  cursorPublisher?.stop();
+  cursorPublisher = null;
   void router?.dispose();
   router = null;
 });

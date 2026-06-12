@@ -7,12 +7,19 @@
 // M2 追加：cancel 全链路（瞬停 + done(cancel)）、chat.stream 带 seq、
 // overlay 崩溃自愈后经 chat.snapshot 自动重建会话视图。
 //
+// M4 追加：character.current manifest / asset:// 越级不可达 / behavior.lookAt 直发 /
+// setScale 底边锚定 / idleTimeout 主动行为决策回路。
+//
 // 运行：pnpm --filter @desksoul/desktop exec electron test/e2e-smoke.mjs
 //（先 pnpm build；file:// 模式下 VRM 模型不可达 → character 走 fallback 脸，
 //  与判据无关：判据是 behavior.* 通道驱动 renderer，不是渲染形态。）
 import { app, BrowserWindow } from 'electron';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+// 启动真实 app：必须静态 import —— registerSchemesAsPrivileged（asset://）只能在
+// app ready 前调用；动态 import 会输给 ready 事件（M4 实证）。静态导入在模块图
+// 求值阶段执行，与生产主入口同时序。
+import '../out/main/index.js';
 
 const TIMEOUT_MS = 20_000;
 
@@ -47,10 +54,9 @@ async function waitFor(probe, what, timeoutMs = TIMEOUT_MS) {
 async function main() {
   // e2e 幂等：清掉上次运行持久化的会话历史。否则 App.vue 启动即重建旧的
   // '热可可' 回复，M2-2 的等待条件被旧 DOM 提前满足，快照会拍在流式中途。
+  // （main() 在模块求值期同步调用，rmSync 必然先于 ready 回调里的 SessionStore 读盘。）
   rmSync(join(app.getPath('userData'), 'sessions.json'), { force: true });
 
-  // 启动真实 app（whenReady 内创建三窗口 + 注册路由）
-  await import('../out/main/index.js');
   await app.whenReady();
 
   // 窗口按加载的 renderer URL 识别
@@ -235,6 +241,84 @@ async function main() {
     'overlay rebuilt history from chat.snapshot after crash',
   );
   console.log('[smoke] PASS: overlay crashed & rebuilt conversation via chat.snapshot');
+
+  // ---- M4-1: character.current 经路由返回校验过的 manifest ----
+  const cur = await character.webContents.executeJavaScript(
+    `window.desksoul.rpc('character.current', {})`,
+  );
+  if (cur?.characterId !== 'default') return fail(`character.current id: ${cur?.characterId}`);
+  if (cur?.manifest?.model !== 'model.vrm') return fail('manifest.model mismatch');
+  if (!Array.isArray(cur?.manifest?.actions) || cur.manifest.actions.length !== 8) {
+    return fail('manifest.actions should list 8 actions');
+  }
+  console.log('[smoke] M4 character.current manifest ok');
+
+  // ---- M4-2: asset:// 协议越级不可达、合法路径可达（fetch 从 character 窗口发起）----
+  const assetProbe = await character.webContents.executeJavaScript(`(async () => {
+    const out = {};
+    try { out.evil = (await fetch('asset://default/%2e%2e/%2e%2e/secrets.txt')).status; }
+    catch (e) { out.evil = 'blocked:' + String(e).slice(0, 40); }
+    try { out.legit = (await fetch('asset://default/manifest.json')).status; }
+    catch (e) { out.legit = 'blocked:' + String(e).slice(0, 40); }
+    return out;
+  })()`);
+  // 越级：URL 层可能规范化吞掉 ..、协议层必须 404 —— 唯独不能 200 读到内容
+  if (assetProbe.evil === 200) return fail('asset traversal must not succeed');
+  if (assetProbe.legit !== 200) return fail(`asset legit fetch: ${JSON.stringify(assetProbe)}`);
+  console.log(`[smoke] M4 asset:// ok (evil=${assetProbe.evil}, legit=200)`);
+
+  // ---- M4-3: behavior.lookAt 推到 character（cursor publisher 首拍必发）----
+  const lookAt = await waitFor(
+    () => character.webContents.executeJavaScript(`window.__charDebug?.lastLookAt ?? null`),
+    'behavior.lookAt delivery',
+  );
+  if (typeof lookAt.x !== 'number' || typeof lookAt.y !== 'number') {
+    return fail(`lookAt payload: ${JSON.stringify(lookAt)}`);
+  }
+  console.log(`[smoke] M4 behavior.lookAt delivered (${lookAt.x},${lookAt.y})`);
+
+  // ---- M4-4: character.setScale 底边中点锚定改 bounds（50% / 200% / 复原）----
+  const before = character.getBounds();
+  await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('character.setScale', { scale: 0.5 })`,
+  );
+  const half = character.getBounds();
+  if (half.width !== 160 || half.height !== 240) {
+    return fail(`setScale 0.5 bounds: ${half.width}x${half.height}`);
+  }
+  if (Math.abs(half.x + half.width / 2 - (before.x + before.width / 2)) > 1) {
+    return fail('setScale must keep bottom-center x');
+  }
+  if (Math.abs(half.y + half.height - (before.y + before.height)) > 1) {
+    return fail('setScale must keep bottom y');
+  }
+  await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('character.setScale', { scale: 2 })`,
+  );
+  const dbl = character.getBounds();
+  if (dbl.width !== 640 || dbl.height !== 960) {
+    return fail(`setScale 2 bounds: ${dbl.width}x${dbl.height}`);
+  }
+  await overlay.webContents.executeJavaScript(
+    `window.desksoul.rpc('character.setScale', { scale: 1 })`,
+  );
+  console.log('[smoke] M4 setScale 50%/200% bottom-center anchored ok');
+
+  // ---- M4-5: character.idleTimeout → Main 决策 stub 发回 playAction ----
+  await character.webContents.executeJavaScript(`(() => {
+    window.__m4ActionSeen = null;
+    window.desksoul.on('behavior.playAction', (p) => { window.__m4ActionSeen = p; });
+    return window.desksoul.rpc('character.idleTimeout', { idleMs: 90000 });
+  })()`);
+  const idleAction = await waitFor(
+    () => character.webContents.executeJavaScript(`window.__m4ActionSeen`),
+    'idle responder playAction',
+  );
+  if (!['stretch', 'sigh', 'tilt'].includes(idleAction?.name)) {
+    return fail(`idle action name: ${idleAction?.name}`);
+  }
+  console.log(`[smoke] M4 idleTimeout → playAction(${idleAction.name}) round-trip ok`);
+  console.log('[smoke] PASS: M1+M2+M4 acceptance');
   app.exit(0);
 }
 
