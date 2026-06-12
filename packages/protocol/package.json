@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@desksoul/tsconfig": "workspace:*",
+    "@vitest/coverage-v8": "^1.6.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
   }

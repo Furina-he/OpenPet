@@ -109,6 +109,7 @@ export class ChatService {
   }
 
   async dispose(): Promise<void> {
+    this.core.dispose(); // 先停：不再向 queue 产出（stale/gate 定时器全清）
     this.queue.dispose();
     this.store.dispose();
     await this.host.dispose();
