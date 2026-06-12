@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CharacterManifestSchema } from './character-manifest.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -54,6 +55,23 @@ export const Methods = {
     result: z.object({ ok: z.literal(true) }),
   },
 
+  // --- request/response: Renderer → Main（角色包 / 窗口缩放 / 主动行为，M4）---
+  'character.current': {
+    // 当前角色包（Main 校验过的 manifest）；渲染端用 asset://<characterId>/<model> 取模型。
+    params: z.object({}),
+    result: z.object({ characterId: z.string(), manifest: CharacterManifestSchema }),
+  },
+  'character.setScale': {
+    // D4 角色缩放 50%–200%；Main 按底边中点锚定改 character 窗口 bounds。
+    params: z.object({ scale: z.number().min(0.5).max(2) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'character.idleTimeout': {
+    // 渲染端 90s 空闲上报（tech-design §7「主动行为」）；Main 决策（M4 为动作 stub）。
+    params: z.object({ idleMs: z.number().int().positive() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+
   // --- notification: Main → UI Overlay Renderer ---
   'chat.stream': {
     params: z.object({
@@ -84,6 +102,11 @@ export const Methods = {
   },
   'behavior.setIntent': {
     params: z.object({ mood: z.string(), energy: z.string() }),
+    result: z.null(),
+  },
+  'behavior.lookAt': {
+    // Main 30Hz 光标轮询直发 character 窗口（不过 chat 背压队列）；屏幕坐标（DIP）。
+    params: z.object({ x: z.number(), y: z.number() }),
     result: z.null(),
   },
 
