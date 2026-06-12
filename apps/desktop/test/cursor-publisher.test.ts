@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { startCursorPublisher, CURSOR_INTERVAL_MS } from '../electron/main/cursor-publisher';
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('startCursorPublisher', () => {
   it('emits the first sample immediately, then only on change', () => {
