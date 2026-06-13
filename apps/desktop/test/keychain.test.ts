@@ -57,4 +57,40 @@ describe('Keychain', () => {
     const kc2 = new Keychain(kcPath);
     expect(await kc2.get('p', 'api-key')).toBe('secret-value');
   });
+
+  it('survives concurrent writes (serialized flush)', async () => {
+    const kc = new Keychain(kcPath);
+    await Promise.all([
+      kc.set('p', 'k1', 'v1'),
+      kc.set('p', 'k2', 'v2'),
+      kc.set('q', 'k3', 'v3'),
+    ]);
+    const kc2 = new Keychain(kcPath);
+    expect(await kc2.get('p', 'k1')).toBe('v1');
+    expect(await kc2.get('p', 'k2')).toBe('v2');
+    expect(await kc2.get('q', 'k3')).toBe('v3');
+  });
+
+  it('returns null for tampered ciphertext (GCM auth)', async () => {
+    const kc = new Keychain(kcPath);
+    await kc.set('p', 'api-key', 'secret');
+    // 篡改磁盘上的密文
+    const raw = JSON.parse(await fs.readFile(kcPath, 'utf-8'));
+    raw.p['api-key'].data = Buffer.from('garbage-data-tampered').toString('base64');
+    await fs.writeFile(kcPath, JSON.stringify(raw), 'utf-8');
+    const kc2 = new Keychain(kcPath);
+    expect(await kc2.get('p', 'api-key')).toBeNull();
+  });
+
+  it('reads concurrent get/set without losing existing data', async () => {
+    const kc1 = new Keychain(kcPath);
+    await kc1.set('p', 'api-key', 'existing');
+    // 新实例：并发 get 和 set，get 不应读到空
+    const kc2 = new Keychain(kcPath);
+    const [got] = await Promise.all([
+      kc2.get('p', 'api-key'),
+      kc2.set('p', 'other', 'new'),
+    ]);
+    expect(got).toBe('existing');
+  });
 });

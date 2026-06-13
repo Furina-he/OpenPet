@@ -11,13 +11,16 @@ interface StoredEntry {
 
 export class Keychain {
   private cache = new Map<string, Map<string, string>>();
-  private loaded = false;
+  private loadPromise: Promise<void> | null = null;
 
   constructor(private readonly filePath: string) {}
 
-  private async ensureLoaded(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+  private ensureLoaded(): Promise<void> {
+    this.loadPromise ??= this.doLoad();
+    return this.loadPromise;
+  }
+
+  private async doLoad(): Promise<void> {
     try {
       const content = await fs.readFile(this.filePath, 'utf-8');
       const stored: Record<string, Record<string, StoredEntry>> = JSON.parse(content);
@@ -29,8 +32,11 @@ export class Keychain {
         }
         this.cache.set(providerId, map);
       }
-    } catch {
-      // 文件不存在或损坏：从空开始
+    } catch (err) {
+      // ENOENT = 首次运行（正常）；其他错误（损坏/IO）应记录，不可静默吞掉
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error(`[Keychain] failed to load ${this.filePath}:`, err);
+      }
     }
   }
 
@@ -59,7 +65,15 @@ export class Keychain {
     await this.flush();
   }
 
-  private async flush(): Promise<void> {
+  private flushChain: Promise<void> = Promise.resolve();
+
+  private flush(): Promise<void> {
+    // 串行化：每次 flush 接在上一次之后，避免并发 writeFile 交错
+    this.flushChain = this.flushChain.then(() => this.doFlush());
+    return this.flushChain;
+  }
+
+  private async doFlush(): Promise<void> {
     const stored: Record<string, Record<string, StoredEntry>> = {};
     for (const [providerId, keys] of this.cache) {
       const entries: Record<string, StoredEntry> = {};
@@ -68,7 +82,10 @@ export class Keychain {
       }
       stored[providerId] = entries;
     }
-    await fs.writeFile(this.filePath, JSON.stringify(stored, null, 2), 'utf-8');
+    // 原子写：先写 temp 再 rename（rename 在同一文件系统上是原子的）
+    const tmp = `${this.filePath}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(stored, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    await fs.rename(tmp, this.filePath);
   }
 
   private encrypt(plaintext: string): StoredEntry {
