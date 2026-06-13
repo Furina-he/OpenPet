@@ -7,36 +7,38 @@ describe('fetch proxy', () => {
     const { port1, port2 } = new MessageChannel();
     const originalFetch = globalThis.fetch;
 
-    installFetchProxy(port1);
+    try {
+      installFetchProxy(port1);
 
-    const responsePromise = fetch('https://api.example.com/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{"test":true}',
-    });
+      const responsePromise = fetch('https://api.example.com/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{"test":true}',
+      });
 
-    // Main 侧模拟
-    const reqMsg = await new Promise<any>((resolve) => {
-      port2.once('message', resolve);
-    });
+      // Main 侧模拟
+      const reqMsg = await new Promise<any>((resolve) => {
+        port2.once('message', resolve);
+      });
 
-    expect(reqMsg.kind).toBe('plugin.fetchRequest');
-    expect(reqMsg.url).toBe('https://api.example.com/test');
-    expect(reqMsg.init.method).toBe('POST');
+      expect(reqMsg.kind).toBe('plugin.fetchRequest');
+      expect(reqMsg.url).toBe('https://api.example.com/test');
+      expect(reqMsg.init.method).toBe('POST');
 
-    port2.postMessage({
-      kind: 'plugin.fetchResponse',
-      id: reqMsg.id,
-      ok: true,
-      status: 200,
-      body: '{"result":"ok"}',
-    });
+      port2.postMessage({
+        kind: 'plugin.fetchResponse',
+        id: reqMsg.id,
+        ok: true,
+        status: 200,
+        body: '{"result":"ok"}',
+      });
 
-    const response = await responsePromise;
-    expect(response.status).toBe(200);
-    const json = await response.json();
-    expect(json).toEqual({ result: 'ok' });
-
-    globalThis.fetch = originalFetch;
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json).toEqual({ result: 'ok' });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
