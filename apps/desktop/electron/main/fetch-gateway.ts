@@ -33,11 +33,12 @@ export interface FetchGatewayDeps {
   agent: HttpAgent;
   /** 命中白名单返回 providerId，否则 null（拒绝）。 */
   resolveHost: (url: string) => { providerId: string } | null;
-  /** 按 providerId 把密钥注入头（dialect：Bearer / x-api-key / …）。 */
+  /** 按 providerId 把密钥注入（dialect：Bearer/x-api-key 改 header；query-key 改 url）。 */
   injectAuth: (
     providerId: string,
+    url: string,
     headers: Record<string, string>,
-  ) => Promise<Record<string, string>>;
+  ) => Promise<{ url?: string; headers: Record<string, string> }>;
 }
 
 export interface FetchGateway {
@@ -67,8 +68,8 @@ export function createFetchGateway(deps: FetchGatewayDeps): FetchGateway {
       };
 
       void deps
-        .injectAuth(hit.providerId, { ...(frame.init.headers ?? {}) })
-        .then((headers) => {
+        .injectAuth(hit.providerId, frame.url, { ...(frame.init.headers ?? {}) })
+        .then(({ url, headers }) => {
           const sink: HttpResponseSink = {
             head: (status, h) =>
               send({ kind: 'plugin.fetchChunk', id: frame.id, phase: 'head', status, headers: h }),
@@ -84,7 +85,7 @@ export function createFetchGateway(deps: FetchGatewayDeps): FetchGateway {
           };
           deps.agent(
             {
-              url: frame.url,
+              url: url ?? frame.url,
               method: frame.init.method,
               headers,
               ...(frame.init.body !== undefined ? { body: frame.init.body } : {}),

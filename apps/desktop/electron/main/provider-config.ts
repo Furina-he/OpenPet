@@ -17,7 +17,11 @@ export interface ProviderConfigDeps {
 
 export interface ProviderConfigService {
   resolveHost(url: string): { providerId: string } | null;
-  injectAuth(providerId: string, headers: Record<string, string>): Promise<Record<string, string>>;
+  injectAuth(
+    providerId: string,
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<{ url?: string; headers: Record<string, string> }>;
 }
 
 export function createProviderConfig(deps: ProviderConfigDeps): ProviderConfigService {
@@ -28,16 +32,20 @@ export function createProviderConfig(deps: ProviderConfigDeps): ProviderConfigSe
       }
       return null;
     },
-    async injectAuth(providerId, headers) {
+    async injectAuth(providerId, url, headers) {
       const dialect = getDialect(providerId);
-      if (!dialect || dialect.authStyle === 'none') return headers;
+      if (!dialect || dialect.authStyle === 'none') return { headers };
       const key = await deps.keychain.get(providerId, 'apiKey');
-      if (!key) return headers;
-      if (dialect.authStyle === 'bearer') return { ...headers, authorization: `Bearer ${key}` };
+      if (!key) return { headers };
+      if (dialect.authStyle === 'bearer')
+        return { headers: { ...headers, authorization: `Bearer ${key}` } };
       if (dialect.authStyle === 'x-api-key')
-        return { ...headers, 'x-api-key': key, 'anthropic-version': '2023-06-01' };
-      // query-key（Gemini）需改 url，Phase 6 扩展 FetchGateway injectAuth 签名后接入
-      return headers;
+        return { headers: { ...headers, 'x-api-key': key, 'anthropic-version': '2023-06-01' } };
+      if (dialect.authStyle === 'query-key') {
+        const sep = url.includes('?') ? '&' : '?';
+        return { url: `${url}${sep}key=${encodeURIComponent(key)}`, headers };
+      }
+      return { headers };
     },
   };
 }

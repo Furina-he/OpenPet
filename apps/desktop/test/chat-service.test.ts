@@ -253,7 +253,7 @@ describe('ChatService · fetch gateway (M5)', () => {
           sink.end();
         },
         resolveHost: () => ({ providerId: 'openai' }),
-        injectAuth: async (_id, h) => ({ ...h, authorization: 'Bearer injected' }),
+        injectAuth: async (_id, _url, h) => ({ headers: { ...h, authorization: 'Bearer injected' } }),
       },
     });
     svc.send('s1', 'hi');
@@ -309,7 +309,7 @@ describe('ChatService · openai-format end-to-end (M5)', () => {
           sink.end();
         },
         resolveHost: () => ({ providerId: 'openai' }),
-        injectAuth: async (_id, h) => h,
+        injectAuth: async (_id, _url, h) => ({ headers: h }),
       },
     });
     svc.send('s1', 'hi');
@@ -343,7 +343,7 @@ describe('ChatService · usage 落账 (M5)', () => {
           sink.end();
         },
         resolveHost: () => ({ providerId: 'openai' }),
-        injectAuth: async (_i, h) => h,
+        injectAuth: async (_i, _url, h) => ({ headers: h }),
       },
     });
     svc.send('s1', 'hi');

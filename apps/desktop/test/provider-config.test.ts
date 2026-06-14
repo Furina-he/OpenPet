@@ -18,18 +18,35 @@ describe('createProviderConfig', () => {
 
   it('injectAuth uses bearer for openai', async () => {
     const pc = createProviderConfig({ keychain: fakeKeychain({ openai: 'sk-1' }) });
-    expect(await pc.injectAuth('openai', {})).toMatchObject({ authorization: 'Bearer sk-1' });
+    const { headers } = await pc.injectAuth(
+      'openai',
+      'https://api.openai.com/v1/chat/completions',
+      {},
+    );
+    expect(headers).toMatchObject({ authorization: 'Bearer sk-1' });
   });
 
   it('injectAuth uses x-api-key + anthropic-version for claude', async () => {
     const pc = createProviderConfig({ keychain: fakeKeychain({ claude: 'ak-1' }) });
-    const h = await pc.injectAuth('claude', {});
-    expect(h['x-api-key']).toBe('ak-1');
-    expect(h['anthropic-version']).toBeDefined();
+    const { headers } = await pc.injectAuth('claude', 'https://api.anthropic.com/v1/messages', {});
+    expect(headers['x-api-key']).toBe('ak-1');
+    expect(headers['anthropic-version']).toBeDefined();
+  });
+
+  it('injectAuth rewrites url with key for gemini (query-key)', async () => {
+    const pc = createProviderConfig({ keychain: fakeKeychain({ gemini: 'gk-1' }) });
+    const { url, headers } = await pc.injectAuth(
+      'gemini',
+      'https://generativelanguage.googleapis.com/v1beta/models/m:streamGenerateContent?alt=sse',
+      {},
+    );
+    expect(url).toContain('key=gk-1');
+    expect(headers).toEqual({});
   });
 
   it('injectAuth leaves headers untouched when no key', async () => {
     const pc = createProviderConfig({ keychain: fakeKeychain({}) });
-    expect(await pc.injectAuth('openai', { a: '1' })).toEqual({ a: '1' });
+    const { headers } = await pc.injectAuth('openai', 'u', { a: '1' });
+    expect(headers).toEqual({ a: '1' });
   });
 });

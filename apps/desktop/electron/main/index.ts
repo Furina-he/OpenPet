@@ -47,7 +47,7 @@ app.whenReady().then(() => {
     fetch: {
       agent: electronHttpAgent,
       resolveHost: (url) => providerConfig.resolveHost(url),
-      injectAuth: (providerId, headers) => providerConfig.injectAuth(providerId, headers),
+      injectAuth: (providerId, url, headers) => providerConfig.injectAuth(providerId, url, headers),
     },
     defaultProviderId: 'openai',
     providerService,

@@ -17,7 +17,7 @@ describe('FetchGateway', () => {
     const gw = createFetchGateway({
       agent,
       resolveHost: () => null,
-      injectAuth: async (_id, h) => h,
+      injectAuth: async (_id, _url, h) => ({ headers: h }),
     });
     gw.handle(reqFrame({ url: 'https://evil.example/x' }), (c) => sent.push(c));
     await Promise.resolve();
@@ -43,7 +43,9 @@ describe('FetchGateway', () => {
     const gw = createFetchGateway({
       agent,
       resolveHost: (url) => (url.includes('openai.com') ? { providerId: 'openai' } : null),
-      injectAuth: async (id, h) => ({ ...h, authorization: id === 'openai' ? 'Bearer sk-test' : '' }),
+      injectAuth: async (id, _url, h) => ({
+        headers: { ...h, authorization: id === 'openai' ? 'Bearer sk-test' : '' },
+      }),
     });
     gw.handle(reqFrame(), (c) => sent.push(c));
     await new Promise((r) => setTimeout(r, 10));
@@ -60,11 +62,28 @@ describe('FetchGateway', () => {
     const gw = createFetchGateway({
       agent,
       resolveHost: () => ({ providerId: 'openai' }),
-      injectAuth: async (_i, h) => h,
+      injectAuth: async (_i, _url, h) => ({ headers: h }),
     });
     gw.handle(reqFrame(), () => {});
     await new Promise((r) => setTimeout(r, 10));
     gw.cancel('f1');
     expect(aborted).toBe(true);
+  });
+
+  it('applies url rewrite from injectAuth (gemini query-key)', async () => {
+    let calledUrl = '';
+    const agent: HttpAgent = (spec, sink) => {
+      calledUrl = spec.url;
+      sink.head(200, {});
+      sink.end();
+    };
+    const gw = createFetchGateway({
+      agent,
+      resolveHost: () => ({ providerId: 'gemini' }),
+      injectAuth: async (_id, url, h) => ({ url: url + '?key=K', headers: h }),
+    });
+    gw.handle(reqFrame({ url: 'https://generativelanguage.googleapis.com/x' }), () => {});
+    await new Promise((r) => setTimeout(r, 10));
+    expect(calledUrl).toBe('https://generativelanguage.googleapis.com/x?key=K');
   });
 });
