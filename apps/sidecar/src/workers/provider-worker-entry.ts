@@ -17,8 +17,12 @@ import type {
   ChatCancelFrame,
   ProviderInboundFrame,
   ChatEventFrame,
+  ChatRequest,
+  ChatEvent,
 } from '@desksoul/protocol';
+import { installFetchProxy } from '@desksoul/plugin-sdk';
 import { mockProviderChat } from './mock-provider.js';
+import { resolveProvider } from './provider-registry.js';
 
 // 兼容别名：帧定义已收口到 @desksoul/protocol（单一真源）。
 export type StartMessage = ChatStartFrame;
@@ -54,9 +58,15 @@ async function runStream(
   ac: AbortController,
   cleanup: () => void,
 ): Promise<void> {
-  const opts = start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {};
   try {
-    for await (const event of mockProviderChat(ac.signal, opts)) {
+    const stream =
+      start.providerId && start.providerId !== 'mock' && start.request
+        ? resolveProviderStream(start.providerId, start.request, ac.signal)
+        : mockProviderChat(
+            ac.signal,
+            start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {},
+          );
+    for await (const event of stream) {
       const out: EventMessage = {
         kind: 'chat.event',
         requestId: start.requestId,
@@ -70,6 +80,27 @@ async function runStream(
   }
 }
 
+/** providerId → 真实 provider 流；未知 provider 合成一个 error done（worker 不崩）。 */
+function resolveProviderStream(
+  providerId: string,
+  request: ChatRequest,
+  signal: AbortSignal,
+): AsyncIterable<ChatEvent> {
+  const fn = resolveProvider(providerId);
+  if (!fn) {
+    return (async function* (): AsyncGenerator<ChatEvent> {
+      yield {
+        type: 'done',
+        finishReason: 'error',
+        error: `unknown provider: ${providerId}`,
+        errorKind: 'unknown',
+      };
+    })();
+  }
+  return fn(request, signal);
+}
+
 if (parentPort) {
+  installFetchProxy(parentPort);
   attachProviderServer(parentPort);
 }
