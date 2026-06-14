@@ -12,8 +12,13 @@ describe('resolveProvider', () => {
     expect(resolveProvider('nope')).toBeUndefined();
   });
 
-  it('returns undefined for formats not yet wired (anthropic/gemini/ollama)', () => {
-    // Phase 3 仅 openai 格式；其余在 Task 3.6 / Phase 5 接入
+  it('returns undefined for formats not yet wired (anthropic/gemini)', () => {
+    // claude/gemini 在 Task 3.6 接入
     expect(resolveProvider('claude')).toBeUndefined();
+    expect(resolveProvider('gemini')).toBeUndefined();
+  });
+
+  it('wires ollama (Phase 5)', () => {
+    expect(typeof resolveProvider('ollama')).toBe('function');
   });
 });
