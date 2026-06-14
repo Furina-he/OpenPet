@@ -21,6 +21,11 @@ import { join } from 'node:path';
 // 求值阶段执行，与生产主入口同时序。
 import '../out/main/index.js';
 
+// M5：生产默认 provider 为真实 openai。e2e 冒烟无网络/无 key，强制走 mock provider
+// 路径（worker-entry: providerId==='mock' → 脚本回复），与 M1 验收链路一致。
+// index.js 的 whenReady 回调在 ready 之后才读此 env；模块求值期设置即可（先于 ready）。
+process.env.DESKSOUL_DEFAULT_PROVIDER = 'mock';
+
 const TIMEOUT_MS = 20_000;
 
 function fail(msg) {

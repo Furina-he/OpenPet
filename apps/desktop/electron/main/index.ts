@@ -49,7 +49,7 @@ app.whenReady().then(() => {
       resolveHost: (url) => providerConfig.resolveHost(url),
       injectAuth: (providerId, url, headers) => providerConfig.injectAuth(providerId, url, headers),
     },
-    defaultProviderId: 'openai',
+    defaultProviderId: process.env.DESKSOUL_DEFAULT_PROVIDER ?? 'openai',
     providerService,
   });
   cursorPublisher = startCursorPublisher({
