@@ -21,6 +21,7 @@ import {
   type PluginGateway,
   type PluginGatewayDeps,
 } from './plugin-gateway.js';
+import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { RpcError } from './router.js';
 
 export interface ChatServiceOptions {
@@ -31,6 +32,8 @@ export interface ChatServiceOptions {
   queue?: NotificationQueueOptions;
   host?: ProviderHostOptions;
   plugins?: PluginGatewayDeps;
+  /** 代理 fetch 网关依赖（agent + 白名单 + 密钥注入）；缺省不挂（mock 不发 fetch）。 */
+  fetch?: FetchGatewayDeps;
 }
 
 export class ChatService {
@@ -45,10 +48,20 @@ export class ChatService {
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
     this.plugins = createPluginGateway(opts.plugins ?? {});
     this.core = new ConversationCore((n) => this.onNotification(n));
+    const fetchGateway = opts.fetch ? createFetchGateway(opts.fetch) : null;
     this.host = new ProviderHost(
       opts.providerEntryPath,
       (sessionId, event) => this.core.handleEvent(sessionId, event),
-      { ...(opts.host ?? {}), onPluginRequest: (frame) => this.plugins.handle(frame) },
+      {
+        ...(opts.host ?? {}),
+        onPluginRequest: (frame) => this.plugins.handle(frame),
+        ...(fetchGateway
+          ? {
+              onFetchRequest: (frame, send) => fetchGateway.handle(frame, send),
+              onFetchCancelAll: () => fetchGateway.cancelAll(),
+            }
+          : {}),
+      },
     );
   }
 

@@ -237,3 +237,31 @@ describe('ChatService · 守卫与恢复', () => {
     expect(svc.plugins.skills.get('demo')).toEqual({ title: 'Demo Skill' });
   });
 });
+
+describe('ChatService · fetch gateway (M5)', () => {
+  const FETCH_ENTRY = path.join(__dirname, 'fixtures/fetch-worker.mjs');
+  it('wires fetch gateway: worker fetch gets auth-injected and streamed back', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: FETCH_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      queue: { flushIntervalMs: 5 },
+      fetch: {
+        agent: (spec, sink) => {
+          sink.head(200, {});
+          sink.data(spec.headers.authorization ?? 'noauth');
+          sink.end();
+        },
+        resolveHost: () => ({ providerId: 'openai' }),
+        injectAuth: async (_id, h) => ({ ...h, authorization: 'Bearer injected' }),
+      },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'fetch worker done');
+    const streamed = sent
+      .filter((s) => s.channel === 'chat.stream')
+      .map((s) => s.params.text)
+      .join('');
+    expect(streamed).toContain('Bearer injected');
+  });
+});

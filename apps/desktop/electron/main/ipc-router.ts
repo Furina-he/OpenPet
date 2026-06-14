@@ -26,6 +26,8 @@ export interface IpcRouterDeps {
   providerEntryPath: string;
   /** 会话历史 JSON 持久化路径（生产传 userData 下文件；测试可省略）。 */
   persistPath?: string;
+  /** 代理 fetch 网关依赖（Electron net + 白名单 + Keychain 注入）；生产由 index.ts 注入。 */
+  fetch?: import('./fetch-gateway.js').FetchGatewayDeps;
 }
 
 export interface RpcContext {
@@ -47,6 +49,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     providerEntryPath: deps.providerEntryPath,
     broadcast,
     ...(deps.persistPath ? { persistPath: deps.persistPath } : {}),
+    ...(deps.fetch ? { fetch: deps.fetch } : {}),
   });
   const characters = createCharacterService(deps.charactersRoot);
   const idleResponder = createIdleResponder(sendToCharacter);
