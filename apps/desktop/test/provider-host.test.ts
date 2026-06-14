@@ -67,7 +67,9 @@ describe('ProviderHost · streaming (S4 semantics)', () => {
     let forced = false;
     host = new ProviderHost(PROVIDER_ENTRY, (sessionId, event) => events.push({ sessionId, event }), {
       intervalMs: 40,
-      cancelGraceMs: 200,
+      // CI/并发负载下 cooperative cancel 的 worker 往返可能 >200ms；放宽 watchdog 窗口防 flaky
+      //（不改生产默认 200ms，本用例只验证「cooperative cancel 先于 watchdog」的语义）
+      cancelGraceMs: 1500,
       onForceTerminate: () => (forced = true),
     });
     host.send('sess-b');

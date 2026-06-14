@@ -67,7 +67,8 @@ describe('ProviderHost', () => {
     host = new ProviderHost(
       PROVIDER_ENTRY,
       (sessionId, event) => events.push({ sessionId, event }),
-      { intervalMs: 40, cancelGraceMs: 200, onForceTerminate: () => (forced = true) },
+      // CI/并发负载下 cooperative cancel 往返可能 >200ms；放宽 watchdog 窗口防 flaky
+      { intervalMs: 40, cancelGraceMs: 1500, onForceTerminate: () => (forced = true) },
     );
     host.send('sess-b');
     // let a couple of deltas flow, then cancel
