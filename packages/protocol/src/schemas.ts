@@ -34,11 +34,35 @@ export const ChatEventSchema = z.discriminatedUnion('type', [
 ]);
 export type ChatEvent = z.infer<typeof ChatEventSchema>;
 
-/** Main → Worker：开始一次流式补全。 */
+export const ChatMessageSchema = z.object({
+  role: z.enum(['system', 'user', 'assistant', 'tool']),
+  content: z.string(),
+});
+export const ChatToolSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  parameters: z.unknown().optional(),
+});
+export const ChatRequestSchema = z.object({
+  messages: z.array(ChatMessageSchema),
+  model: z.string().optional(),
+  params: z
+    .object({
+      temperature: z.number().optional(),
+      maxTokens: z.number().int().positive().optional(),
+    })
+    .optional(),
+  tools: z.array(ChatToolSchema).optional(),
+});
+export type ChatRequest = z.infer<typeof ChatRequestSchema>;
+
+/** Main → Worker：开始一次流式补全。providerId/request 缺省则走 mock（intervalMs）。 */
 export const ChatStartFrame = z.object({
   kind: z.literal('chat.start'),
   requestId: z.string(),
   sessionId: z.string(),
+  providerId: z.string().optional(),
+  request: ChatRequestSchema.optional(),
   /** mock provider 的出块间隔（测试用 0/小值）。 */
   intervalMs: z.number().int().nonnegative().optional(),
 });
@@ -87,15 +111,42 @@ export const PluginResponseFrame = z.object({
 });
 export type PluginResponseFrame = z.infer<typeof PluginResponseFrame>;
 
+/** Worker → Main：代理 fetch 请求（body 仅支持 string；二进制 V1+）。 */
+export const PluginFetchRequestFrame = z.object({
+  kind: z.literal('plugin.fetchRequest'),
+  id: z.string(),
+  url: z.string(),
+  init: z.object({
+    method: z.string(),
+    headers: z.record(z.string()).optional(),
+    body: z.string().optional(),
+  }),
+});
+export type PluginFetchRequestFrame = z.infer<typeof PluginFetchRequestFrame>;
+
+/** Main → Worker：流式响应分块。head 先到（状态/头），data 多次，end/error 收尾。 */
+export const PluginFetchChunkFrame = z.object({
+  kind: z.literal('plugin.fetchChunk'),
+  id: z.string(),
+  phase: z.enum(['head', 'data', 'end', 'error']),
+  status: z.number().optional(),
+  headers: z.record(z.string()).optional(),
+  chunk: z.string().optional(),
+  error: z.string().optional(),
+});
+export type PluginFetchChunkFrame = z.infer<typeof PluginFetchChunkFrame>;
+
 export const ProviderInboundFrame = z.discriminatedUnion('kind', [
   ChatStartFrame,
   ChatCancelFrame,
   PluginResponseFrame,
+  PluginFetchChunkFrame,
 ]);
 export type ProviderInboundFrame = z.infer<typeof ProviderInboundFrame>;
 
 export const ProviderOutboundFrame = z.discriminatedUnion('kind', [
   ChatEventFrame,
   PluginRequestFrame,
+  PluginFetchRequestFrame,
 ]);
 export type ProviderOutboundFrame = z.infer<typeof ProviderOutboundFrame>;

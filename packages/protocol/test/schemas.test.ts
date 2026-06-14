@@ -7,6 +7,9 @@ import {
   ProviderInboundFrame,
   PluginRequestFrame,
   PluginResponseFrame,
+  PluginFetchRequestFrame,
+  PluginFetchChunkFrame,
+  ChatRequestSchema,
   ProviderOutboundFrame,
 } from '../src/schemas';
 
@@ -149,6 +152,88 @@ describe('ChatEventSchema · M5 extensions (usage / tool_call / done.error)', ()
         error: 'boom',
         errorKind: 'auth',
       }).success,
+    ).toBe(true);
+  });
+});
+
+describe('fetch frames (M5)', () => {
+  it('parses a fetchRequest frame', () => {
+    expect(
+      PluginFetchRequestFrame.safeParse({
+        kind: 'plugin.fetchRequest',
+        id: 'f1',
+        url: 'https://api.openai.com/v1/chat/completions',
+        init: { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
+      }).success,
+    ).toBe(true);
+  });
+  it('parses fetchChunk head/data/end/error frames', () => {
+    expect(
+      PluginFetchChunkFrame.safeParse({
+        kind: 'plugin.fetchChunk',
+        id: 'f1',
+        phase: 'head',
+        status: 200,
+        headers: {},
+      }).success,
+    ).toBe(true);
+    expect(
+      PluginFetchChunkFrame.safeParse({
+        kind: 'plugin.fetchChunk',
+        id: 'f1',
+        phase: 'data',
+        chunk: 'abc',
+      }).success,
+    ).toBe(true);
+    expect(
+      PluginFetchChunkFrame.safeParse({ kind: 'plugin.fetchChunk', id: 'f1', phase: 'end' }).success,
+    ).toBe(true);
+    expect(
+      PluginFetchChunkFrame.safeParse({
+        kind: 'plugin.fetchChunk',
+        id: 'f1',
+        phase: 'error',
+        error: 'x',
+      }).success,
+    ).toBe(true);
+  });
+  it('outbound union includes fetchRequest; inbound includes fetchChunk', () => {
+    expect(
+      ProviderOutboundFrame.safeParse({
+        kind: 'plugin.fetchRequest',
+        id: 'f1',
+        url: 'u',
+        init: { method: 'GET' },
+      }).success,
+    ).toBe(true);
+    expect(
+      ProviderInboundFrame.safeParse({ kind: 'plugin.fetchChunk', id: 'f1', phase: 'end' }).success,
+    ).toBe(true);
+  });
+});
+
+describe('ChatRequest / ChatStartFrame (M5)', () => {
+  const req = {
+    messages: [{ role: 'user', content: 'hi' }],
+    model: 'gpt-4o-mini',
+    params: { temperature: 0.7, maxTokens: 256 },
+  };
+  it('parses a ChatRequest', () => {
+    expect(ChatRequestSchema.safeParse(req).success).toBe(true);
+  });
+  it('chat.start carries providerId + request, and still accepts mock intervalMs', () => {
+    expect(
+      ChatStartFrame.safeParse({
+        kind: 'chat.start',
+        requestId: 'r1',
+        sessionId: 's1',
+        providerId: 'openai',
+        request: req,
+      }).success,
+    ).toBe(true);
+    expect(
+      ChatStartFrame.safeParse({ kind: 'chat.start', requestId: 'r1', sessionId: 's1', intervalMs: 0 })
+        .success,
     ).toBe(true);
   });
 });
