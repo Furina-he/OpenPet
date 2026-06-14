@@ -19,9 +19,12 @@ import { Worker } from 'node:worker_threads';
 import type {
   ChatEvent,
   ChatStartFrame,
+  ChatRequest,
   ProviderOutboundFrame,
   PluginRequestFrame,
   PluginResponseFrame,
+  PluginFetchRequestFrame,
+  PluginFetchChunkFrame,
 } from '@desksoul/protocol';
 
 export interface ProviderHostOptions {
@@ -39,6 +42,13 @@ export interface ProviderHostOptions {
   onRespawnScheduled?: (waitMs: number) => void;
   /** Worker → Main 的 plugin.request 处理器（PluginGateway.handle）；缺省一律 -32601。 */
   onPluginRequest?: (frame: PluginRequestFrame) => Promise<PluginResponseFrame>;
+  /** Worker → Main 的 plugin.fetchRequest 处理器（FetchGateway）；send 把 chunk 帧回 worker。 */
+  onFetchRequest?: (
+    frame: PluginFetchRequestFrame,
+    send: (chunk: PluginFetchChunkFrame) => void,
+  ) => void;
+  /** worker 死亡/强杀时调用，让网关 abort 该 worker 的在途 fetch 请求。 */
+  onFetchCancelAll?: () => void;
 }
 
 interface Inflight {
@@ -62,6 +72,10 @@ export class ProviderHost {
   private readonly onPluginRequest:
     | ((frame: PluginRequestFrame) => Promise<PluginResponseFrame>)
     | undefined;
+  private readonly onFetchRequest:
+    | ((frame: PluginFetchRequestFrame, send: (chunk: PluginFetchChunkFrame) => void) => void)
+    | undefined;
+  private readonly onFetchCancelAll: (() => void) | undefined;
 
   constructor(
     private readonly entryPath: string,
@@ -76,6 +90,8 @@ export class ProviderHost {
     this.onForceTerminate = opts.onForceTerminate;
     this.onRespawnScheduled = opts.onRespawnScheduled;
     this.onPluginRequest = opts.onPluginRequest;
+    this.onFetchRequest = opts.onFetchRequest;
+    this.onFetchCancelAll = opts.onFetchCancelAll;
     this.spawn();
   }
 
@@ -91,6 +107,12 @@ export class ProviderHost {
       this.backoff = this.base; // 收到任何消息 = 健康证明，此刻才重置退避
       if (msg.kind === 'plugin.request') {
         void this.dispatchPluginRequest(worker, msg);
+        return;
+      }
+      if (msg.kind === 'plugin.fetchRequest') {
+        this.onFetchRequest?.(msg, (chunk) => {
+          if (this.worker === worker && !this.disposed) worker.postMessage(chunk);
+        });
         return;
       }
       this.onWorkerMessage(msg);
@@ -142,6 +164,7 @@ export class ProviderHost {
   private onDeath(dead: Worker): void {
     if (this.disposed || this.worker !== dead) return;
     this.worker = null;
+    this.onFetchCancelAll?.();
     for (const [requestId, entry] of this.inflight) {
       if (entry.cancelTimer) clearTimeout(entry.cancelTimer);
       this.inflight.delete(requestId);
@@ -185,6 +208,7 @@ export class ProviderHost {
     this.onForceTerminate?.(requestId);
     const dead = this.worker;
     this.worker = null; // 先置空：dead 稍后的 exit 在 onDeath 因身份不符成为 no-op
+    this.onFetchCancelAll?.();
     void dead?.terminate();
 
     this.settle(requestId);

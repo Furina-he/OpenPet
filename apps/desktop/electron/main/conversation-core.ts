@@ -108,6 +108,9 @@ export class ConversationCore {
 
   /** Route a single provider event for `sessionId` into the two channels. */
   handleEvent(sessionId: string, event: ChatEvent): void {
+    // usage / tool_call 不属于双轨拆分（由 ChatService 在上游拦截处理）；此处防御性
+    // 忽略，避免 done 分支误判（M5：ChatEvent 扩展为 delta/tool_call/usage/done 四变体）。
+    if (event.type !== 'delta' && event.type !== 'done') return;
     if (event.type === 'delta') {
       if (this.cancelling.has(sessionId)) return; // 取消后迟到的 delta
       const state = this.stateFor(sessionId);

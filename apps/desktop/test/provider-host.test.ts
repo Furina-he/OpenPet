@@ -230,3 +230,28 @@ describe('ProviderHost · plugin.* dispatch (M2)', () => {
     expect(out.echo).toEqual({ errorCode: -32601 });
   });
 });
+
+describe('ProviderHost · fetch gateway dispatch (M5)', () => {
+  const FETCH_ENTRY = path.join(__dirname, 'fixtures/fetch-worker.mjs');
+  it('routes plugin.fetchRequest to onFetchRequest and streams chunks back', async () => {
+    const events: Collected[] = [];
+    host = new ProviderHost(
+      FETCH_ENTRY,
+      (sessionId, event) => events.push({ sessionId, event }),
+      {
+        onFetchRequest: (frame, send) => {
+          send({ kind: 'plugin.fetchChunk', id: frame.id, phase: 'head', status: 200, headers: {} });
+          send({ kind: 'plugin.fetchChunk', id: frame.id, phase: 'data', chunk: 'OK' });
+          send({ kind: 'plugin.fetchChunk', id: frame.id, phase: 'end' });
+        },
+      },
+    );
+    host.send('fsess');
+    await untilDone(events, 'fsess');
+    const delta = events.find((e) => e.event.type === 'delta')!.event as {
+      type: 'delta';
+      text: string;
+    };
+    expect(delta.text).toBe('H200OK');
+  });
+});
