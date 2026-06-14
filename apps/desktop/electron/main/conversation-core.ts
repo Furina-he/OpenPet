@@ -26,6 +26,7 @@ import {
   type BehaviorEvent,
   type ChatEvent,
   type BehaviorWarnReason,
+  type ErrorKind,
 } from '@desksoul/protocol';
 
 export type Notification =
@@ -33,7 +34,12 @@ export type Notification =
   | {
       channel: 'chat.done';
       sessionId: string;
-      params: { sessionId: string; finishReason: 'stop' | 'cancel' | 'error' };
+      params: {
+        sessionId: string;
+        finishReason: 'stop' | 'cancel' | 'error';
+        error?: string;
+        errorKind?: ErrorKind;
+      };
     }
   | {
       channel: 'behavior.applyEmotion';
@@ -125,7 +131,12 @@ export class ConversationCore {
     const doneNotification: Notification = {
       channel: 'chat.done',
       sessionId,
-      params: { sessionId, finishReason: event.finishReason },
+      params: {
+        sessionId,
+        finishReason: event.finishReason,
+        ...(event.error !== undefined ? { error: event.error } : {}),
+        ...(event.errorKind !== undefined ? { errorKind: event.errorKind } : {}),
+      },
     };
     if (!state) {
       this.notify(doneNotification);

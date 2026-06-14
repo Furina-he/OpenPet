@@ -213,3 +213,23 @@ describe('provider.* methods (M5)', () => {
     ).toBe(true);
   });
 });
+
+describe('chat.done error kind (M5)', () => {
+  it('carries optional error + errorKind', () => {
+    expect(
+      Methods['chat.done'].params.safeParse({
+        sessionId: 's',
+        finishReason: 'error',
+        error: 'boom',
+        errorKind: 'auth',
+      }).success,
+    ).toBe(true);
+    expect(Methods['chat.done'].params.safeParse({ sessionId: 's', finishReason: 'stop' }).success).toBe(
+      true,
+    );
+    expect(
+      Methods['chat.done'].params.safeParse({ sessionId: 's', finishReason: 'error', errorKind: 'bogus' })
+        .success,
+    ).toBe(false);
+  });
+});

@@ -401,3 +401,24 @@ describe('ConversationCore M3: <wait/> 发射门（文本流停顿）', () => {
     expect(out.map(textOf)).toEqual(['a']);
   });
 });
+
+describe('ConversationCore error kind (M5)', () => {
+  it('propagates error + errorKind onto chat.done', () => {
+    const out = run([{ type: 'done', finishReason: 'error', error: 'HTTP 401', errorKind: 'auth' }]);
+    const done = out.find((n) => n.channel === 'chat.done');
+    expect(done?.params).toMatchObject({
+      finishReason: 'error',
+      errorKind: 'auth',
+      error: 'HTTP 401',
+    });
+  });
+
+  it('omits error fields for a normal stop done', () => {
+    const out = run([
+      { type: 'delta', text: 'hi' },
+      { type: 'done', finishReason: 'stop' },
+    ]);
+    const done = out.find((n) => n.channel === 'chat.done');
+    expect(done?.params).toEqual({ sessionId: 's1', finishReason: 'stop' });
+  });
+});

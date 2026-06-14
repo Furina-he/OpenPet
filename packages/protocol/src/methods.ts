@@ -88,6 +88,8 @@ export const Methods = {
     params: z.object({
       sessionId: z.string(),
       finishReason: z.enum(['stop', 'cancel', 'error']),
+      error: z.string().optional(),
+      errorKind: ErrorKindSchema.optional(),
     }),
     result: z.null(),
   },
