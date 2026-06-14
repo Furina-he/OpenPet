@@ -9,6 +9,7 @@
  * 模板刻意不教——教了只会让模型输出被静默吞掉的标签。
  */
 import { BEHAVIOR_LIMITS } from './behavior-parser.js';
+import type { PersonaStateBlob } from './state.js';
 
 export interface BehaviorPromptOptions {
   /** 角色可用的表情名（VRM BlendShape，由角色包提供；缺省 8 基础表情）。 */
@@ -64,4 +65,36 @@ export function buildBehaviorPrompt(opts: BehaviorPromptOptions = {}): string {
     '',
     ...BEHAVIOR_FEWSHOTS.flatMap((shot) => [shot, '']),
   ].join('\n');
+}
+
+export interface SystemPromptOptions {
+  name: string;
+  /** 角色当前 persona state（亲密度/上次情绪）；缺省不注入「关系记忆」段。 */
+  persona?: PersonaStateBlob;
+  emotions?: readonly string[];
+  actions?: readonly string[];
+}
+
+/**
+ * 组装注入 ChatRequest 的 system prompt（M6 ContextAssembler 调用）：
+ * 人设一句 + persona 摘要（可选）+ 行为标签规约 + few-shot（buildBehaviorPrompt）。
+ * 输出整体可被 BehaviorParser 零告警解析（few-shot 与解析器同源）。
+ */
+export function buildSystemPrompt(opts: SystemPromptOptions): string {
+  const parts: string[] = [
+    `你是${opts.name}，用户的桌面 AI 伙伴。用自然、有温度的口吻陪伴用户。`,
+  ];
+  if (opts.persona) {
+    const p = opts.persona;
+    const bits = [`你与用户的亲密度 ${p.affinity}/100`, `已经互动了 ${p.turns} 轮`];
+    if (p.lastMood) bits.push(`上次对话你的心情是「${p.lastMood}」`);
+    parts.push(`【关系记忆】${bits.join('，')}。`);
+  }
+  parts.push(
+    buildBehaviorPrompt({
+      ...(opts.emotions ? { emotions: opts.emotions } : {}),
+      ...(opts.actions ? { actions: opts.actions } : {}),
+    }),
+  );
+  return parts.join('\n\n');
 }
