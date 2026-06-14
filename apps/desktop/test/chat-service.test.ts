@@ -393,3 +393,26 @@ describe('ChatService · provider fallback (M5)', () => {
     expect(dones[0].params.finishReason).toBe('stop');
   });
 });
+
+describe('ChatService · tool_call 回灌 (M5)', () => {
+  const TOOL_ENTRY = path.join(__dirname, 'fixtures/tool-worker.mjs');
+  it('executes a tool_call via gateway then re-prompts once with the result', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: TOOL_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      providerChain: ['openai'],
+      queue: { flushIntervalMs: 5 },
+      plugins: { tools: new Map([['echo', (args: unknown) => `echoed:${JSON.stringify(args)}`]]) },
+    });
+    svc.send('s1', 'use a tool');
+    await until(() => !!doneOf(sent, 's1'), 'reprompt done');
+    const text = sent
+      .filter((s) => s.channel === 'chat.stream')
+      .map((s) => s.params.text)
+      .join('');
+    expect(text).toContain('result=echoed:');
+    const dones = sent.filter((s) => s.channel === 'chat.done');
+    expect(dones).toHaveLength(1); // 回灌轮的 done 才广播；首轮 tool_call 的 done 被吞
+  });
+});

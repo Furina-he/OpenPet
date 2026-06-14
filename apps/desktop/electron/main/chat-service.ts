@@ -55,6 +55,13 @@ export class ChatService {
     string,
     { chain: string[]; idx: number; request: ChatRequest }
   >();
+  /** 本轮是否已做过工具回灌（单轮，防无限循环）。 */
+  private readonly toolRound = new Map<string, boolean>();
+  /** 累积本轮 provider 产出的 tool_call，done 时统一执行 + 回灌。 */
+  private readonly pendingTools = new Map<
+    string,
+    Array<{ id: string; name: string; args: unknown }>
+  >();
 
   constructor(opts: ChatServiceOptions) {
     this.providerChain =
@@ -121,11 +128,17 @@ export class ChatService {
     return this.store.snapshot(sessionId, limit);
   }
 
-  /** provider 事件入口：usage 落账；首 delta 前的 error 触发降级；其余交 ConversationCore。 */
+  /** provider 事件入口：usage 落账；tool_call 收集；首 delta 前 error 降级；其余交 ConversationCore。 */
   private onProviderEvent(sessionId: string, event: ChatEvent): void {
     if (event.type === 'usage') {
       this.store.recordUsage(sessionId, event.prompt, event.completion);
       return;
+    }
+    if (event.type === 'tool_call') {
+      const list = this.pendingTools.get(sessionId) ?? [];
+      list.push({ id: event.id, name: event.name, args: event.args });
+      this.pendingTools.set(sessionId, list);
+      return; // 不进双轨
     }
     if (event.type === 'delta') this.sawDelta.set(sessionId, true);
     if (event.type === 'done' && event.finishReason === 'error' && !this.sawDelta.get(sessionId)) {
@@ -136,11 +149,58 @@ export class ChatService {
         return; // 吞掉本次 error done，等下一个 provider 接管（同一对话只顺位一次到链尾）
       }
     }
+    if (event.type === 'done' && event.finishReason === 'stop') {
+      const tools = this.pendingTools.get(sessionId);
+      const att = this.attempt.get(sessionId);
+      if (tools && tools.length > 0 && att && !this.toolRound.get(sessionId)) {
+        this.toolRound.set(sessionId, true);
+        this.pendingTools.delete(sessionId);
+        void this.runToolsAndReprompt(sessionId, att, tools);
+        return; // 吞掉本轮 done，等回灌轮
+      }
+    }
     this.core.handleEvent(sessionId, event);
     if (event.type === 'done') {
       this.sawDelta.delete(sessionId);
       this.attempt.delete(sessionId);
+      this.toolRound.delete(sessionId);
+      this.pendingTools.delete(sessionId);
     }
+  }
+
+  /** 执行 tool_call（经 PluginGateway.invokeTool）→ tool 消息回灌 → 同 provider 重发一次。 */
+  private async runToolsAndReprompt(
+    sessionId: string,
+    att: { chain: string[]; idx: number; request: ChatRequest },
+    tools: Array<{ id: string; name: string; args: unknown }>,
+  ): Promise<void> {
+    const toolMessages: Array<{ role: 'tool'; content: string }> = [];
+    for (const t of tools) {
+      let result: unknown;
+      try {
+        const r = await this.plugins.handle({
+          kind: 'plugin.request',
+          rpc: {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'plugin.invokeTool',
+            params: { toolId: t.name, args: t.args },
+          },
+        });
+        result = r.rpc.result
+          ? (r.rpc.result as { value: unknown }).value
+          : `error: ${r.rpc.error?.message}`;
+      } catch (e) {
+        result = `error: ${e instanceof Error ? e.message : String(e)}`;
+      }
+      toolMessages.push({
+        role: 'tool',
+        content: typeof result === 'string' ? result : JSON.stringify(result),
+      });
+    }
+    const nextRequest = { ...att.request, messages: [...att.request.messages, ...toolMessages] };
+    this.attempt.set(sessionId, { ...att, request: nextRequest });
+    this.host.send(sessionId, { providerId: att.chain[att.idx]!, request: nextRequest });
   }
 
   private onNotification(n: Notification): void {
