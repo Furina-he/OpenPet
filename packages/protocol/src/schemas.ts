@@ -10,9 +10,27 @@ import type { JsonRpcRequest, JsonRpcResponse } from './jsonrpc.js';
  * `done.finishReason` 三态：worker 只产生 'stop' | 'cancel'；'error' 由 Main 侧
  * ProviderHost 在 worker 死亡 / 被强杀连带时合成，worker 自身永不发送。
  */
+export const ERROR_KINDS = ['auth', 'rate_limit', 'timeout', 'network', 'server', 'unknown'] as const;
+export const ErrorKindSchema = z.enum(ERROR_KINDS);
+export type ErrorKind = z.infer<typeof ErrorKindSchema>;
+
 export const ChatEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('delta'), text: z.string() }),
-  z.object({ type: z.literal('done'), finishReason: z.enum(['stop', 'cancel', 'error']) }),
+  z.object({ type: z.literal('tool_call'), id: z.string(), name: z.string(), args: z.unknown() }),
+  z.object({
+    type: z.literal('usage'),
+    prompt: z.number().int().nonnegative(),
+    completion: z.number().int().nonnegative(),
+    cost: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal('done'),
+    finishReason: z.enum(['stop', 'cancel', 'error']),
+    // error/errorKind 仅在 finishReason==='error' 时有意义（J3 分级）；provider 与
+    // ProviderHost 合成 error done 时填充，stop/cancel 不带。
+    error: z.string().optional(),
+    errorKind: ErrorKindSchema.optional(),
+  }),
 ]);
 export type ChatEvent = z.infer<typeof ChatEventSchema>;
 

@@ -130,3 +130,25 @@ describe('plugin frames (M2)', () => {
     ).toBe('plugin.response');
   });
 });
+
+describe('ChatEventSchema · M5 extensions (usage / tool_call / done.error)', () => {
+  it('accepts a usage event', () => {
+    expect(ChatEventSchema.safeParse({ type: 'usage', prompt: 10, completion: 5 }).success).toBe(true);
+  });
+  it('accepts a tool_call event', () => {
+    expect(
+      ChatEventSchema.safeParse({ type: 'tool_call', id: 'c1', name: 'search', args: { q: 'x' } })
+        .success,
+    ).toBe(true);
+  });
+  it('accepts done with error + errorKind', () => {
+    expect(
+      ChatEventSchema.safeParse({
+        type: 'done',
+        finishReason: 'error',
+        error: 'boom',
+        errorKind: 'auth',
+      }).success,
+    ).toBe(true);
+  });
+});
