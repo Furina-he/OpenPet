@@ -288,3 +288,37 @@ describe('ChatService · assembles messages (M5)', () => {
     expect(parsed.providerId).toBe('openai');
   });
 });
+
+describe('ChatService · openai-format end-to-end (M5)', () => {
+  it('streams an openai-format reply via injected agent to chat.stream', async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"你好"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"呀"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      defaultProviderId: 'openai',
+      queue: { flushIntervalMs: 5 },
+      fetch: {
+        agent: (_spec, sink) => {
+          sink.head(200, { 'content-type': 'text/event-stream' });
+          for (const l of sse) sink.data(l);
+          sink.end();
+        },
+        resolveHost: () => ({ providerId: 'openai' }),
+        injectAuth: async (_id, h) => h,
+      },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'e2e done');
+    const text = sent
+      .filter((s) => s.channel === 'chat.stream')
+      .map((s) => s.params.text)
+      .join('');
+    expect(text).toBe('你好呀');
+    expect(doneOf(sent, 's1')!.params.finishReason).toBe('stop');
+  });
+});

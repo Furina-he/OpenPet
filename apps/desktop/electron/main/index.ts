@@ -6,6 +6,9 @@ import { createAppWindows, rendererTargets, type AppWindows } from './windows.js
 import { registerIpcRouter } from './ipc-router.js';
 import { assetSchemePrivileges, registerAssetProtocol } from './asset-protocol.js';
 import { startCursorPublisher } from './cursor-publisher.js';
+import { electronHttpAgent } from './http-agent.js';
+import { Keychain } from './keychain.js';
+import { createProviderConfig } from './provider-config.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,12 +34,20 @@ app.whenReady().then(() => {
 
   registerAssetProtocol(charactersRoot);
   wins = createAppWindows();
+  const keychain = new Keychain(path.join(app.getPath('userData'), 'secrets.kc'));
+  const providerConfig = createProviderConfig({ keychain });
   router = registerIpcRouter({
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
     charactersRoot,
     providerEntryPath,
     persistPath: path.join(app.getPath('userData'), 'sessions.json'),
+    fetch: {
+      agent: electronHttpAgent,
+      resolveHost: (url) => providerConfig.resolveHost(url),
+      injectAuth: (providerId, headers) => providerConfig.injectAuth(providerId, headers),
+    },
+    defaultProviderId: 'openai',
   });
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),

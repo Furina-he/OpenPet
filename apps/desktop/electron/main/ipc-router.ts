@@ -28,6 +28,8 @@ export interface IpcRouterDeps {
   persistPath?: string;
   /** 代理 fetch 网关依赖（Electron net + 白名单 + Keychain 注入）；生产由 index.ts 注入。 */
   fetch?: import('./fetch-gateway.js').FetchGatewayDeps;
+  /** 默认 provider id（chat.send 未指定时用）；M5 固定 'openai'，M7 接用户选择。 */
+  defaultProviderId?: string;
 }
 
 export interface RpcContext {
@@ -50,6 +52,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     broadcast,
     ...(deps.persistPath ? { persistPath: deps.persistPath } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
+    ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
   });
   const characters = createCharacterService(deps.charactersRoot);
   const idleResponder = createIdleResponder(sendToCharacter);
