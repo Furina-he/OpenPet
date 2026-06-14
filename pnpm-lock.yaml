@@ -84,6 +84,9 @@ importers:
 
   apps/sidecar:
     dependencies:
+      '@desksoul/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@desksoul/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

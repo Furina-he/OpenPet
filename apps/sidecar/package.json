@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@desksoul/plugin-sdk": "workspace:*",
     "@desksoul/protocol": "workspace:*"
   },
   "devDependencies": {
