@@ -5,6 +5,7 @@
  */
 import { net } from 'electron';
 import type { HttpAgent } from './fetch-gateway.js';
+import type { HttpGetJson } from './provider-service.js';
 
 export const electronHttpAgent: HttpAgent = (spec, sink) => {
   const req = net.request({ method: spec.method, url: spec.url });
@@ -27,3 +28,29 @@ export const electronHttpAgent: HttpAgent = (spec, sink) => {
   if (spec.body !== undefined) req.write(spec.body);
   req.end();
 };
+
+/** GET JSON（provider.* 探活/拉取用）；非 2xx 抛带 status 的 Error，供错误分级。 */
+export const electronHttpGetJson: HttpGetJson = (url, headers = {}) =>
+  new Promise((resolve, reject) => {
+    const req = net.request({ method: 'GET', url });
+    for (const [k, v] of Object.entries(headers)) req.setHeader(k, v);
+    req.on('response', (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => {
+        const status = res.statusCode ?? 0;
+        if (status < 200 || status >= 300) {
+          reject(Object.assign(new Error(`HTTP ${status}`), { status }));
+          return;
+        }
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        } catch (err) {
+          reject(err);
+        }
+      });
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end();
+  });

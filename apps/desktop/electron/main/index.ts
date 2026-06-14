@@ -6,9 +6,10 @@ import { createAppWindows, rendererTargets, type AppWindows } from './windows.js
 import { registerIpcRouter } from './ipc-router.js';
 import { assetSchemePrivileges, registerAssetProtocol } from './asset-protocol.js';
 import { startCursorPublisher } from './cursor-publisher.js';
-import { electronHttpAgent } from './http-agent.js';
+import { electronHttpAgent, electronHttpGetJson } from './http-agent.js';
 import { Keychain } from './keychain.js';
 import { createProviderConfig } from './provider-config.js';
+import { createProviderService } from './provider-service.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,7 @@ app.whenReady().then(() => {
   wins = createAppWindows();
   const keychain = new Keychain(path.join(app.getPath('userData'), 'secrets.kc'));
   const providerConfig = createProviderConfig({ keychain });
+  const providerService = createProviderService({ keychain, httpGetJson: electronHttpGetJson });
   router = registerIpcRouter({
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
@@ -48,6 +50,7 @@ app.whenReady().then(() => {
       injectAuth: (providerId, headers) => providerConfig.injectAuth(providerId, headers),
     },
     defaultProviderId: 'openai',
+    providerService,
   });
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),

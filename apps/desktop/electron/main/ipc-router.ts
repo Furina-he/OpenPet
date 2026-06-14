@@ -30,6 +30,8 @@ export interface IpcRouterDeps {
   fetch?: import('./fetch-gateway.js').FetchGatewayDeps;
   /** 默认 provider id（chat.send 未指定时用）；M5 固定 'openai'，M7 接用户选择。 */
   defaultProviderId?: string;
+  /** provider.* RPC handlers（M5）；index.ts 注入，spread 进 router。 */
+  providerService?: ReturnType<typeof import('./provider-service.js').createProviderService>;
 }
 
 export interface RpcContext {
@@ -62,6 +64,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   let characterSize: { width: number; height: number } = { ...CHARACTER_BASE_SIZE };
 
   const router = createRouter<RpcContext>({
+    ...(deps.providerService ?? {}),
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
