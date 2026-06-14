@@ -78,6 +78,7 @@ export async function* openaiCompatChat(
   let completion = 0;
   let sawUsage = false;
   let completionText = '';
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>();
   try {
     for await (const sse of parseSseStream(res.body)) {
       if (signal.aborted) {
@@ -86,7 +87,17 @@ export async function* openaiCompatChat(
       }
       if (sse.data === '[DONE]') break;
       let json: {
-        choices?: Array<{ delta?: { content?: string } }>;
+        choices?: Array<{
+          delta?: {
+            content?: string;
+            tool_calls?: Array<{
+              index?: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+          finish_reason?: string;
+        }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
       try {
@@ -104,6 +115,17 @@ export async function* openaiCompatChat(
         prompt = json.usage.prompt_tokens ?? 0;
         completion = json.usage.completion_tokens ?? 0;
       }
+      const tcs = json?.choices?.[0]?.delta?.tool_calls;
+      if (Array.isArray(tcs)) {
+        for (const tc of tcs) {
+          const idx = tc.index ?? 0;
+          const cur = toolAcc.get(idx) ?? { id: '', name: '', args: '' };
+          if (tc.id) cur.id = tc.id;
+          if (tc.function?.name) cur.name = tc.function.name;
+          if (tc.function?.arguments) cur.args += tc.function.arguments;
+          toolAcc.set(idx, cur);
+        }
+      }
     }
   } catch (e) {
     yield {
@@ -117,6 +139,15 @@ export async function* openaiCompatChat(
   if (signal.aborted) {
     yield { type: 'done', finishReason: 'cancel' };
     return;
+  }
+  for (const tc of toolAcc.values()) {
+    let parsed: unknown = {};
+    try {
+      parsed = tc.args ? JSON.parse(tc.args) : {};
+    } catch {
+      parsed = { _raw: tc.args };
+    }
+    yield { type: 'tool_call', id: tc.id || `call_${tc.name}`, name: tc.name, args: parsed };
   }
   if (sawUsage) {
     yield { type: 'usage', prompt, completion };

@@ -88,4 +88,22 @@ describe('openaiCompatChat', () => {
     expect(usage!.completion).toBeGreaterThan(0);
     expect(usage!.prompt).toBeGreaterThan(0);
   });
+
+  it('aggregates streamed tool_calls into a tool_call event', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search","arguments":"{\\"q\\":"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"cats\\"}"}}]}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    ) as typeof fetch;
+    const ev = await collect(openaiCompatChat(dialect, req, new AbortController().signal));
+    const tc = ev.find((e) => e.type === 'tool_call') as
+      | { id: string; name: string; args: { q: string } }
+      | undefined;
+    expect(tc).toMatchObject({ id: 'c1', name: 'search' });
+    expect(tc!.args).toEqual({ q: 'cats' });
+    expect(ev.at(-1)).toEqual({ type: 'done', finishReason: 'stop' });
+  });
 });
