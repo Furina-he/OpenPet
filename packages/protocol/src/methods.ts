@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CharacterManifestSchema } from './character-manifest.js';
+import { ErrorKindSchema } from './schemas.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -17,7 +18,7 @@ export const Methods = {
     result: z.object({ pong: z.string(), echoNonce: z.string() }),
   },
   'chat.send': {
-    params: z.object({ sessionId: z.string(), text: z.string() }),
+    params: z.object({ sessionId: z.string(), text: z.string(), providerId: z.string().optional() }),
     result: z.object({ ok: z.literal(true) }),
   },
   'chat.cancel': {
@@ -125,6 +126,47 @@ export const Methods = {
   'plugin.invokeTool': {
     params: z.object({ toolId: z.string().min(1), args: z.unknown().optional() }),
     result: z.object({ value: z.unknown() }),
+  },
+
+  // --- request/response: Renderer → Main（provider 配置，M5；UI 在 M7 接 D3）---
+  'provider.saveKey': {
+    params: z.object({ providerId: z.string().min(1), key: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.deleteKey': {
+    params: z.object({ providerId: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.listProviders': {
+    params: z.object({}),
+    result: z.object({
+      providers: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          kind: z.enum(['chat', 'embedding']),
+          hasKey: z.boolean(),
+          enabled: z.boolean(),
+          models: z.array(z.string()),
+        }),
+      ),
+    }),
+  },
+  'provider.testConnection': {
+    params: z.object({ providerId: z.string().min(1) }),
+    result: z.object({
+      ok: z.boolean(),
+      errorKind: ErrorKindSchema.optional(),
+      detail: z.string().optional(),
+    }),
+  },
+  'provider.listModels': {
+    params: z.object({ providerId: z.string().min(1) }),
+    result: z.object({ models: z.array(z.string()) }),
+  },
+  'provider.ollamaDetect': {
+    params: z.object({}),
+    result: z.object({ available: z.boolean(), models: z.array(z.string()) }),
   },
 } as const;
 

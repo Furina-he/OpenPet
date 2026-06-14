@@ -172,3 +172,44 @@ describe('character.* + behavior.lookAt (M4)', () => {
     expect(Methods['behavior.lookAt'].params.safeParse({ x: 'a', y: 0 }).success).toBe(false);
   });
 });
+
+describe('provider.* methods (M5)', () => {
+  it('registers the provider namespace', () => {
+    for (const m of [
+      'provider.saveKey',
+      'provider.deleteKey',
+      'provider.listProviders',
+      'provider.testConnection',
+      'provider.listModels',
+      'provider.ollamaDetect',
+    ]) {
+      expect(Methods).toHaveProperty(m);
+    }
+  });
+  it('provider.saveKey params accept providerId + key', () => {
+    expect(
+      Methods['provider.saveKey'].params.safeParse({ providerId: 'openai', key: 'sk-x' }).success,
+    ).toBe(true);
+    expect(Methods['provider.saveKey'].params.safeParse({ providerId: 'openai' }).success).toBe(
+      false,
+    );
+  });
+  it('provider.testConnection result carries ok + optional errorKind', () => {
+    expect(
+      Methods['provider.testConnection'].result.safeParse({ ok: false, errorKind: 'auth' }).success,
+    ).toBe(true);
+    expect(Methods['provider.testConnection'].result.safeParse({ ok: true }).success).toBe(true);
+  });
+  it('provider.ollamaDetect result lists available + models', () => {
+    expect(
+      Methods['provider.ollamaDetect'].result.safeParse({ available: true, models: ['llama3'] })
+        .success,
+    ).toBe(true);
+  });
+  it('chat.send accepts optional providerId', () => {
+    expect(
+      Methods['chat.send'].params.safeParse({ sessionId: 's', text: 't', providerId: 'openai' })
+        .success,
+    ).toBe(true);
+  });
+});
