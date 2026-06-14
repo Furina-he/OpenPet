@@ -176,8 +176,8 @@ export class ProviderHost {
     this.respawnTimer = setTimeout(() => this.spawn(), wait);
   }
 
-  /** 开始一个流，返回驱动它的 requestId。 */
-  send(sessionId: string): string {
+  /** 开始一个流，返回驱动它的 requestId。无 providerId 时走 mock（intervalMs）路径。 */
+  send(sessionId: string, opts?: { providerId?: string; request?: ChatRequest }): string {
     if (this.disposed) throw new Error('ProviderHost disposed');
     if (!this.worker) throw new Error('provider worker not ready');
     const requestId = `r${this.nextRequestId++}`;
@@ -186,7 +186,11 @@ export class ProviderHost {
       kind: 'chat.start',
       requestId,
       sessionId,
-      ...(this.intervalMs !== undefined ? { intervalMs: this.intervalMs } : {}),
+      ...(opts?.providerId !== undefined ? { providerId: opts.providerId } : {}),
+      ...(opts?.request !== undefined ? { request: opts.request } : {}),
+      ...(opts?.providerId === undefined && this.intervalMs !== undefined
+        ? { intervalMs: this.intervalMs }
+        : {}),
     };
     this.worker.postMessage(frame);
     return requestId;

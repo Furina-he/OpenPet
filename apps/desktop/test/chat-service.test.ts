@@ -265,3 +265,26 @@ describe('ChatService · fetch gateway (M5)', () => {
     expect(streamed).toContain('Bearer injected');
   });
 });
+
+describe('ChatService · assembles messages (M5)', () => {
+  const ECHO_ENTRY = path.join(__dirname, 'fixtures/echo-start-worker.mjs');
+  it('assembles messages from history + current text', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: ECHO_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      defaultProviderId: 'openai',
+      queue: { flushIntervalMs: 5 },
+    });
+    svc.send('s1', 'first');
+    await until(() => sent.filter((s) => s.channel === 'chat.done').length === 1, 'first done');
+    svc.send('s1', 'second');
+    await until(() => sent.filter((s) => s.channel === 'chat.done').length === 2, 'second done');
+    const lastStream = sent.filter((s) => s.channel === 'chat.stream').at(-1)!;
+    const parsed = JSON.parse(Buffer.from(lastStream.params.text.slice(4), 'base64').toString('utf8'));
+    const roles = parsed.request.messages.map((m: { role: string }) => m.role);
+    expect(roles).toEqual(['user', 'assistant', 'user']);
+    expect(parsed.request.messages.at(-1)).toEqual({ role: 'user', content: 'second' });
+    expect(parsed.providerId).toBe('openai');
+  });
+});

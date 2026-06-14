@@ -60,7 +60,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
 
   const router = createRouter<RpcContext>({
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
-    'chat.send': (p) => chat.send(p.sessionId, p.text),
+    'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
     'chat.snapshot': (p) => chat.snapshot(p.sessionId, p.limit),
     'character.current': () => characters.current(),

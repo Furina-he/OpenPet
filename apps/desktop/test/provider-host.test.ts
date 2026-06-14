@@ -255,3 +255,23 @@ describe('ProviderHost · fetch gateway dispatch (M5)', () => {
     expect(delta.text).toBe('H200OK');
   });
 });
+
+describe('ProviderHost · send carries ChatRequest (M5)', () => {
+  const ECHO_ENTRY = path.join(__dirname, 'fixtures/echo-start-worker.mjs');
+  it('passes providerId + request into the chat.start frame', async () => {
+    const events: Collected[] = [];
+    host = new ProviderHost(ECHO_ENTRY, (sessionId, event) => events.push({ sessionId, event }));
+    host.send('s1', {
+      providerId: 'openai',
+      request: { messages: [{ role: 'user', content: 'hi' }] },
+    });
+    await untilDone(events, 's1');
+    const delta = events.find((e) => e.event.type === 'delta')!.event as {
+      type: 'delta';
+      text: string;
+    };
+    const parsed = JSON.parse(Buffer.from(delta.text.slice(4), 'base64').toString('utf8')); // 去掉 'REQ:'
+    expect(parsed.providerId).toBe('openai');
+    expect(parsed.request.messages).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+});

@@ -34,6 +34,8 @@ export interface ChatServiceOptions {
   plugins?: PluginGatewayDeps;
   /** 代理 fetch 网关依赖（agent + 白名单 + 密钥注入）；缺省不挂（mock 不发 fetch）。 */
   fetch?: FetchGatewayDeps;
+  /** 默认 provider id（chat.send 未指定时用）；缺省则走 mock（intervalMs）路径。 */
+  defaultProviderId?: string;
 }
 
 export class ChatService {
@@ -42,8 +44,10 @@ export class ChatService {
   private readonly core: ConversationCore;
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
+  private readonly defaultProviderId: string | undefined;
 
   constructor(opts: ChatServiceOptions) {
+    this.defaultProviderId = opts.defaultProviderId;
     this.store = new SessionStore(opts.persistPath ? { persistPath: opts.persistPath } : {});
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
     this.plugins = createPluginGateway(opts.plugins ?? {});
@@ -65,12 +69,19 @@ export class ChatService {
     );
   }
 
-  send(sessionId: string, text: string): { ok: true } {
+  send(sessionId: string, text: string, providerId?: string): { ok: true } {
     if (this.store.isStreaming(sessionId)) {
       throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
     }
+    const pid = providerId ?? this.defaultProviderId;
+    // 组装 messages：历史（已封口的 user/assistant 干净文本）+ 当前 user 输入
+    const history = this.store
+      .snapshot(sessionId, 40)
+      .messages.filter((m) => m.text.length > 0)
+      .map((m) => ({ role: m.role, content: m.text }));
+    const request = { messages: [...history, { role: 'user' as const, content: text }] };
     try {
-      this.host.send(sessionId);
+      this.host.send(sessionId, pid ? { providerId: pid, request } : {});
     } catch {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
