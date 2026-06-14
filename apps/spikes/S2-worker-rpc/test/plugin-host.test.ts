@@ -49,7 +49,8 @@ describe('PluginHost ↔ sidecar worker', () => {
     });
 
     // crash-on-start → respawn → crash → ... let a few cycles accrue
-    await sleep(600);
+    // CI may be slower; allow up to 1500ms for 3 cycles (same tolerance as provider-host watchdog).
+    await sleep(1500);
 
     expect(waits.length).toBeGreaterThanOrEqual(3);
     expect(waits[0]).toBe(50);
