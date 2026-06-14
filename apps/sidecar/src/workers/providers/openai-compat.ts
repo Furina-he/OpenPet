@@ -1,5 +1,6 @@
 import type { ChatEvent, ChatRequest, ErrorKind, ProviderDialect } from '@desksoul/protocol';
 import { parseSseStream } from '@desksoul/plugin-sdk';
+import { estimateTokens, estimateMessagesTokens } from '../token-estimate.js';
 
 /** HTTP 状态 → 错误分级（J3 数据侧）。 */
 export function classifyStatus(status: number): ErrorKind {
@@ -76,6 +77,7 @@ export async function* openaiCompatChat(
   let prompt = 0;
   let completion = 0;
   let sawUsage = false;
+  let completionText = '';
   try {
     for await (const sse of parseSseStream(res.body)) {
       if (signal.aborted) {
@@ -93,7 +95,10 @@ export async function* openaiCompatChat(
         continue;
       }
       const text = json?.choices?.[0]?.delta?.content;
-      if (typeof text === 'string' && text) yield { type: 'delta', text };
+      if (typeof text === 'string' && text) {
+        completionText += text;
+        yield { type: 'delta', text };
+      }
       if (json?.usage) {
         sawUsage = true;
         prompt = json.usage.prompt_tokens ?? 0;
@@ -113,6 +118,15 @@ export async function* openaiCompatChat(
     yield { type: 'done', finishReason: 'cancel' };
     return;
   }
-  if (sawUsage) yield { type: 'usage', prompt, completion };
+  if (sawUsage) {
+    yield { type: 'usage', prompt, completion };
+  } else if (completionText) {
+    // provider 未返回 usage：本地估算（prompt 从请求 messages，completion 从累积文本）
+    yield {
+      type: 'usage',
+      prompt: estimateMessagesTokens(req.messages),
+      completion: estimateTokens(completionText),
+    };
+  }
   yield { type: 'done', finishReason: 'stop' };
 }

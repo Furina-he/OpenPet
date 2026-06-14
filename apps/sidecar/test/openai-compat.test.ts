@@ -72,4 +72,20 @@ describe('openaiCompatChat', () => {
     const ev = await collect(openaiCompatChat(dialect, req, ac.signal));
     expect(ev.at(-1)).toEqual({ type: 'done', finishReason: 'cancel' });
   });
+
+  it('falls back to estimated usage when provider omits it', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"hello world"}}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+    ) as typeof fetch;
+    const ev = await collect(openaiCompatChat(dialect, req, new AbortController().signal));
+    const usage = ev.find((e) => e.type === 'usage') as
+      | { prompt: number; completion: number }
+      | undefined;
+    expect(usage).toBeDefined();
+    expect(usage!.completion).toBeGreaterThan(0);
+    expect(usage!.prompt).toBeGreaterThan(0);
+  });
 });
