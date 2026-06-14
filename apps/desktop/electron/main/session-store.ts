@@ -18,6 +18,8 @@ export interface StoredMessage {
   role: 'user' | 'assistant';
   text: string;
   finishReason: 'stop' | 'cancel' | 'error' | null;
+  tokensIn?: number;
+  tokensOut?: number;
 }
 
 export interface SessionSnapshot {
@@ -105,6 +107,17 @@ export class SessionStore {
       last.finishReason = reason;
     }
     this.schedulePersist();
+  }
+
+  /** 把本轮 usage 写到当前 assistant 消息（provider 的 usage 事件回流时调用）。 */
+  recordUsage(sessionId: string, tokensIn: number, tokensOut: number): void {
+    const messages = this.sessions.get(sessionId);
+    const last = messages?.[messages.length - 1];
+    if (last && last.role === 'assistant') {
+      last.tokensIn = tokensIn;
+      last.tokensOut = tokensOut;
+      this.schedulePersist();
+    }
   }
 
   isStreaming(sessionId: string): boolean {

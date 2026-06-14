@@ -97,6 +97,17 @@ describe('SessionStore - 会话记录', () => {
     const snap2 = store.snapshot('sess1');
     expect(snap2.messages[0].text).toBe('Original');
   });
+
+  it('recordUsage writes tokens onto the current assistant message', () => {
+    store.appendUser('sess1', 'hi');
+    store.beginAssistant('sess1');
+    store.appendDelta('sess1', 'yo');
+    store.recordUsage('sess1', 3, 2);
+    store.finishAssistant('sess1', 'stop');
+    const assistant = store.snapshot('sess1').messages.at(-1)!;
+    expect(assistant.tokensIn).toBe(3);
+    expect(assistant.tokensOut).toBe(2);
+  });
 });
 
 describe('SessionStore - JSON 持久化', () => {

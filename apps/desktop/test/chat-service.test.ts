@@ -322,3 +322,37 @@ describe('ChatService · openai-format end-to-end (M5)', () => {
     expect(doneOf(sent, 's1')!.params.finishReason).toBe('stop');
   });
 });
+
+describe('ChatService · usage 落账 (M5)', () => {
+  it('records usage from the stream without emitting it as chat text', async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\n',
+      'data: [DONE]\n\n',
+    ];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      defaultProviderId: 'openai',
+      queue: { flushIntervalMs: 5 },
+      fetch: {
+        agent: (_s, sink) => {
+          sink.head(200, {});
+          for (const l of sse) sink.data(l);
+          sink.end();
+        },
+        resolveHost: () => ({ providerId: 'openai' }),
+        injectAuth: async (_i, h) => h,
+      },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'usage done');
+    const text = sent
+      .filter((s) => s.channel === 'chat.stream')
+      .map((s) => s.params.text)
+      .join('');
+    expect(text).toBe('hi'); // usage 不出现在文本里
+    expect(svc.snapshot('s1').messages.at(-1)).toMatchObject({ tokensIn: 5, tokensOut: 1 });
+  });
+});

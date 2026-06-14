@@ -23,6 +23,7 @@ import {
 } from './plugin-gateway.js';
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { RpcError } from './router.js';
+import type { ChatEvent } from '@desksoul/protocol';
 
 export interface ChatServiceOptions {
   providerEntryPath: string;
@@ -55,7 +56,7 @@ export class ChatService {
     const fetchGateway = opts.fetch ? createFetchGateway(opts.fetch) : null;
     this.host = new ProviderHost(
       opts.providerEntryPath,
-      (sessionId, event) => this.core.handleEvent(sessionId, event),
+      (sessionId, event) => this.onProviderEvent(sessionId, event),
       {
         ...(opts.host ?? {}),
         onPluginRequest: (frame) => this.plugins.handle(frame),
@@ -102,6 +103,15 @@ export class ChatService {
 
   snapshot(sessionId: string, limit?: number): SessionSnapshot {
     return this.store.snapshot(sessionId, limit);
+  }
+
+  /** provider 事件入口：usage 落账（不进双轨）；其余交 ConversationCore 拆分。 */
+  private onProviderEvent(sessionId: string, event: ChatEvent): void {
+    if (event.type === 'usage') {
+      this.store.recordUsage(sessionId, event.prompt, event.completion);
+      return;
+    }
+    this.core.handleEvent(sessionId, event);
   }
 
   private onNotification(n: Notification): void {
