@@ -356,3 +356,40 @@ describe('ChatService · usage 落账 (M5)', () => {
     expect(svc.snapshot('s1').messages.at(-1)).toMatchObject({ tokensIn: 5, tokensOut: 1 });
   });
 });
+
+describe('ChatService · provider fallback (M5)', () => {
+  const FB_ENTRY = path.join(__dirname, 'fixtures/fallback-worker.mjs');
+
+  it('falls back to the next provider when the first errors before any delta', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: FB_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      providerChain: ['bad', 'good'],
+      queue: { flushIntervalMs: 5 },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'fallback done');
+    const text = sent
+      .filter((s) => s.channel === 'chat.stream')
+      .map((s) => s.params.text)
+      .join('');
+    expect(text).toBe('ok');
+    expect(doneOf(sent, 's1')!.params.finishReason).toBe('stop');
+  });
+
+  it('does NOT fall back once a delta has been emitted', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: FB_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      providerChain: ['good', 'bad'],
+      queue: { flushIntervalMs: 5 },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'good done');
+    const dones = sent.filter((s) => s.channel === 'chat.done');
+    expect(dones).toHaveLength(1);
+    expect(dones[0].params.finishReason).toBe('stop');
+  });
+});

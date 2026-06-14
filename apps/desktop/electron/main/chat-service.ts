@@ -23,7 +23,7 @@ import {
 } from './plugin-gateway.js';
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { RpcError } from './router.js';
-import type { ChatEvent } from '@desksoul/protocol';
+import type { ChatEvent, ChatRequest } from '@desksoul/protocol';
 
 export interface ChatServiceOptions {
   providerEntryPath: string;
@@ -37,6 +37,8 @@ export interface ChatServiceOptions {
   fetch?: FetchGatewayDeps;
   /** 默认 provider id（chat.send 未指定时用）；缺省则走 mock（intervalMs）路径。 */
   defaultProviderId?: string;
+  /** 降级链 [primary, ...fallbacks]；优先于 defaultProviderId。首 delta 前失败顺位重试一次。 */
+  providerChain?: string[];
 }
 
 export class ChatService {
@@ -45,10 +47,18 @@ export class ChatService {
   private readonly core: ConversationCore;
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
-  private readonly defaultProviderId: string | undefined;
+  private readonly providerChain: string[];
+  /** 本轮是否已产出 delta（首 delta 后不再降级）。 */
+  private readonly sawDelta = new Map<string, boolean>();
+  /** 在途降级尝试：链 + 当前下标 + 复用的 request。 */
+  private readonly attempt = new Map<
+    string,
+    { chain: string[]; idx: number; request: ChatRequest }
+  >();
 
   constructor(opts: ChatServiceOptions) {
-    this.defaultProviderId = opts.defaultProviderId;
+    this.providerChain =
+      opts.providerChain ?? (opts.defaultProviderId ? [opts.defaultProviderId] : []);
     this.store = new SessionStore(opts.persistPath ? { persistPath: opts.persistPath } : {});
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
     this.plugins = createPluginGateway(opts.plugins ?? {});
@@ -74,7 +84,7 @@ export class ChatService {
     if (this.store.isStreaming(sessionId)) {
       throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
     }
-    const pid = providerId ?? this.defaultProviderId;
+    const chain = providerId ? [providerId] : this.providerChain;
     // 组装 messages：历史（已封口的 user/assistant 干净文本）+ 当前 user 输入
     const history = this.store
       .snapshot(sessionId, 40)
@@ -82,7 +92,13 @@ export class ChatService {
       .map((m) => ({ role: m.role, content: m.text }));
     const request = { messages: [...history, { role: 'user' as const, content: text }] };
     try {
-      this.host.send(sessionId, pid ? { providerId: pid, request } : {});
+      if (chain.length > 0) {
+        this.attempt.set(sessionId, { chain, idx: 0, request });
+        this.sawDelta.set(sessionId, false);
+        this.host.send(sessionId, { providerId: chain[0]!, request });
+      } else {
+        this.host.send(sessionId, {}); // mock 路径（无 provider 配置）
+      }
     } catch {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
@@ -105,13 +121,26 @@ export class ChatService {
     return this.store.snapshot(sessionId, limit);
   }
 
-  /** provider 事件入口：usage 落账（不进双轨）；其余交 ConversationCore 拆分。 */
+  /** provider 事件入口：usage 落账；首 delta 前的 error 触发降级；其余交 ConversationCore。 */
   private onProviderEvent(sessionId: string, event: ChatEvent): void {
     if (event.type === 'usage') {
       this.store.recordUsage(sessionId, event.prompt, event.completion);
       return;
     }
+    if (event.type === 'delta') this.sawDelta.set(sessionId, true);
+    if (event.type === 'done' && event.finishReason === 'error' && !this.sawDelta.get(sessionId)) {
+      const a = this.attempt.get(sessionId);
+      if (a && a.idx + 1 < a.chain.length) {
+        a.idx += 1;
+        this.host.send(sessionId, { providerId: a.chain[a.idx]!, request: a.request });
+        return; // 吞掉本次 error done，等下一个 provider 接管（同一对话只顺位一次到链尾）
+      }
+    }
     this.core.handleEvent(sessionId, event);
+    if (event.type === 'done') {
+      this.sawDelta.delete(sessionId);
+      this.attempt.delete(sessionId);
+    }
   }
 
   private onNotification(n: Notification): void {
