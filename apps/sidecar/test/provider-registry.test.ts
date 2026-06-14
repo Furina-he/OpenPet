@@ -12,10 +12,9 @@ describe('resolveProvider', () => {
     expect(resolveProvider('nope')).toBeUndefined();
   });
 
-  it('returns undefined for formats not yet wired (anthropic/gemini)', () => {
-    // claude/gemini 在 Task 3.6 接入
-    expect(resolveProvider('claude')).toBeUndefined();
-    expect(resolveProvider('gemini')).toBeUndefined();
+  it('wires anthropic (claude) and gemini (Task 6.4)', () => {
+    expect(typeof resolveProvider('claude')).toBe('function');
+    expect(typeof resolveProvider('gemini')).toBe('function');
   });
 
   it('wires ollama (Phase 5)', () => {
