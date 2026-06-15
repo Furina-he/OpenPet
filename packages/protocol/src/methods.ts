@@ -56,6 +56,21 @@ export const Methods = {
     result: z.object({ ok: z.literal(true) }),
   },
 
+  // --- request/response: Renderer → Main（数据管理，M6；D7 UI 在 M7 接）---
+  'app.storageUsage': {
+    params: z.object({}),
+    result: z.object({
+      dbBytes: z.number().int().nonnegative(),
+      messageCount: z.number().int().nonnegative(),
+      characterCount: z.number().int().nonnegative(),
+    }),
+  },
+  'app.exportData': {
+    // outPath 由 Renderer 经系统保存对话框拿到（M7 接 dialog）；M6 直接收路径。
+    params: z.object({ outPath: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), bytes: z.number().int().nonnegative() }),
+  },
+
   // --- request/response: Renderer → Main（角色包 / 窗口缩放 / 主动行为，M4）---
   'character.current': {
     // 当前角色包（Main 校验过的 manifest）；渲染端用 asset://<characterId>/<model> 取模型。

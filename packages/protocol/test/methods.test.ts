@@ -233,3 +233,31 @@ describe('chat.done error kind (M5)', () => {
     ).toBe(false);
   });
 });
+
+describe('app.* data management (M6)', () => {
+  it('registers app.storageUsage and app.exportData', () => {
+    expect(Methods).toHaveProperty('app.storageUsage');
+    expect(Methods).toHaveProperty('app.exportData');
+  });
+
+  it('app.storageUsage takes empty params and returns a non-negative usage shape', () => {
+    expect(Methods['app.storageUsage'].params.safeParse({}).success).toBe(true);
+    expect(
+      Methods['app.storageUsage'].result.safeParse({ dbBytes: 0, messageCount: 0, characterCount: 0 })
+        .success,
+    ).toBe(true);
+    expect(
+      Methods['app.storageUsage'].result.safeParse({ dbBytes: -1, messageCount: 0, characterCount: 0 })
+        .success,
+    ).toBe(false);
+  });
+
+  it('app.exportData requires a non-empty outPath and returns ok+bytes', () => {
+    expect(
+      Methods['app.exportData'].params.safeParse({ outPath: 'C:/x/backup.dsbak' }).success,
+    ).toBe(true);
+    expect(Methods['app.exportData'].params.safeParse({ outPath: '' }).success).toBe(false);
+    expect(Methods['app.exportData'].result.safeParse({ ok: true, bytes: 1024 }).success).toBe(true);
+    expect(Methods['app.exportData'].result.safeParse({ ok: false, bytes: 0 }).success).toBe(false);
+  });
+});
