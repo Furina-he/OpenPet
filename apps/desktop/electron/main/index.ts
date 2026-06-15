@@ -1,4 +1,5 @@
 import { app, screen, protocol } from 'electron';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -38,12 +39,14 @@ app.whenReady().then(() => {
   const keychain = new Keychain(path.join(app.getPath('userData'), 'secrets.kc'));
   const providerConfig = createProviderConfig({ keychain });
   const providerService = createProviderService({ keychain, httpGetJson: electronHttpGetJson });
+  const dataDir = path.join(app.getPath('userData'), 'data');
+  mkdirSync(dataDir, { recursive: true });
   router = registerIpcRouter({
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
     charactersRoot,
     providerEntryPath,
-    persistPath: path.join(app.getPath('userData'), 'sessions.json'),
+    sqlitePath: path.join(dataDir, 'sessions.db'),
     fetch: {
       agent: electronHttpAgent,
       resolveHost: (url) => providerConfig.resolveHost(url),

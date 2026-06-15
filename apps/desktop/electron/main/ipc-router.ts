@@ -14,6 +14,7 @@ import { ipcMain, BrowserWindow, type WebContents } from 'electron';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { createCharacterService } from './character-service.js';
+import { createConversationStore } from './db/index.js';
 import { createIdleResponder } from './idle-responder.js';
 import { scaledBounds, CHARACTER_BASE_SIZE } from './window-scale.js';
 
@@ -24,8 +25,8 @@ export interface IpcRouterDeps {
   /** 角色包根目录（dev: apps/desktop/characters；打包: resources/characters）。 */
   charactersRoot: string;
   providerEntryPath: string;
-  /** 会话历史 JSON 持久化路径（生产传 userData 下文件；测试可省略）。 */
-  persistPath?: string;
+  /** sessions.db 路径（生产 userData/data/sessions.db；测试省略=纯内存）。 */
+  sqlitePath?: string;
   /** 代理 fetch 网关依赖（Electron net + 白名单 + Keychain 注入）；生产由 index.ts 注入。 */
   fetch?: import('./fetch-gateway.js').FetchGatewayDeps;
   /** 默认 provider id（chat.send 未指定时用）；M5 固定 'openai'，M7 接用户选择。 */
@@ -49,14 +50,25 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     if (win && !win.isDestroyed()) win.webContents.send(`desksoul:notify:${channel}`, params);
   };
 
+  const store = createConversationStore(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {});
+  const characters = createCharacterService(deps.charactersRoot);
   const chat = new ChatService({
     providerEntryPath: deps.providerEntryPath,
     broadcast,
-    ...(deps.persistPath ? { persistPath: deps.persistPath } : {}),
+    store,
+    character: () => {
+      const c = characters.current();
+      return {
+        id: c.characterId,
+        name: c.manifest.name,
+        ...(c.manifest.emotions ? { emotions: Object.keys(c.manifest.emotions) } : {}),
+        ...(c.manifest.actions ? { actions: c.manifest.actions } : {}),
+      };
+    },
+    ...(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
   });
-  const characters = createCharacterService(deps.charactersRoot);
   const idleResponder = createIdleResponder(sendToCharacter);
   // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
   // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
@@ -69,6 +81,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
     'chat.snapshot': (p) => chat.snapshot(p.sessionId, p.limit),
+    'app.storageUsage': () => chat.storageUsage(),
+    'app.exportData': (p) => chat.exportData(p.outPath),
     'character.current': () => characters.current(),
     'character.setScale': (p) => {
       const win = deps.characterWindow();
@@ -113,6 +127,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     dispose: async () => {
       ipcMain.removeHandler('desksoul:rpc');
       await chat.dispose();
+      store.close();
     },
   };
 }
