@@ -1,18 +1,13 @@
 /**
- * SessionStore — Main 内会话历史（chat.snapshot 的数据源）。
+ * SessionStore — 会话运行时状态机（seq / streaming / 当前轮 partial），
+ * 持久化委托给注入的 ConversationStore（M6：JSON → SQLite）。
  *
- * 记录干净文本（BehaviorParser 剥离标签后），不含 behavior 事件。
- * seq：每 session 的 delta 单调序号，appendDelta 返回；渲染端快照重建时以
- * `seq <= snapshot.seq` 丢弃缓冲的重复流事件（chat.stream wire 参数带 seq）。
- *
- * 持久化：JSON 文件节流落盘（M6 换 SQLite 后删除此路径）。
- *  - appendUser / finishAssistant 触发节流写（默认 500ms），dispose 冲洗。
- *  - delta 不触发写：流式中途 Main 崩溃丢当轮 partial，可接受（M6 消除）。
- *  - seq 不持久化：重启后没有跨进程的流，从 0 重新计数即可。
- * 纯模块（不依赖 Electron），路径由构造注入。
+ * 落库时机：user 在 appendUser 立刻 commit；assistant 在 finishAssistant 一次性
+ * commit（含 finishReason + usage）。流式中途 partial 只在内存——Main 崩溃丢当轮
+ * partial（可接受，与旧 JSON 版一致），已封口历史完整可恢复。
+ * seq 不持久化：重启后从 0 重新计数（跨进程无流）。
  */
-import fs from 'node:fs';
-import path from 'node:path';
+import type { ConversationStore } from './db/store.js';
 
 export interface StoredMessage {
   role: 'user' | 'assistant';
@@ -30,148 +25,107 @@ export interface SessionSnapshot {
 }
 
 export interface SessionStoreOptions {
-  /** 提供则启用 JSON 持久化。 */
-  persistPath?: string;
-  /** 落盘节流间隔（默认 500ms；测试调小）。 */
-  persistDelayMs?: number;
+  store: ConversationStore;
+  characterId: string;
+  /** 时间戳源（测试可注入；缺省 Date.now）。 */
+  now?: () => number;
 }
 
-interface PersistShape {
-  version: 1;
-  sessions: Record<string, StoredMessage[]>;
+interface PartialTurn {
+  text: string;
+  tokensIn?: number;
+  tokensOut?: number;
 }
 
 export class SessionStore {
-  private readonly sessions = new Map<string, StoredMessage[]>();
+  private readonly store: ConversationStore;
+  private readonly characterId: string;
+  private readonly now: () => number;
   private readonly seqs = new Map<string, number>();
-  private readonly persistPath: string | undefined;
-  private readonly persistDelayMs: number;
-  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly partials = new Map<string, PartialTurn>(); // 仅 streaming 中的 assistant
 
-  constructor(opts: SessionStoreOptions = {}) {
-    this.persistPath = opts.persistPath;
-    this.persistDelayMs = opts.persistDelayMs ?? 500;
-    if (this.persistPath) this.loadSync(this.persistPath);
-  }
-
-  private loadSync(file: string): void {
-    let raw: string;
-    try {
-      raw = fs.readFileSync(file, 'utf8');
-    } catch {
-      return; // 首次启动无文件
-    }
-    try {
-      const data = JSON.parse(raw) as PersistShape;
-      if (data.version !== 1) return;
-      for (const [id, messages] of Object.entries(data.sessions)) {
-        // 防御：上个进程异常退出可能留下未封口的 assistant 消息 → 封为 error
-        for (const m of messages) {
-          if (m.role === 'assistant' && m.finishReason === null) m.finishReason = 'error';
-        }
-        this.sessions.set(id, messages);
-      }
-    } catch (e) {
-      console.warn('[session-store] corrupt persist file ignored:', e);
-    }
+  constructor(opts: SessionStoreOptions) {
+    this.store = opts.store;
+    this.characterId = opts.characterId;
+    this.now = opts.now ?? (() => Date.now());
   }
 
   appendUser(sessionId: string, text: string): void {
-    this.messagesOf(sessionId).push({ role: 'user', text, finishReason: null });
-    this.schedulePersist();
+    this.store.appendMessage({
+      characterId: this.characterId,
+      sessionId,
+      role: 'user',
+      text,
+      ts: this.now(),
+      finishReason: null,
+    });
   }
 
   beginAssistant(sessionId: string): void {
-    this.messagesOf(sessionId).push({ role: 'assistant', text: '', finishReason: null });
+    this.partials.set(sessionId, { text: '' });
   }
 
   /** 累积当前流式回复；返回本 session 单调递增的 delta 序号。 */
   appendDelta(sessionId: string, text: string): number {
-    const messages = this.messagesOf(sessionId);
-    let last = messages[messages.length - 1];
-    if (!last || last.role !== 'assistant' || last.finishReason !== null) {
-      // 防御：delta 本身就是 assistant 回合存在的证据，缺 begin 时补一条
-      last = { role: 'assistant', text: '', finishReason: null };
-      messages.push(last);
-    }
-    last.text += text;
+    const p = this.partials.get(sessionId) ?? { text: '' };
+    p.text += text;
+    this.partials.set(sessionId, p);
     const seq = (this.seqs.get(sessionId) ?? 0) + 1;
     this.seqs.set(sessionId, seq);
     return seq;
   }
 
   finishAssistant(sessionId: string, reason: 'stop' | 'cancel' | 'error'): void {
-    const messages = this.sessions.get(sessionId);
-    const last = messages?.[messages.length - 1];
-    if (last && last.role === 'assistant' && last.finishReason === null) {
-      last.finishReason = reason;
-    }
-    this.schedulePersist();
+    const p = this.partials.get(sessionId);
+    if (!p) return; // 没有在途 assistant（防御）
+    this.partials.delete(sessionId);
+    this.store.appendMessage({
+      characterId: this.characterId,
+      sessionId,
+      role: 'assistant',
+      text: p.text,
+      ts: this.now(),
+      finishReason: reason,
+      tokensIn: p.tokensIn ?? null,
+      tokensOut: p.tokensOut ?? null,
+    });
   }
 
-  /** 把本轮 usage 写到当前 assistant 消息（provider 的 usage 事件回流时调用）。 */
+  /** 把本轮 usage 暂存到当前 partial（finishAssistant 落库时一起写）。 */
   recordUsage(sessionId: string, tokensIn: number, tokensOut: number): void {
-    const messages = this.sessions.get(sessionId);
-    const last = messages?.[messages.length - 1];
-    if (last && last.role === 'assistant') {
-      last.tokensIn = tokensIn;
-      last.tokensOut = tokensOut;
-      this.schedulePersist();
+    const p = this.partials.get(sessionId);
+    if (p) {
+      p.tokensIn = tokensIn;
+      p.tokensOut = tokensOut;
     }
   }
 
   isStreaming(sessionId: string): boolean {
-    const messages = this.sessions.get(sessionId);
-    const last = messages?.[messages.length - 1];
-    return !!last && last.role === 'assistant' && last.finishReason === null;
+    return this.partials.has(sessionId);
   }
 
   snapshot(sessionId: string, limit = 50): SessionSnapshot {
-    const messages = this.sessions.get(sessionId) ?? [];
+    const rows = this.store.recentMessages(this.characterId, sessionId, limit);
+    const messages: StoredMessage[] = rows.map((r) => ({
+      role: r.role,
+      text: r.text,
+      finishReason: r.finishReason,
+      ...(r.tokensIn != null ? { tokensIn: r.tokensIn } : {}),
+      ...(r.tokensOut != null ? { tokensOut: r.tokensOut } : {}),
+    }));
+    const p = this.partials.get(sessionId);
+    if (p) messages.push({ role: 'assistant', text: p.text, finishReason: null });
     return {
       sessionId,
-      messages: messages.slice(-limit).map((m) => ({ ...m })),
-      streaming: this.isStreaming(sessionId),
+      messages,
+      streaming: !!p,
       seq: this.seqs.get(sessionId) ?? 0,
     };
   }
 
-  private messagesOf(sessionId: string): StoredMessage[] {
-    let list = this.sessions.get(sessionId);
-    if (!list) {
-      list = [];
-      this.sessions.set(sessionId, list);
-    }
-    return list;
-  }
-
-  private schedulePersist(): void {
-    if (!this.persistPath || this.persistTimer) return;
-    this.persistTimer = setTimeout(() => {
-      this.persistTimer = null;
-      this.writeSync();
-    }, this.persistDelayMs);
-  }
-
-  private writeSync(): void {
-    if (!this.persistPath) return;
-    const data: PersistShape = { version: 1, sessions: Object.fromEntries(this.sessions) };
-    const tmp = `${this.persistPath}.tmp`;
-    try {
-      fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
-      fs.writeFileSync(tmp, JSON.stringify(data), 'utf8');
-      fs.renameSync(tmp, this.persistPath); // 原子替换，避免半截 JSON
-    } catch (e) {
-      console.warn('[session-store] persist failed:', e);
-    }
-  }
-
-  /** 退出前冲洗未落盘的变更。 */
+  /** 持久化由 store 负责；此处仅清运行时态（app 退出 / 服务 dispose）。 */
   dispose(): void {
-    if (this.persistTimer) {
-      clearTimeout(this.persistTimer);
-      this.persistTimer = null;
-      this.writeSync();
-    }
+    this.partials.clear();
+    this.seqs.clear();
   }
 }
