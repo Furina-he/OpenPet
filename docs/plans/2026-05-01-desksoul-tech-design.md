@@ -374,6 +374,7 @@ CREATE TABLE messages (
   raw         TEXT,                     -- 原始含标签文本
   ts          INTEGER NOT NULL,
   tokens_in   INTEGER, tokens_out INTEGER,
+  finish_reason TEXT,                  -- M6 扩展：stop|cancel|error|NULL（assistant 封口态，对齐 chat.done 运行协议）
   provider    TEXT, model TEXT
 );
 CREATE INDEX idx_msg_char_session_ts ON messages(character_id, session_id, ts);
