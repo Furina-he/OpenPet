@@ -1,10 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
-import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ChatService } from '../electron/main/chat-service';
+import { MemoryStore } from '../electron/main/db/memory-store';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -194,25 +193,22 @@ describe('ChatService · 守卫与恢复', () => {
     expect(snap.messages[1]!.finishReason).toBe('error');
   });
 
-  it('persists across service restarts (Main 重启的 chat.snapshot 数据源)', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'desksoul-svc-')), 'sessions.json');
+  it('reads history from the injected store across service restarts (chat.snapshot 数据源)', async () => {
+    const store = new MemoryStore();
     const sent: Sent[] = [];
     svc = new ChatService({
       providerEntryPath: PROVIDER_ENTRY,
       broadcast: (channel, params) => sent.push({ channel, params }),
       host: { intervalMs: 0 },
       queue: { flushIntervalMs: 5 },
-      persistPath: file,
+      store,
     });
     svc.send('s1', '第一轮');
     await until(() => !!doneOf(sent, 's1'), 'done');
-    await svc.dispose(); // 冲洗落盘
+    await svc.dispose();
 
-    svc = new ChatService({
-      providerEntryPath: PROVIDER_ENTRY,
-      broadcast: () => {},
-      persistPath: file,
-    });
+    // 新 ChatService 复用同一 ConversationStore（模拟 Main 重启后从持久层重建视图）
+    svc = new ChatService({ providerEntryPath: PROVIDER_ENTRY, broadcast: () => {}, store });
     const snap = svc.snapshot('s1');
     expect(snap.messages[0]!.text).toBe('第一轮');
     expect(snap.messages[1]!.text).toContain('热可可');
@@ -283,7 +279,8 @@ describe('ChatService · assembles messages (M5)', () => {
     const lastStream = sent.filter((s) => s.channel === 'chat.stream').at(-1)!;
     const parsed = JSON.parse(Buffer.from(lastStream.params.text.slice(4), 'base64').toString('utf8'));
     const roles = parsed.request.messages.map((m: { role: string }) => m.role);
-    expect(roles).toEqual(['user', 'assistant', 'user']);
+    expect(roles).toEqual(['system', 'user', 'assistant', 'user']); // M6 ContextAssembler 注入 system
+    expect(parsed.request.messages[0].role).toBe('system');
     expect(parsed.request.messages.at(-1)).toEqual({ role: 'user', content: 'second' });
     expect(parsed.providerId).toBe('openai');
   });
@@ -414,5 +411,52 @@ describe('ChatService · tool_call 回灌 (M5)', () => {
     expect(text).toContain('result=echoed:');
     const dones = sent.filter((s) => s.channel === 'chat.done');
     expect(dones).toHaveLength(1); // 回灌轮的 done 才广播；首轮 tool_call 的 done 被吞
+  });
+});
+
+describe('ChatService · 状态层 persona (M6)', () => {
+  it('persists messages to the injected store and evolves persona after a completed turn', async () => {
+    const store = new MemoryStore();
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      store,
+    });
+    svc.send('s1', '你好');
+    await until(() => !!doneOf(sent, 's1'), 'done');
+    expect(store.recentMessages('default', 's1', 10)[0]).toMatchObject({
+      role: 'user',
+      text: '你好',
+    });
+    const persona = store.getPersonaState('default');
+    expect(persona?.turns).toBe(1);
+    expect(persona?.affinity).toBe(51); // 默认 50 + 1
+  });
+
+  it('does not evolve persona on a cancelled turn', async () => {
+    const store = new MemoryStore();
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      host: { intervalMs: 40 },
+      queue: { flushIntervalMs: 5 },
+      store,
+    });
+    svc.send('s1', 'hi');
+    await until(() => sent.some((s) => s.channel === 'chat.stream'), 'first delta');
+    svc.cancel('s1');
+    await until(() => !!doneOf(sent, 's1'), 'cancel done');
+    expect(store.getPersonaState('default')).toBeNull(); // 取消不计一轮
+  });
+
+  it('storageUsage delegates to the injected store', async () => {
+    const store = new MemoryStore();
+    store.appendMessage({ characterId: 'default', sessionId: 's', role: 'user', text: 'x', ts: 1 });
+    svc = new ChatService({ providerEntryPath: PROVIDER_ENTRY, broadcast: () => {}, store });
+    expect(svc.storageUsage().messageCount).toBe(1);
   });
 });

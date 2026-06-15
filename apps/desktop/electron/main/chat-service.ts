@@ -2,16 +2,27 @@
  * ChatService — chat 域的 Main 侧编排（纯模块，不依赖 Electron）。
  *
  * 管线：ProviderHost(worker 监督) → ConversationCore(双轨拆分) →
- *       SessionStore(记录/快照/seq) + NotificationQueue(背压) → broadcast。
+ *       SessionStore(运行时状态机/快照/seq) + ConversationStore(SQLite 持久化) +
+ *       NotificationQueue(背压) → broadcast。
+ *
+ * M6：上下文经 ContextAssembler 组装（system prompt 人设+persona + 最近 20 轮）；
+ *     每轮 done(stop) 后用本轮 intent 演进 persona_state；数据管理（storageUsage/
+ *     exportData）下沉到这里（ipc-router 暴露为 app.* RPC）。
  *
  * 取消三层传播（tech-design §3 要点 3）：renderer 发 chat.cancel 后——
  *   ① core.cancel：迟到 delta 丢弃（半截标签 buffer 一并废弃）
  *   ② queue.dropSession：待发通知瞬间清空 → UI 立即停
  *   ③ host.cancel：协作取消 + 200ms watchdog 强杀兜底
  * done(cancel) 回流时封口存储并 urgent flush，全链路 ≤ 宽限期。
- *
- * plugin.*（Worker → Main）经 PluginGateway 校验分发；M5 扩展为多 worker。
  */
+import { statSync } from 'node:fs';
+import {
+  DEFAULT_PERSONA_STATE,
+  updatePersonaState,
+  type ChatEvent,
+  type ChatRequest,
+  type StorageUsage,
+} from '@desksoul/protocol';
 import { ConversationCore, type Notification } from './conversation-core.js';
 import { ProviderHost, type ProviderHostOptions } from './provider-host.js';
 import { SessionStore, type SessionSnapshot } from './session-store.js';
@@ -22,14 +33,27 @@ import {
   type PluginGatewayDeps,
 } from './plugin-gateway.js';
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
+import { createConversationStore, MemoryStore, type ConversationStore } from './db/index.js';
+import { assembleContext } from './context-assembler.js';
+import { exportDsbak } from './db/export-bundle.js';
 import { RpcError } from './router.js';
-import type { ChatEvent, ChatRequest } from '@desksoul/protocol';
+
+export interface CharacterRef {
+  id: string;
+  name: string;
+  emotions?: readonly string[];
+  actions?: readonly string[];
+}
 
 export interface ChatServiceOptions {
   providerEntryPath: string;
   broadcast: (channel: string, params: unknown) => void;
-  /** 会话历史 JSON 持久化路径；缺省纯内存（测试）。 */
-  persistPath?: string;
+  /** 持久化后端实例；缺省纯内存 MemoryStore（测试）。生产由 ipc-router 注入 SqliteStore。 */
+  store?: ConversationStore;
+  /** 当前角色（ContextAssembler + 角色隔离）；缺省 default/小灵。 */
+  character?: () => CharacterRef;
+  /** SqliteStore 源 db 路径（导出快照用）；缺省导出仅含 manifest。 */
+  sqlitePath?: string;
   queue?: NotificationQueueOptions;
   host?: ProviderHostOptions;
   plugins?: PluginGatewayDeps;
@@ -41,8 +65,13 @@ export interface ChatServiceOptions {
   providerChain?: string[];
 }
 
+const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };
+
 export class ChatService {
-  private readonly store: SessionStore;
+  private readonly conv: ConversationStore;
+  private readonly session: SessionStore;
+  private readonly getCharacter: () => CharacterRef;
+  private readonly sqlitePath: string | undefined;
   private readonly queue: NotificationQueue;
   private readonly core: ConversationCore;
   private readonly host: ProviderHost;
@@ -62,11 +91,16 @@ export class ChatService {
     string,
     Array<{ id: string; name: string; args: unknown }>
   >();
+  /** 本轮最近一次 intent（驱动每轮结束的 persona 演进）。 */
+  private readonly lastIntent = new Map<string, { mood: string; energy: string }>();
 
   constructor(opts: ChatServiceOptions) {
     this.providerChain =
       opts.providerChain ?? (opts.defaultProviderId ? [opts.defaultProviderId] : []);
-    this.store = new SessionStore(opts.persistPath ? { persistPath: opts.persistPath } : {});
+    this.conv = opts.store ?? new MemoryStore();
+    this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
+    this.sqlitePath = opts.sqlitePath;
+    this.session = new SessionStore({ store: this.conv, characterId: this.getCharacter().id });
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
     this.plugins = createPluginGateway(opts.plugins ?? {});
     this.core = new ConversationCore((n) => this.onNotification(n));
@@ -88,16 +122,17 @@ export class ChatService {
   }
 
   send(sessionId: string, text: string, providerId?: string): { ok: true } {
-    if (this.store.isStreaming(sessionId)) {
+    if (this.session.isStreaming(sessionId)) {
       throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
     }
     const chain = providerId ? [providerId] : this.providerChain;
-    // 组装 messages：历史（已封口的 user/assistant 干净文本）+ 当前 user 输入
-    const history = this.store
-      .snapshot(sessionId, 40)
-      .messages.filter((m) => m.text.length > 0)
-      .map((m) => ({ role: m.role, content: m.text }));
-    const request = { messages: [...history, { role: 'user' as const, content: text }] };
+    // ContextAssembler：system prompt(人设+persona+行为标签规约) + 最近 20 轮 + 当前 user。
+    const request = assembleContext({
+      store: this.conv,
+      character: this.getCharacter(),
+      sessionId,
+      userText: text,
+    });
     try {
       if (chain.length > 0) {
         this.attempt.set(sessionId, { chain, idx: 0, request });
@@ -110,14 +145,14 @@ export class ChatService {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
     // host.send 成功才入账：失败的发送不进历史
-    this.store.appendUser(sessionId, text);
-    this.store.beginAssistant(sessionId);
+    this.session.appendUser(sessionId, text);
+    this.session.beginAssistant(sessionId);
     return { ok: true };
   }
 
   cancel(sessionId: string): { ok: true } {
     // 无在途流时不设 cancelling 标记——否则标记无 done 来清，会吞掉下一个流
-    if (!this.store.isStreaming(sessionId)) return { ok: true };
+    if (!this.session.isStreaming(sessionId)) return { ok: true };
     this.core.cancel(sessionId); // ①
     this.queue.dropSession(sessionId); // ②
     this.host.cancel(sessionId); // ③
@@ -125,13 +160,24 @@ export class ChatService {
   }
 
   snapshot(sessionId: string, limit?: number): SessionSnapshot {
-    return this.store.snapshot(sessionId, limit);
+    return this.session.snapshot(sessionId, limit);
+  }
+
+  /** D7 存储占用（app.storageUsage 后端）。 */
+  storageUsage(): StorageUsage {
+    return this.conv.storageUsage();
+  }
+
+  /** 一键导出 .dsbak（app.exportData 后端）：DB + manifest，无密钥。 */
+  async exportData(outPath: string): Promise<{ ok: true; bytes: number }> {
+    await exportDsbak(this.conv, outPath, this.sqlitePath ? { sqlitePath: this.sqlitePath } : {});
+    return { ok: true, bytes: statSync(outPath).size };
   }
 
   /** provider 事件入口：usage 落账；tool_call 收集；首 delta 前 error 降级；其余交 ConversationCore。 */
   private onProviderEvent(sessionId: string, event: ChatEvent): void {
     if (event.type === 'usage') {
-      this.store.recordUsage(sessionId, event.prompt, event.completion);
+      this.session.recordUsage(sessionId, event.prompt, event.completion);
       return;
     }
     if (event.type === 'tool_call') {
@@ -207,7 +253,7 @@ export class ChatService {
     switch (n.channel) {
       case 'chat.stream': {
         // 先入账拿 seq 再入队：保证 snapshot.seq ≥ 一切已广播/待广播的 seq
-        const seq = this.store.appendDelta(n.sessionId, n.params.text);
+        const seq = this.session.appendDelta(n.sessionId, n.params.text);
         this.queue.push({
           channel: n.channel,
           sessionId: n.sessionId,
@@ -215,8 +261,15 @@ export class ChatService {
         });
         return;
       }
+      case 'behavior.setIntent':
+        // 记录本轮基调，done(stop) 时演进 persona；同时照常下发渲染端。
+        this.lastIntent.set(n.sessionId, { mood: n.params.mood, energy: n.params.energy });
+        this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params });
+        return;
       case 'chat.done':
-        this.store.finishAssistant(n.sessionId, n.params.finishReason);
+        this.session.finishAssistant(n.sessionId, n.params.finishReason);
+        if (n.params.finishReason === 'stop') this.updatePersona(n.sessionId);
+        this.lastIntent.delete(n.sessionId);
         this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params }, {
           urgent: true,
         });
@@ -224,6 +277,15 @@ export class ChatService {
       default:
         this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params });
     }
+  }
+
+  /** 每轮结束演进 persona_state（亲密度 +1、本轮 intent、互动时间）。 */
+  private updatePersona(sessionId: string): void {
+    const cid = this.getCharacter().id;
+    const prev = this.conv.getPersonaState(cid) ?? DEFAULT_PERSONA_STATE;
+    const ts = Date.now();
+    const intent = this.lastIntent.get(sessionId);
+    this.conv.putPersonaState(cid, updatePersonaState(prev, { ...(intent ?? {}), ts }), ts);
   }
 
   /** 仅测试：模拟 provider worker 崩溃。 */
@@ -234,7 +296,7 @@ export class ChatService {
   async dispose(): Promise<void> {
     this.core.dispose(); // 先停：不再向 queue 产出（stale/gate 定时器全清）
     this.queue.dispose();
-    this.store.dispose();
+    this.session.dispose();
     await this.host.dispose();
   }
 }
