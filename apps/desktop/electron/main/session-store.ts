@@ -26,7 +26,12 @@ export interface SessionSnapshot {
 
 export interface SessionStoreOptions {
   store: ConversationStore;
-  characterId: string;
+  /**
+   * 角色 id：传字符串=固定；传函数=每次读写动态解析。
+   * ChatService 注入 `() => current().id`，使落库/快照始终跟随当前角色——
+   * 消除"构造时固化 id 而 persona 演进用动态 id"的写串隐患（tech-design §6 角色隔离）。
+   */
+  characterId: string | (() => string);
   /** 时间戳源（测试可注入；缺省 Date.now）。 */
   now?: () => number;
 }
@@ -39,20 +44,21 @@ interface PartialTurn {
 
 export class SessionStore {
   private readonly store: ConversationStore;
-  private readonly characterId: string;
+  private readonly characterId: () => string;
   private readonly now: () => number;
   private readonly seqs = new Map<string, number>();
   private readonly partials = new Map<string, PartialTurn>(); // 仅 streaming 中的 assistant
 
   constructor(opts: SessionStoreOptions) {
     this.store = opts.store;
-    this.characterId = opts.characterId;
+    const cid = opts.characterId;
+    this.characterId = typeof cid === 'function' ? cid : () => cid;
     this.now = opts.now ?? (() => Date.now());
   }
 
   appendUser(sessionId: string, text: string): void {
     this.store.appendMessage({
-      characterId: this.characterId,
+      characterId: this.characterId(),
       sessionId,
       role: 'user',
       text,
@@ -80,7 +86,7 @@ export class SessionStore {
     if (!p) return; // 没有在途 assistant（防御）
     this.partials.delete(sessionId);
     this.store.appendMessage({
-      characterId: this.characterId,
+      characterId: this.characterId(),
       sessionId,
       role: 'assistant',
       text: p.text,
@@ -105,7 +111,7 @@ export class SessionStore {
   }
 
   snapshot(sessionId: string, limit = 50): SessionSnapshot {
-    const rows = this.store.recentMessages(this.characterId, sessionId, limit);
+    const rows = this.store.recentMessages(this.characterId(), sessionId, limit);
     const messages: StoredMessage[] = rows.map((r) => ({
       role: r.role,
       text: r.text,

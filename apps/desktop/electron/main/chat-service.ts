@@ -67,6 +67,22 @@ export interface ChatServiceOptions {
 
 const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };
 
+/** 一轮对话在途的 provider 编排态（降级链 + 工具回灌）；ChatService 内部用。 */
+interface TurnState {
+  /** 降级链 [primary, ...fallbacks]；空数组 = mock 路径（无 provider 配置）。 */
+  chain: string[];
+  /** 当前尝试的链下标。 */
+  idx: number;
+  /** 复用的请求（工具回灌时在末尾追加 tool 消息）。 */
+  request: ChatRequest;
+  /** 本轮是否已产出 delta（首 delta 后不再降级）。 */
+  sawDelta: boolean;
+  /** 本轮是否已做过工具回灌（单轮，防无限循环）。 */
+  toolRound: boolean;
+  /** 累积本轮 provider 产出的 tool_call，done(stop) 时统一执行 + 回灌。 */
+  pendingTools: Array<{ id: string; name: string; args: unknown }>;
+}
+
 export class ChatService {
   private readonly conv: ConversationStore;
   private readonly session: SessionStore;
@@ -77,21 +93,18 @@ export class ChatService {
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
   private readonly providerChain: string[];
-  /** 本轮是否已产出 delta（首 delta 后不再降级）。 */
-  private readonly sawDelta = new Map<string, boolean>();
-  /** 在途降级尝试：链 + 当前下标 + 复用的 request。 */
-  private readonly attempt = new Map<
-    string,
-    { chain: string[]; idx: number; request: ChatRequest }
-  >();
-  /** 本轮是否已做过工具回灌（单轮，防无限循环）。 */
-  private readonly toolRound = new Map<string, boolean>();
-  /** 累积本轮 provider 产出的 tool_call，done 时统一执行 + 回灌。 */
-  private readonly pendingTools = new Map<
-    string,
-    Array<{ id: string; name: string; args: unknown }>
-  >();
-  /** 本轮最近一次 intent（驱动每轮结束的 persona 演进）。 */
+  /**
+   * 在途轮的 provider 编排态（降级/首delta/工具回灌）。生命周期绑定「provider
+   * 事件流」：done 时随 onProviderEvent 清理。一轮一个对象，取代原先 4 张并行 Map。
+   */
+  private readonly turns = new Map<string, TurnState>();
+  /**
+   * 本轮最近一次 intent（驱动每轮结束的 persona 演进）。
+   * **刻意独立于 turns**：它绑定的是「通知流」而非「provider 事件流」——<wait/>
+   * 发射门会把 chat.done 通知延后到 provider 流早已结束之后，updatePersona 那时才读
+   * intent。若并入 turns 随 provider-event done 一起清，门控的 done 会读到空 intent，
+   * persona 静默丢基调。故由 onNotification(chat.done) 负责删（见下）。
+   */
   private readonly lastIntent = new Map<string, { mood: string; energy: string }>();
 
   constructor(opts: ChatServiceOptions) {
@@ -100,7 +113,10 @@ export class ChatService {
     this.conv = opts.store ?? new MemoryStore();
     this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
     this.sqlitePath = opts.sqlitePath;
-    this.session = new SessionStore({ store: this.conv, characterId: this.getCharacter().id });
+    this.session = new SessionStore({
+      store: this.conv,
+      characterId: () => this.getCharacter().id,
+    });
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
     this.plugins = createPluginGateway(opts.plugins ?? {});
     this.core = new ConversationCore((n) => this.onNotification(n));
@@ -133,15 +149,19 @@ export class ChatService {
       sessionId,
       userText: text,
     });
+    this.turns.set(sessionId, {
+      chain,
+      idx: 0,
+      request,
+      sawDelta: false,
+      toolRound: false,
+      pendingTools: [],
+    });
     try {
-      if (chain.length > 0) {
-        this.attempt.set(sessionId, { chain, idx: 0, request });
-        this.sawDelta.set(sessionId, false);
-        this.host.send(sessionId, { providerId: chain[0]!, request });
-      } else {
-        this.host.send(sessionId, {}); // mock 路径（无 provider 配置）
-      }
+      // chain 空 = mock 路径（无 provider 配置）：不带 providerId/request。
+      this.host.send(sessionId, chain.length > 0 ? { providerId: chain[0]!, request } : {});
     } catch {
+      this.turns.delete(sessionId); // 失败的发送不留在途态
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
     // host.send 成功才入账：失败的发送不进历史
@@ -176,48 +196,52 @@ export class ChatService {
 
   /** provider 事件入口：usage 落账；tool_call 收集；首 delta 前 error 降级；其余交 ConversationCore。 */
   private onProviderEvent(sessionId: string, event: ChatEvent): void {
+    const turn = this.turns.get(sessionId);
     if (event.type === 'usage') {
       this.session.recordUsage(sessionId, event.prompt, event.completion);
       return;
     }
     if (event.type === 'tool_call') {
-      const list = this.pendingTools.get(sessionId) ?? [];
-      list.push({ id: event.id, name: event.name, args: event.args });
-      this.pendingTools.set(sessionId, list);
+      turn?.pendingTools.push({ id: event.id, name: event.name, args: event.args });
       return; // 不进双轨
     }
-    if (event.type === 'delta') this.sawDelta.set(sessionId, true);
-    if (event.type === 'done' && event.finishReason === 'error' && !this.sawDelta.get(sessionId)) {
-      const a = this.attempt.get(sessionId);
-      if (a && a.idx + 1 < a.chain.length) {
-        a.idx += 1;
-        this.host.send(sessionId, { providerId: a.chain[a.idx]!, request: a.request });
-        return; // 吞掉本次 error done，等下一个 provider 接管（同一对话只顺位一次到链尾）
+    if (event.type === 'delta' && turn) turn.sawDelta = true;
+    // 首 delta 前 error → 顺位降级（同一对话只顺位一次到链尾）。
+    if (event.type === 'done' && event.finishReason === 'error' && turn && !turn.sawDelta) {
+      if (turn.idx + 1 < turn.chain.length) {
+        turn.idx += 1;
+        try {
+          this.host.send(sessionId, { providerId: turn.chain[turn.idx]!, request: turn.request });
+          return; // 吞掉本次 error done，等下一个 provider 接管
+        } catch {
+          // worker 不可用（如刚崩溃、onDeath 正在清算在途流）：无法顺位重试。
+          // 必须吞掉异常——否则会冒泡打断 onDeath 的清算/重生调度并让 session 永挂——
+          // 落到下方按 error 封口本轮。
+        }
       }
     }
-    if (event.type === 'done' && event.finishReason === 'stop') {
-      const tools = this.pendingTools.get(sessionId);
-      const att = this.attempt.get(sessionId);
-      if (tools && tools.length > 0 && att && !this.toolRound.get(sessionId)) {
-        this.toolRound.set(sessionId, true);
-        this.pendingTools.delete(sessionId);
-        void this.runToolsAndReprompt(sessionId, att, tools);
-        return; // 吞掉本轮 done，等回灌轮
-      }
+    // done(stop) 且本轮有未回灌的 tool_call → 执行 + 回灌一轮。
+    if (
+      event.type === 'done' &&
+      event.finishReason === 'stop' &&
+      turn &&
+      turn.pendingTools.length > 0 &&
+      !turn.toolRound
+    ) {
+      turn.toolRound = true;
+      const tools = turn.pendingTools;
+      turn.pendingTools = [];
+      void this.runToolsAndReprompt(sessionId, turn, tools);
+      return; // 吞掉本轮 done，等回灌轮
     }
     this.core.handleEvent(sessionId, event);
-    if (event.type === 'done') {
-      this.sawDelta.delete(sessionId);
-      this.attempt.delete(sessionId);
-      this.toolRound.delete(sessionId);
-      this.pendingTools.delete(sessionId);
-    }
+    if (event.type === 'done') this.turns.delete(sessionId);
   }
 
   /** 执行 tool_call（经 PluginGateway.invokeTool）→ tool 消息回灌 → 同 provider 重发一次。 */
   private async runToolsAndReprompt(
     sessionId: string,
-    att: { chain: string[]; idx: number; request: ChatRequest },
+    turn: TurnState,
     tools: Array<{ id: string; name: string; args: unknown }>,
   ): Promise<void> {
     const toolMessages: Array<{ role: 'tool'; content: string }> = [];
@@ -244,9 +268,8 @@ export class ChatService {
         content: typeof result === 'string' ? result : JSON.stringify(result),
       });
     }
-    const nextRequest = { ...att.request, messages: [...att.request.messages, ...toolMessages] };
-    this.attempt.set(sessionId, { ...att, request: nextRequest });
-    this.host.send(sessionId, { providerId: att.chain[att.idx]!, request: nextRequest });
+    turn.request = { ...turn.request, messages: [...turn.request.messages, ...toolMessages] };
+    this.host.send(sessionId, { providerId: turn.chain[turn.idx]!, request: turn.request });
   }
 
   private onNotification(n: Notification): void {
@@ -270,9 +293,12 @@ export class ChatService {
         this.session.finishAssistant(n.sessionId, n.params.finishReason);
         if (n.params.finishReason === 'stop') this.updatePersona(n.sessionId);
         this.lastIntent.delete(n.sessionId);
-        this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params }, {
-          urgent: true,
-        });
+        this.queue.push(
+          { channel: n.channel, sessionId: n.sessionId, params: n.params },
+          {
+            urgent: true,
+          },
+        );
         return;
       default:
         this.queue.push({ channel: n.channel, sessionId: n.sessionId, params: n.params });

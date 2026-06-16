@@ -249,7 +249,9 @@ describe('ChatService · fetch gateway (M5)', () => {
           sink.end();
         },
         resolveHost: () => ({ providerId: 'openai' }),
-        injectAuth: async (_id, _url, h) => ({ headers: { ...h, authorization: 'Bearer injected' } }),
+        injectAuth: async (_id, _url, h) => ({
+          headers: { ...h, authorization: 'Bearer injected' },
+        }),
       },
     });
     svc.send('s1', 'hi');
@@ -277,7 +279,9 @@ describe('ChatService · assembles messages (M5)', () => {
     svc.send('s1', 'second');
     await until(() => sent.filter((s) => s.channel === 'chat.done').length === 2, 'second done');
     const lastStream = sent.filter((s) => s.channel === 'chat.stream').at(-1)!;
-    const parsed = JSON.parse(Buffer.from(lastStream.params.text.slice(4), 'base64').toString('utf8'));
+    const parsed = JSON.parse(
+      Buffer.from(lastStream.params.text.slice(4), 'base64').toString('utf8'),
+    );
     const roles = parsed.request.messages.map((m: { role: string }) => m.role);
     expect(roles).toEqual(['system', 'user', 'assistant', 'user']); // M6 ContextAssembler 注入 system
     expect(parsed.request.messages[0].role).toBe('system');
@@ -356,6 +360,7 @@ describe('ChatService · usage 落账 (M5)', () => {
 
 describe('ChatService · provider fallback (M5)', () => {
   const FB_ENTRY = path.join(__dirname, 'fixtures/fallback-worker.mjs');
+  const CRASH_ON_SEND_ENTRY = path.join(__dirname, 'fixtures/crash-on-send-worker.mjs');
 
   it('falls back to the next provider when the first errors before any delta', async () => {
     const sent: Sent[] = [];
@@ -388,6 +393,24 @@ describe('ChatService · provider fallback (M5)', () => {
     const dones = sent.filter((s) => s.channel === 'chat.done');
     expect(dones).toHaveLength(1);
     expect(dones[0].params.finishReason).toBe('stop');
+  });
+
+  it('seals an error done and still schedules respawn when the worker crashes before first delta (chain configured)', async () => {
+    // 回归：onDeath 清算里的降级 re-send 遇到 worker 已死会抛错；若未捕获，会打断
+    // 重生调度并让 session 永挂。这里钉死：本 session 收到 error done + 重生被调度。
+    const sent: Sent[] = [];
+    let respawns = 0;
+    svc = new ChatService({
+      providerEntryPath: CRASH_ON_SEND_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      providerChain: ['bad', 'good'],
+      queue: { flushIntervalMs: 5 },
+      host: { baseBackoffMs: 50, onRespawnScheduled: () => respawns++ },
+    });
+    svc.send('s1', 'hi');
+    await until(() => !!doneOf(sent, 's1'), 'sealed error done after crash', 2000);
+    expect(doneOf(sent, 's1')!.params.finishReason).toBe('error');
+    expect(respawns).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -458,5 +481,29 @@ describe('ChatService · 状态层 persona (M6)', () => {
     store.appendMessage({ characterId: 'default', sessionId: 's', role: 'user', text: 'x', ts: 1 });
     svc = new ChatService({ providerEntryPath: PROVIDER_ENTRY, broadcast: () => {}, store });
     expect(svc.storageUsage().messageCount).toBe(1);
+  });
+});
+
+describe('ChatService · 动态角色解析（C 重构）', () => {
+  it('persists under the current character, not the one captured at construction', async () => {
+    const store = new MemoryStore();
+    const sent: Sent[] = [];
+    let charId = 'alice';
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      store,
+      character: () => ({ id: charId, name: 'X' }),
+    });
+    svc.send('s1', 'hi-alice');
+    await until(() => sent.filter((s) => s.channel === 'chat.done').length === 1, 'alice done');
+    charId = 'bob';
+    svc.send('s2', 'hi-bob');
+    await until(() => sent.filter((s) => s.channel === 'chat.done').length === 2, 'bob done');
+
+    expect(store.recentMessages('alice', 's1', 10).map((m) => m.text)).toContain('hi-alice');
+    expect(store.recentMessages('bob', 's2', 10).map((m) => m.text)).toContain('hi-bob');
   });
 });
