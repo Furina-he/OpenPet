@@ -71,6 +71,10 @@ export const Methods = {
     params: z.object({ outPath: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), bytes: z.number().int().nonnegative() }),
   },
+  'app.openExternal': {
+    params: z.object({ url: z.string().url() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
 
   // --- request/response: Renderer → Main（应用偏好，M7a；UI 在 D 系列）---
   'app.prefs.getAll': {
