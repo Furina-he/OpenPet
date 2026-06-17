@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron';
 import type { Prefs, PrefKey } from '@desksoul/protocol';
+import { scaledBounds } from '../window-scale.js';
 
 /**
  * Main 侧副作用表：pref → 系统状态实际作用。set() 时与启动 hydrate 时各跑一遍。
@@ -11,6 +12,8 @@ export type PrefEffects = Partial<{ [K in PrefKey]: (value: Prefs[K]) => void }>
 export interface EffectsDeps {
   characterWindow?: () => BrowserWindow | null;
   setLoginItem?: (open: boolean) => void;
+  /** 缩放后回写 ipc-router 的 characterSize 真源（moveBy 锁尺寸用）。 */
+  setCharacterSize?: (size: { width: number; height: number }) => void;
   broadcast?: (channel: string, params: unknown) => void;
 }
 
@@ -25,6 +28,13 @@ export function createPrefEffects(deps: EffectsDeps = {}): PrefEffects {
     'general.launchAtLogin': (v) => setLoginItem(v),
     'display.alwaysOnTop': (v) => win()?.setAlwaysOnTop(v),
     'display.clickThrough': (v) => win()?.setIgnoreMouseEvents(v, { forward: true }),
+    'display.characterScale': (v) => {
+      const w = win();
+      if (!w) return;
+      const b = scaledBounds(w.getBounds(), v);
+      deps.setCharacterSize?.({ width: b.width, height: b.height });
+      w.setBounds(b);
+    },
   };
 }
 

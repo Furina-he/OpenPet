@@ -89,19 +89,22 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   const idleResponder = createIdleResponder(sendToCharacter);
   // 应用偏好（M7a）：单写者 PrefsStore + 空副作用 seam。启动 hydrate 施加 Main 侧副作用。
   const prefsStore = deps.prefsStore ?? createPrefsStore({});
+  // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
+  // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
+  //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。
+  let characterSize: { width: number; height: number } = { ...CHARACTER_BASE_SIZE };
   const prefEffects =
     deps.prefEffects ??
     createPrefEffects({
       characterWindow: deps.characterWindow,
       setLoginItem: deps.setLoginItem ?? (() => {}),
+      setCharacterSize: (s) => {
+        characterSize = s;
+      },
       broadcast,
     });
   applyAllEffects(prefEffects, prefsStore.getAll());
   const prefsService = createPrefsService({ store: prefsStore, broadcast, effects: prefEffects });
-  // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
-  // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
-  //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。
-  let characterSize: { width: number; height: number } = { ...CHARACTER_BASE_SIZE };
 
   const router = createRouter<RpcContext>({
     ...(deps.providerService ?? {}),

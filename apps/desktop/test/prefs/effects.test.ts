@@ -7,6 +7,8 @@ function fakeWin() {
     isDestroyed: () => false,
     setAlwaysOnTop: vi.fn(),
     setIgnoreMouseEvents: vi.fn(),
+    getBounds: () => ({ x: 100, y: 100, width: 320, height: 480 }),
+    setBounds: vi.fn(),
   };
 }
 
@@ -46,5 +48,22 @@ describe('pref effects (D-series, with deps)', () => {
     applyAllEffects(effects, DEFAULT_PREFS);
     expect(setLoginItem).toHaveBeenCalledWith(DEFAULT_PREFS['general.launchAtLogin']);
     expect(win.setAlwaysOnTop).toHaveBeenCalledWith(DEFAULT_PREFS['display.alwaysOnTop']);
+  });
+
+  it('characterScale → setBounds(scaledBounds) + setCharacterSize', () => {
+    const setBounds = vi.fn();
+    const setCharacterSize = vi.fn();
+    const win = {
+      isDestroyed: () => false,
+      setAlwaysOnTop: vi.fn(),
+      setIgnoreMouseEvents: vi.fn(),
+      getBounds: () => ({ x: 100, y: 100, width: 320, height: 480 }),
+      setBounds,
+    };
+    const effects = createPrefEffects({ characterWindow: () => win as never, setCharacterSize });
+    effects['display.characterScale']!(0.5);
+    // base 320×480 @0.5 → 160×240，底边中点锚定
+    expect(setBounds).toHaveBeenCalledWith({ x: 180, y: 340, width: 160, height: 240 });
+    expect(setCharacterSize).toHaveBeenCalledWith({ width: 160, height: 240 });
   });
 });
