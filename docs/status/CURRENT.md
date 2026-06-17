@@ -48,6 +48,7 @@ git checkout feat/m7b1-d-series
 
 ## 5. 关键约定（务必遵守）
 
+- **UI 视觉对齐设计图（硬验收，[[ui-must-match-design-pngs]]）**：最终效果必须像 `UI/*.png` 设计图 + ui-design §2 token（毛玻璃/色阶/字号/圆角/间距精确值，不自创）。**"能渲染+能持久+单测绿" 是必要非充分**；每个 UI 阶段验收含"逐屏目视比对对应 PNG"，缺细节要补齐或显式记待补。D 面板 PNG 见 ui-design §7 开头引用（D3=`UI/3c9a77c6…`、D4=`UI/4ba6005f…`、D6=`UI/1d7669e3…`、D8=`UI/6a38a202…`；D2 可能无独立 PNG → 回退 §7.2 + §2）。注意分层：overlay 聊天浮层最终玻璃形态是 B1=M8（P2.5 的 ⚙ 是临时入口，别当它已对齐）。
 - **TDD**（有逻辑处先红后绿）；里程碑 inline 逐 task（subagent 派发 429 限流，**别派 subagent 跑实现**，[[project-subagent-inline]]）。
 - **不引入 `@vue/test-utils`**：逻辑下沉纯 TS 测，SFC 薄渲染。
 - **改 protocol src 后必 `pnpm --filter @desksoul/protocol build` 再跑 desktop**；跑全量 desktop 测试前 `pnpm --filter @desksoul/sidecar build`（[[build-test-workflow-gotchas]]）。
@@ -56,7 +57,7 @@ git checkout feat/m7b1-d-series
 
 ## 6. 待验证（PM 跟踪的债）
 
-- **GUI 冒烟尚未跑过**：P1/P2 全是单测 + typecheck 绿，但 Electron 运行时**从未目视验证**（Hub 渲染/主题换肤/D4 缩放实时+持久/置顶穿透即时）。根因 = Hub 不可达（P2.5 解决）。**P2.5 落地后应跑一次 `pnpm --filter @desksoul/desktop dev` 做累积冒烟**（M7a+P2+P2.5），结果记 RESULTS。**M7b-1 收尾（P5）前必须完成一次完整 GUI 冒烟**，否则不签收。
+- **GUI 冒烟尚未跑过（= 对照设计图 PNG 比对，非"能显示就行"）**：P1/P2 全是单测 + typecheck 绿，但 Electron 运行时**从未目视验证**。根因 = Hub 不可达（P2.5 解决）。**P2.5 落地后跑一次 `pnpm --filter @desksoul/desktop dev` 做累积冒烟**（M7a+P2+P2.5），并对 Hub 壳/D4 做**保真度 pass：逐项对照 `UI/4ba6005f…`(D4) + §3.3(Hub) + §2 token**，偏差立 polish task，结果记 RESULTS。**M7b-1 收尾（P5）前必须完成一次对齐设计图的完整 GUI 冒烟**，否则不签收。
 - 存而不接（持久但无 live 行为，留 M8 角色交互回顾）：`lookAt/footGlow` 渲染端响应、`lookAtStrength/physics/clickThroughBar/wallpaperMode/多显示器/不打扰/实验性` 各开关。
 
 ## 7. 架构决策记录（M7b-1）
