@@ -1,4 +1,4 @@
-import { app, screen, protocol } from 'electron';
+import { app, screen, protocol, shell } from 'electron';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,8 @@ import { electronHttpAgent, electronHttpGetJson } from './http-agent.js';
 import { Keychain } from './keychain.js';
 import { createProviderConfig } from './provider-config.js';
 import { createProviderService } from './provider-service.js';
-import { createPrefsStore, createPrefEffects } from './prefs/index.js';
+import { createPrefsStore } from './prefs/index.js';
+import { createAppService } from './app-service.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,7 +44,6 @@ app.whenReady().then(() => {
   const dataDir = path.join(app.getPath('userData'), 'data');
   mkdirSync(dataDir, { recursive: true });
   const prefsStore = createPrefsStore({ prefsPath: path.join(dataDir, 'prefs.json') });
-  const prefEffects = createPrefEffects();
   router = registerIpcRouter({
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
@@ -58,7 +58,8 @@ app.whenReady().then(() => {
     defaultProviderId: process.env.DESKSOUL_DEFAULT_PROVIDER ?? 'openai',
     providerService,
     prefsStore,
-    prefEffects,
+    setLoginItem: (open) => app.setLoginItemSettings({ openAtLogin: open }),
+    appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
   });
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),

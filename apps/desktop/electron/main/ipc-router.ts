@@ -25,6 +25,7 @@ import {
   type PrefEffects,
 } from './prefs/index.js';
 import { createPrefsService } from './prefs-service.js';
+import { createAppService } from './app-service.js';
 
 export interface IpcRouterDeps {
   targets: () => WebContents[];
@@ -45,6 +46,10 @@ export interface IpcRouterDeps {
   prefsStore?: PrefsStore;
   /** pref 副作用表（M7a 空 seam）。 */
   prefEffects?: PrefEffects;
+  /** 开机自启动开关施加器（index 注入 app.setLoginItemSettings）。 */
+  setLoginItem?: (open: boolean) => void;
+  /** app.* 杂项 handlers（openExternal）；index 注入 shell.openExternal。 */
+  appService?: ReturnType<typeof createAppService>;
 }
 
 export interface RpcContext {
@@ -84,7 +89,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   const idleResponder = createIdleResponder(sendToCharacter);
   // 应用偏好（M7a）：单写者 PrefsStore + 空副作用 seam。启动 hydrate 施加 Main 侧副作用。
   const prefsStore = deps.prefsStore ?? createPrefsStore({});
-  const prefEffects = deps.prefEffects ?? createPrefEffects();
+  const prefEffects =
+    deps.prefEffects ??
+    createPrefEffects({
+      characterWindow: deps.characterWindow,
+      setLoginItem: deps.setLoginItem ?? (() => {}),
+      broadcast,
+    });
   applyAllEffects(prefEffects, prefsStore.getAll());
   const prefsService = createPrefsService({ store: prefsStore, broadcast, effects: prefEffects });
   // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
@@ -95,6 +106,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   const router = createRouter<RpcContext>({
     ...(deps.providerService ?? {}),
     ...prefsService,
+    ...(deps.appService ?? {}),
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),

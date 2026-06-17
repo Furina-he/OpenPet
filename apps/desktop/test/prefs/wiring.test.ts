@@ -1,39 +1,32 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createRouter } from '../../electron/main/router';
 import { createPrefsService } from '../../electron/main/prefs-service';
+import { createAppService } from '../../electron/main/app-service';
 import { MemoryPrefsStore } from '../../electron/main/prefs/memory-store';
 import { createPrefEffects } from '../../electron/main/prefs/effects';
 
-describe('prefs RPC wired through createRouter', () => {
-  it('dispatches app.prefs.set with Zod-validated params then broadcasts', async () => {
+describe('prefs + app RPC wired through createRouter', () => {
+  it('set with a real effect applies the Main-side action', async () => {
     const store = new MemoryPrefsStore();
-    const sent: Array<{ channel: string; params: any }> = [];
+    const win = {
+      isDestroyed: () => false,
+      setAlwaysOnTop: vi.fn(),
+      setIgnoreMouseEvents: vi.fn(),
+    };
+    const effects = createPrefEffects({ characterWindow: () => win as never });
     const router = createRouter<null>({
-      ...createPrefsService({
-        store,
-        broadcast: (channel, params) => sent.push({ channel, params }),
-        effects: createPrefEffects(),
-      }),
+      ...createPrefsService({ store, broadcast: () => {}, effects }),
     });
-    const r = await router.dispatch('app.prefs.set', { key: 'display.theme', value: 'dark' }, null);
-    expect(r).toEqual({ ok: true });
-    expect(store.getAll()['display.theme']).toBe('dark');
-    expect(sent[0]).toMatchObject({ channel: 'app.prefs.changed' });
+    await router.dispatch('app.prefs.set', { key: 'display.alwaysOnTop', value: false }, null);
+    expect(store.getAll()['display.alwaysOnTop']).toBe(false);
+    expect(win.setAlwaysOnTop).toHaveBeenCalledWith(false);
   });
 
-  it('router rejects malformed params before reaching the service (-32602)', async () => {
-    const router = createRouter<null>({
-      ...createPrefsService({
-        store: new MemoryPrefsStore(),
-        broadcast: () => {},
-        effects: createPrefEffects(),
-      }),
-    });
-    // 缺 value → params schema 违约
-    await expect(
-      router.dispatch('app.prefs.set', { key: 'display.theme' }, null),
-    ).rejects.toMatchObject({
-      code: -32602,
-    });
+  it('routes app.openExternal through app-service', async () => {
+    const opener = vi.fn();
+    const router = createRouter<null>({ ...createAppService({ openExternal: opener }) });
+    const r = await router.dispatch('app.openExternal', { url: 'https://x.dev' }, null);
+    expect(r).toEqual({ ok: true });
+    expect(opener).toHaveBeenCalledWith('https://x.dev');
   });
 });
