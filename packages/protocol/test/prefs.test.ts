@@ -21,3 +21,21 @@ describe('PrefsSchema', () => {
     expect(parsed['display.theme']).toBe('light');
   });
 });
+
+describe('PrefsSchema D-series expansion', () => {
+  it('defaults the new D-series keys per §14.1', () => {
+    expect(DEFAULT_PREFS['general.hour24']).toBe(true);
+    expect(DEFAULT_PREFS['general.startupShow']).toBe('character+tray');
+    expect(DEFAULT_PREFS['privacy.contextWindow']).toBe(20);
+    expect(DEFAULT_PREFS['privacy.clipboard']).toBe(false);
+    expect(DEFAULT_PREFS['model.activeProvider']).toBe('');
+    expect(DEFAULT_PREFS['offline.fallbackMode']).toBe('ollama');
+    expect(DEFAULT_PREFS['budget.warnAt']).toBe(80);
+  });
+  it('validates enum + range on new fields', () => {
+    expect(PrefsSchema.shape['general.updateChannel'].safeParse('preview').success).toBe(true);
+    expect(PrefsSchema.shape['general.updateChannel'].safeParse('nightly').success).toBe(false);
+    expect(PrefsSchema.shape['privacy.contextWindow'].safeParse(0).success).toBe(false);
+    expect(PrefsSchema.shape['budget.warnAt'].safeParse(150).success).toBe(false);
+  });
+});
