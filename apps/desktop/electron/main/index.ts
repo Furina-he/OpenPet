@@ -1,4 +1,4 @@
-import { app, screen, protocol, shell } from 'electron';
+import { app, screen, protocol, shell, globalShortcut } from 'electron';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,7 @@ protocol.registerSchemesAsPrivileged(assetSchemePrivileges());
 let wins: AppWindows | null = null;
 let router: { dispose: () => Promise<void> } | null = null;
 let cursorPublisher: { stop: () => void } | null = null;
+let isQuitting = false;
 
 app.whenReady().then(() => {
   // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
@@ -47,6 +48,7 @@ app.whenReady().then(() => {
   router = registerIpcRouter({
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
+    settingsWindow: () => (wins && !wins.settings.isDestroyed() ? wins.settings : null),
     charactersRoot,
     providerEntryPath,
     sqlitePath: path.join(dataDir, 'sessions.db'),
@@ -75,9 +77,26 @@ app.whenReady().then(() => {
   };
   wins.character.on('closed', maybeQuit);
   wins.overlay.on('closed', maybeQuit);
+
+  // 最小 Hub 入口（M8 接托盘/热键录制器）：Ctrl/Cmd+Shift+, 打开/聚焦 Hub。
+  globalShortcut.register('CommandOrControl+Shift+,', () => {
+    if (wins && !wins.settings.isDestroyed()) {
+      wins.settings.show();
+      wins.settings.focus();
+    }
+  });
+  // Hub 是持久窗口：关闭 = 收起（hide），非销毁；真正退出时（isQuitting）放行。
+  wins.settings.on('close', (e) => {
+    if (!isQuitting && wins && !wins.settings.isDestroyed()) {
+      e.preventDefault();
+      wins.settings.hide();
+    }
+  });
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
+  globalShortcut.unregisterAll();
   cursorPublisher?.stop();
   cursorPublisher = null;
   void router?.dispose();
