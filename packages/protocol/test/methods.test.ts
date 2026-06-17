@@ -137,6 +137,13 @@ describe('app.window.* methods', () => {
   });
 });
 
+describe('app.window.openHub', () => {
+  it('registers with empty params', () => {
+    expect(Methods['app.window.openHub'].params.safeParse({}).success).toBe(true);
+    expect(Methods['app.window.openHub'].result.safeParse({ ok: true }).success).toBe(true);
+  });
+});
+
 describe('character.* + behavior.lookAt (M4)', () => {
   it('character.current takes empty params and returns manifest envelope', () => {
     expect(Methods['character.current'].params.safeParse({}).success).toBe(true);

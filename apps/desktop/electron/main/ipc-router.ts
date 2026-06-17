@@ -31,6 +31,8 @@ export interface IpcRouterDeps {
   targets: () => WebContents[];
   /** character 窗口定位（setScale / 主动行为直发）。 */
   characterWindow: () => BrowserWindow | null;
+  /** Hub（settings 窗口）定位器；index 注入。openHub RPC 用它 show+focus。 */
+  settingsWindow?: () => BrowserWindow | null;
   /** 角色包根目录（dev: apps/desktop/characters；打包: resources/characters）。 */
   charactersRoot: string;
   providerEntryPath: string;
@@ -144,6 +146,14 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
         } else {
           ctx.win.setPosition(nx, ny);
         }
+      }
+      return { ok: true as const };
+    },
+    'app.window.openHub': () => {
+      const w = deps.settingsWindow?.();
+      if (w && !w.isDestroyed()) {
+        w.show();
+        w.focus();
       }
       return { ok: true as const };
     },

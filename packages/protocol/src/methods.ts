@@ -56,6 +56,11 @@ export const Methods = {
     params: z.object({ dx: z.number(), dy: z.number() }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.window.openHub': {
+    // 打开/聚焦 Hub（settings 窗口）。最小入口；完整入口集（托盘/热键录制器）在 M8。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
 
   // --- request/response: Renderer → Main（数据管理，M6；D7 UI 在 M7 接）---
   'app.storageUsage': {
