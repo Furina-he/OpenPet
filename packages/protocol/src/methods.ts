@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CharacterManifestSchema } from './character-manifest.js';
 import { ErrorKindSchema } from './schemas.js';
+import { PrefsSchema } from './prefs.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -69,6 +70,24 @@ export const Methods = {
     // outPath 由 Renderer 经系统保存对话框拿到（M7 接 dialog）；M6 直接收路径。
     params: z.object({ outPath: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), bytes: z.number().int().nonnegative() }),
+  },
+
+  // --- request/response: Renderer → Main（应用偏好，M7a；UI 在 D 系列）---
+  'app.prefs.getAll': {
+    params: z.object({}),
+    result: PrefsSchema,
+  },
+  'app.prefs.set': {
+    // value 必填且为标量（string|number|boolean，覆盖所有 pref 值类型）；
+    // 注：不能用 z.unknown()——它在对象里自动可选，会让缺 value 也通过校验。
+    // 按 key 对应字段的深校验在 prefs-service 做（命中非法 → -32602）。
+    params: z.object({ key: z.string().min(1), value: z.union([z.string(), z.number(), z.boolean()]) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  // --- notification: Main → 所有 renderer（某 pref 变更，驱动即时生效）---
+  'app.prefs.changed': {
+    params: z.object({ key: z.string().min(1), value: z.union([z.string(), z.number(), z.boolean()]) }),
+    result: z.null(),
   },
 
   // --- request/response: Renderer → Main（角色包 / 窗口缩放 / 主动行为，M4）---

@@ -261,3 +261,16 @@ describe('app.* data management (M6)', () => {
     expect(Methods['app.exportData'].result.safeParse({ ok: false, bytes: 0 }).success).toBe(false);
   });
 });
+
+describe('app.prefs.* methods', () => {
+  it('registers getAll/set/changed', () => {
+    expect(Methods['app.prefs.getAll']).toBeDefined();
+    expect(
+      Methods['app.prefs.set'].params.safeParse({ key: 'display.theme', value: 'dark' }).success,
+    ).toBe(true);
+    expect(Methods['app.prefs.set'].params.safeParse({ key: 'display.theme' }).success).toBe(false);
+    expect(
+      Methods['app.prefs.changed'].params.safeParse({ key: 'display.theme', value: 'dark' }).success,
+    ).toBe(true);
+  });
+});
