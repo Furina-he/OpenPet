@@ -1,0 +1,34 @@
+/* apps/desktop/src/renderer/theme/tokens.css — ui-design §2 token，浅色默认 + 深色覆盖 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ds-glass-bg: rgba(255, 255, 255, 0.72);
+  --ds-glass-border: rgba(0, 0, 0, 0.06);
+  --ds-text-main: #171821;
+  --ds-text-sub: rgba(23, 24, 33, 0.55);
+  --ds-brand-from: #ffb4a2;
+  --ds-brand-to: #ff8fab;
+  --ds-cool: #6fa8ff;
+  --ds-success: #7fe3a1;
+  --ds-warning: #ffb454;
+  --ds-danger: #ff6b7a;
+  --ds-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+[data-theme='dark'] {
+  --ds-glass-bg: rgba(18, 20, 28, 0.62);
+  --ds-glass-border: rgba(255, 255, 255, 0.1);
+  --ds-text-main: #f2f3f8;
+  --ds-text-sub: rgba(242, 243, 248, 0.62);
+  --ds-glass-shadow: 0 16px 48px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  color: var(--ds-text-main);
+  font-family: 'PingFang SC', 'Inter', system-ui, sans-serif;
+}
