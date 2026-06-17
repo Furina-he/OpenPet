@@ -81,12 +81,18 @@ export const Methods = {
     // value 必填且为标量（string|number|boolean，覆盖所有 pref 值类型）；
     // 注：不能用 z.unknown()——它在对象里自动可选，会让缺 value 也通过校验。
     // 按 key 对应字段的深校验在 prefs-service 做（命中非法 → -32602）。
-    params: z.object({ key: z.string().min(1), value: z.union([z.string(), z.number(), z.boolean()]) }),
+    params: z.object({
+      key: z.string().min(1),
+      value: z.union([z.string(), z.number(), z.boolean()]),
+    }),
     result: z.object({ ok: z.literal(true) }),
   },
   // --- notification: Main → 所有 renderer（某 pref 变更，驱动即时生效）---
   'app.prefs.changed': {
-    params: z.object({ key: z.string().min(1), value: z.union([z.string(), z.number(), z.boolean()]) }),
+    params: z.object({
+      key: z.string().min(1),
+      value: z.union([z.string(), z.number(), z.boolean()]),
+    }),
     result: z.null(),
   },
 
