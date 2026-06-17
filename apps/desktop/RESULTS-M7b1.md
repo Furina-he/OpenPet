@@ -54,3 +54,39 @@
 **手动冒烟**：未在本执行对话内跑（需 `pnpm --filter @desksoul/desktop dev` 启 Electron 交互验证缩放实时/持久、置顶/穿透即时、换肤不回归）——留交付验收时执行。
 
 **衔接到 P3**：D2 通用 + D6 隐私（含 ConfirmDialog 高风险二次确认 + nav 加 `system.general`）。
+
+## P2.5 · Hub 可达性（openHub RPC + 全局热键 + overlay ⚙ + hide-on-close）
+
+**状态：✅ 代码完成，测试/typecheck 绿；GUI 冒烟待人工**（分支 `feat/m7b1-d-series`）。验证：protocol build + sidecar build 后 desktop **255 绿** / protocol **178 绿** / typecheck exit 0 / 工作树干净。每 task 一提交。
+
+**背景**：PM 复核 P2 时发现 settings 窗 `show:false` 且全 app 无任何打开入口（无 `.show()`/`globalShortcut`/overlay ⚙/RPC），关闭即销毁 → M7a/P2 已做的 Hub 壳+主题+D4 面板运行时不可达。P2.5 做**最小可达 + 持久**（完整入口集托盘/热键录制器留 M8）。
+
+| Task | commit | 内容 |
+| --- | --- | --- |
+| 1 | `0ebc33b` | `app.window.openHub` method（params `{}` / result `{ok:true}`）+ ipc-router `settingsWindow` dep + handler（show+focus）；TDD 先红后绿 |
+| 2 | `e4acfb3` | index 接线：`globalShortcut` import + 注入 `settingsWindow` + 注册 `Ctrl/Cmd+Shift+,` 热键 + settings `close`→hide(`!isQuitting`) + `before-quit` 置 `isQuitting`+`unregisterAll` |
+| 3 | （本提交） | overlay `App.vue` ⚙ 按钮（`.head` flex 行 + `.gear`）→ `openHub` RPC；全量回归 + RESULTS P2.5 |
+
+**测试增量**：protocol 177→**178**（`app.window.openHub` 注册用例）。desktop 不变（255；Task 2/3 是 Electron 窗口/系统集成胶水 + SFC 薄渲染，无独立单测，靠 GUI 冒烟验证）。
+
+**可达性方案（三入口冗余 + 持久）**：
+- **openHub RPC**：ipc-router 用注入的 `settingsWindow()` 定位器 `show()`+`focus()`；overlay ⚙ 经此 RPC，未来托盘/菜单亦可复用。
+- **全局热键 `Ctrl/Cmd+Shift+,`**：index 在 `whenReady` 直接 show+focus（不绕 RPC，主进程内最短路径）。
+- **overlay ⚙ 按钮**：聊天浮层标题行齿轮，`title="设置 (Ctrl+Shift+,)"` 提示热键。
+- **hide-on-close + isQuitting**：settings `close` 事件在非退出时 `preventDefault()`+`hide()`（窗口持久不销毁，保留渲染态）；真正退出时 `before-quit` 先置 `isQuitting=true` 并 `unregisterAll()`，故退出流程中 settings 的 close 放行，不卡退出。与既有 `maybeQuit`（character+overlay 都销毁→`app.quit()`）协同：quit 触发 before-quit→isQuitting=true→settings close 放行→干净退出。
+
+**注**：overlay 聊天浮层最终玻璃形态是 B1=M8，本阶段 ⚙ 仅为临时入口验「能打开」，不要求其外观对齐设计图（见 CURRENT.md §5）。
+
+**GUI 冒烟（待人工 —— M7b-1 P5 签收硬门槛，见 CURRENT.md §6）**：本执行对话为 CLI agent 环境，无法启 Electron GUI 并对照设计图 PNG 目视比对。需有桌面环境者 `pnpm --filter @desksoul/desktop dev` 后按下表执行回填，并对 Hub 壳/D4 做**保真度 pass**（Hub 壳比对 ui-design §3.3；D4 比对 `UI/4ba6005f-0abc-45f4-9690-2c5e7af15242.png` + §2 token），偏差立 polish task：
+
+1. **打开**：按 `Ctrl+Shift+,` → Hub 出现并聚焦；overlay 点 ⚙ → 同样打开。 ☐
+2. **持久**：关闭 Hub → 收起（app 不退）；再按热键 → 重新出现（未销毁，渲染态保留）。 ☐
+3. **Hub 渲染**（M7a 累积）：左导航（§3.3 各组）+ 顶栏 + 状态条；切「显示与窗口」。 ☐
+4. **主题**：切深色 → Hub + overlay 同时换肤 + 顶栏 `✓ 已保存`；重启 app → 保持。 ☐
+5. **D4 缩放**：拖 slider → 角色实时缩放；松手 → `✓ 已保存`；重启 → 保持。 ☐
+6. **置顶/穿透**：切换 → 角色窗即时响应。 ☐
+7. **退出**：关角色+overlay → 进程正常退出（热键已注销、settings 不阻塞）。 ☐
+
+> 风险：`globalShortcut.register` 若热键被系统/他 app 占用会静默返回 false（本阶段不做冲突检测，J2 录制器在 M8）；⚙ 与热键互为冗余，单一失败不致完全不可达。冒烟时若热键无效，用 ⚙ 验证其余项。
+
+**衔接到 P3**：Hub 现可达，解锁后续 GUI 冒烟与 D3「配 Key」验收。P3 = D2 通用 + D6 隐私。

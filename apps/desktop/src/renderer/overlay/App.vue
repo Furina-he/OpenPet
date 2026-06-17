@@ -57,11 +57,18 @@ function cancel(): void {
   void window.desksoul.rpc('chat.cancel', { sessionId: SESSION_ID });
   meta.value = '○ cancelling…';
 }
+
+function openHub(): void {
+  void window.desksoul.rpc('app.window.openHub', {});
+}
 </script>
 
 <template>
   <div class="overlay">
-    <h2>DeskSoul · 对话（M2）</h2>
+    <div class="head">
+      <h2>DeskSoul · 对话（M2）</h2>
+      <button class="gear" title="设置 (Ctrl+Shift+,)" @click="openHub">⚙</button>
+    </div>
     <div class="history">
       <div v-for="(m, i) in messages" :key="i" class="msg" :class="`msg-${m.role}`">
         <span class="text">{{ m.text }}</span>
@@ -96,6 +103,22 @@ h2 {
   font-size: 15px;
   font-weight: 600;
   color: #5b6472;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.gear {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.gear:hover {
+  background: #eef1f7;
 }
 .history {
   flex: 1;
