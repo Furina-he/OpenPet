@@ -5,6 +5,11 @@ import { createVrmRuntime, type CharacterRuntime } from './runtime';
 import { mountFallbackFace, type FallbackFace } from './fallback-face';
 import { setupInteraction } from './interaction';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
+import '../theme/tokens.css';
+import { subscribeTheme } from '../theme/subscribe';
+
+// 跨 renderer 即时换肤：character 也订阅 app.prefs.changed（tokens.css 保持 body 透明）。
+subscribeTheme();
 
 const FPS_REPORT_MS = 10_000;
 const IDLE_TICK_MS = 5_000;
