@@ -17,6 +17,14 @@ import { createCharacterService } from './character-service.js';
 import { createConversationStore } from './db/index.js';
 import { createIdleResponder } from './idle-responder.js';
 import { scaledBounds, CHARACTER_BASE_SIZE } from './window-scale.js';
+import {
+  createPrefsStore,
+  createPrefEffects,
+  applyAllEffects,
+  type PrefsStore,
+  type PrefEffects,
+} from './prefs/index.js';
+import { createPrefsService } from './prefs-service.js';
 
 export interface IpcRouterDeps {
   targets: () => WebContents[];
@@ -33,6 +41,10 @@ export interface IpcRouterDeps {
   defaultProviderId?: string;
   /** provider.* RPC handlers（M5）；index.ts 注入，spread 进 router。 */
   providerService?: ReturnType<typeof import('./provider-service.js').createProviderService>;
+  /** 应用偏好持久化（M7a）；index.ts 注入 JsonPrefsStore。缺省纯内存（测试）。 */
+  prefsStore?: PrefsStore;
+  /** pref 副作用表（M7a 空 seam）。 */
+  prefEffects?: PrefEffects;
 }
 
 export interface RpcContext {
@@ -70,6 +82,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
   });
   const idleResponder = createIdleResponder(sendToCharacter);
+  // 应用偏好（M7a）：单写者 PrefsStore + 空副作用 seam。启动 hydrate 施加 Main 侧副作用。
+  const prefsStore = deps.prefsStore ?? createPrefsStore({});
+  const prefEffects = deps.prefEffects ?? createPrefEffects();
+  applyAllEffects(prefEffects, prefsStore.getAll());
+  const prefsService = createPrefsService({ store: prefsStore, broadcast, effects: prefEffects });
   // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
   // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
   //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。
@@ -77,6 +94,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
 
   const router = createRouter<RpcContext>({
     ...(deps.providerService ?? {}),
+    ...prefsService,
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
@@ -128,6 +146,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
       ipcMain.removeHandler('desksoul:rpc');
       await chat.dispose();
       store.close();
+      prefsStore.close();
     },
   };
 }
