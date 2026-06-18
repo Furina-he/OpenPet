@@ -4,8 +4,9 @@ import { ref } from 'vue';
 import { NAV_TREE, isActive } from './nav-tree';
 import DisplayPage from './pages/DisplayPage.vue';
 import ToastHost from '../components/ToastHost.vue';
+import { initialRoute } from '../dev/route';
 
-const active = ref('system.display');
+const active = ref(initialRoute(window.location.search, 'system.display'));
 const toast = ref<InstanceType<typeof ToastHost> | null>(null);
 function saved(): void {
   toast.value?.show('bar', '✓ 已保存');
