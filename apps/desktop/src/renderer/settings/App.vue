@@ -5,6 +5,7 @@ import { NAV_TREE, isActive } from './nav-tree';
 import GeneralPage from './pages/GeneralPage.vue';
 import DisplayPage from './pages/DisplayPage.vue';
 import PrivacyPage from './pages/PrivacyPage.vue';
+import ModelApiPage from './pages/ModelApiPage.vue';
 import ToastHost from '../components/ToastHost.vue';
 import { initialRoute } from '../dev/route';
 
@@ -20,7 +21,17 @@ function saved(): void {
     <!-- 左导航 280px -->
     <nav class="w-[280px] shrink-0 overflow-y-auto border-r border-glass-border p-3">
       <template v-for="g in NAV_TREE" :key="g.id">
-        <div class="flex items-center gap-2 px-2 py-1 text-sm text-text-sub">
+        <button
+          v-if="g.children.length === 0"
+          class="flex w-full items-center gap-2 rounded-btn px-2 py-2 text-left text-base"
+          :class="isActive(g.id, active) ? 'text-text-main' : 'text-text-sub'"
+          :style="isActive(g.id, active) ? 'background: var(--ds-glass-border)' : ''"
+          @click="active = g.id"
+        >
+          <component :is="g.icon" :size="16" :stroke-width="1.5" />
+          <span>{{ g.label }}</span>
+        </button>
+        <div v-else class="flex items-center gap-2 px-2 py-1 text-sm text-text-sub">
           <component :is="g.icon" :size="16" :stroke-width="1.5" />
           <span>{{ g.label }}</span>
         </div>
@@ -45,6 +56,7 @@ function saved(): void {
         <GeneralPage v-if="active === 'system.general'" @saved="saved" />
         <DisplayPage v-else-if="active === 'system.display'" @saved="saved" />
         <PrivacyPage v-else-if="active === 'system.privacy'" @saved="saved" />
+        <ModelApiPage v-else-if="active === 'model'" @saved="saved" />
         <div v-else class="text-text-sub">（{{ active }} 留待 M7b）</div>
       </main>
       <footer class="flex h-8 items-center border-t border-glass-border px-4 text-sm text-text-sub">
