@@ -201,3 +201,66 @@
 - 残留（lucide-vue-next 已 deprecated / 顶层 leaf 组空 / Select native / 存而不接系统访问 / 真 Electron 目视终审）认可，归 P5 硬门槛把关。
 
 **衔接到 P4**：D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send）。
+
+## P4 · D3 模型 API（双栏）+ chat 集成（active provider/model → chat.send）
+
+**状态：✅ 完成**（分支 `feat/m7b1-d-series`）。验证：sidecar build 后 desktop **273 绿**（262 基线 + 新测 11，**0 回归**，`chat-service` 22 / `nav-tree` 3 仍绿）/ 全仓 typecheck（vue-tsc + tsc）**12/12 exit 0** / 工作树干净。**protocol src 零改动**（`ChatRequest.model`、`chat.send{providerId?}`、`provider.*` 6 RPC、`model/budget/offline` prefs 键 M5/M7a 已就绪）。每 task 一提交。
+
+| Task | commit | 内容 |
+| --- | --- | --- |
+| 1 | `3ec7fa1` | `provider-status.ts`：`providerDot({hasKey,lastTestOk?})→ok/pending/fail`（测失败优先）+ `DOT_COLOR`（TDD 3 测先红后绿） |
+| 2 | `7e4e063` | `key-reveal.ts`：`maskKey`（>8 留首尾4）+ `KeyReveal`（显示后 5s 自动遮回，timer 可注入）（TDD 4 测） |
+| 3 | `66a88ba` | `context-assembler`：`AssembleInput.model?` 透传进 `ChatRequest.model`（条件展开满足 `exactOptionalPropertyTypes`）（+1 测，原 6 仍绿） |
+| 4 | `d7076a9` | `chat-resolve.ts`：`resolveSendTarget(explicit, staticChain, resolved)→{chain, model?}` 纯函数（TDD 3 测） |
+| 5 | `1066882` | `ChatService` 加 `resolveModel?` 注入 + `send()` 用 `resolveSendTarget`；`ipc-router` 从 prefs 注入 `resolveModel`（读 `model.activeProvider/activeModel`） |
+| 6 | `6efdd61` | `KeyInput.vue`（password 遮罩 + 眼睛 `KeyReveal` + 保存/清除 emit）+ `ProviderList.vue`（左栏列表 + `providerDot` 状态点） |
+| 7 | `3329bf5` | `ModelApiPage.vue` 双栏（左 Providers / 右 Key+Endpoint+默认模型+测试连接）+ 页底预算告警卡 + 离线兜底卡（§7.3） |
+| 8 | `15750d5` | `App.vue` 接 `active==='model'`→ModelApiPage + nav 空 children 组改可点 button（闭合 P3「带图标不可点组」残留） |
+| — | `d4f1ece` | （dev harness）`mock-bridge.ts` 加 `provider.*` 内存实现（仅浏览器预览渲染 D3；Electron 下 no-op） |
+| 9 | （本提交） | 视觉闭环（Playwright MCP 浅/深）+ 全量回归 + RESULTS P4 + prettier（仅本期新文件） |
+
+**测试增量**：desktop 262→**273**（+11）：`provider-status` 3 / `key-reveal` 4 / `chat-resolve` 3 / `context-assembler` +1（6→7）。`mock-bridge.test` 仍 3 绿（仅加 case，未加测）。protocol 不变。
+
+**chat 集成做实（纯函数 TDD + 接线，断言明确）**：
+- `resolveSendTarget`（`chat-resolve.test.ts` 3 测断言）：① 显式 `providerId` 优先 → `{chain:[explicit]}`，忽略 resolved；② 无显式 → 以 `resolved.providerId` 作 chain 首项 + 透传 `resolved.model`；③ resolved 无 providerId → 回退静态 chain，无 model 则**不带 `model` 键**（空静态链 → `{chain:[]}`）。
+- `assembleContext` model 透传（`context-assembler.test.ts` +1）：给 `model`→`ChatRequest.model===该值`；不给→`'model' in req===false`（条件展开，满足 `exactOptionalPropertyTypes`）。
+- `ChatService.send()`：`resolved = providerId ? undefined : this.resolveModel?.()` → `resolveSendTarget(providerId, this.providerChain, resolved)` 取 `{chain, model}` → `assembleContext({..., ...(model?{model}:{})})`。`resolveModel` 缺省 `undefined` ⇒ 行为与改前完全一致 ⇒ **`chat-service.test.ts` 22 测 0 回归**（实证）。`ipc-router` 注入：`resolveModel:()=>{const p=prefsStore.getAll(); return {...(p['model.activeProvider']?{providerId}:{}), ...(p['model.activeModel']?{model}:{})}}`。
+- **worker 零改动 + 缺省模型已兜底**（读源核实）：四 adapter 均 `req.model ?? dialect.defaultModels[0]`（`anthropic.ts:13`/`openai-compat.ts:49`/`ollama.ts:14`/`gemini.ts:16`）⇒ 即使 `activeModel` 为空，选定 provider 仍发其默认模型。「配 Key→听到回复」链路：D3 选 provider（写 `activeProvider`）→ `chat.send` 无显式 providerId → resolveModel 读 prefs → chain=[该 provider]、model=activeModel（空则 worker 补默认）→ Main 侧 Keychain 注入密钥 → 流式回灌。
+- **端到端「配真实 Key→overlay 听到该 provider 流式回复」本会话未实跑** → **留 P5**（真 Electron 目视终审一起）。原因：① 视觉闭环是浏览器 + `mock-bridge`（无真 fetch/worker）；② 本机 Electron 主进程 `better-sqlite3` 原生模块 ABI 不匹配（NODE_MODULE_VERSION 127≠123，dev 降级内存库）——非本期代码问题，需先 `electron-rebuild`。建议 P5 用 `claude`/`openai` + 默认模型实跑 90s 旅程。
+
+**视觉闭环比对（Playwright MCP，dev server `localhost:5173/settings/index.html?page=model`，1080×720，浅/深双版；D3 无专属 PNG → 参照 `UI/1d7669e3` 设置设计语言 + §7.3 文字图 + §2 token）**：
+
+| 项 | 浅色 | 深色 | 判定 |
+| --- | --- | --- | --- |
+| 双栏布局 | 左 `.ds-glass` Providers（240px）/ 右详情，圆角卡 | 暗玻璃双栏正常 | §7.3 ✓ |
+| 状态点 | Claude/Ollama 暖色点（已配/免Key）、其余灰点（待填 Key） | 暗底仍醒目 | 见残留①（暖色 vs §7.3「绿点」） |
+| Key 遮罩 | `sk-...` placeholder + 眼睛 + 渐变「保存」（空时 disabled） | 暗玻璃输入正常 | §7.3「点眼睛显示 5s」✓ |
+| Endpoint | `https://api.openai.com/v1` 灰字只读 | 同 | 只读端点 ✓（覆盖留后续） |
+| 默认模型 | `gpt-4o-mini ▾` 玻璃 Select | 同 | §7.3 ✓ |
+| 测试连接 | 渐变按钮 + 结果文案位 | 同 | §7.3 ✓ |
+| 预算告警卡 | 启用开关 / ¥月上限 / 已使用 `¥0.00 / —` 占位 / 阈值滑块（80% 暖填充+0%~100%翼标）/ 达上限 Select | 暗卡正常 | §7.3 ✓（计量存而不接） |
+| 离线兜底卡 | 三选一 Select（Ollama/演示/报错）+ 缩进 Ollama 备用模型 Select | 暗卡正常 | §7.3 ✓（行为存而不接） |
+| Hub nav | 空组（总览/模型API/插件/知识库）改可点带图标项；「模型 API」高亮 | 同 | 闭合 P3「空组不可点」✓ |
+
+> 复用 Harness 已调优 `.ds-glass`/`Slider`(暖色)/`Switch`/`Select`(chevron)，无新增散装样式；console 仅 favicon 404（无害）；深色经 `app.prefs.set display.theme=dark` 实证 `data-theme=dark` 即时换肤。
+
+**范围落实（PM 范围段对照）**：
+- **做实**：provider 列表（`listProviders`）+ 状态点 / 选 provider→`set model.activeProvider` / Key 配置（`saveKey`+`deleteKey`，KeyInput「清除」触发）/ 默认模型（`listModels` 填 Select→`set model.activeModel`）/ 测试连接（`testConnection`→点色+文案）/ Ollama 检测（`ollamaDetect`）/ **chat.send 动态解析**（resolveModel→resolveSendTarget）。
+- **渲染+持久、存而不接**：预算告警卡（`budget.*`；「已使用」占位 `¥0.00 / —`，无 cost 聚合源）；离线兜底卡（`offline.*`；真实「全 provider 不可用→切 demo/error」未接，现仅 providerChain 顺位降级）；Endpoint（dialect `baseUrl` 只读，覆盖未持久化）。
+- **留后续（未做）**：添加自定义/兼容 provider、多套同 provider+右键复制、per-provider enabled 开关、baseUrl/默认模型覆盖持久化、高级（超时/重试/代理/Stream 协议）、`app.openExternal` 文档外链（随 P5 D8）。对应 §7.3 图中「+添加 Provider / 自定义 / 可用模型勾选启用 / 高级 / 删除该 Provider」，按范围段刻意不实现。
+
+**偏离 plan 的实现（「以现有为准」必要适配，记录待 PM 认可）**：
+1. **`ipc-router` 把 `prefsStore` 声明上移**到 `new ChatService(...)` 之前——使 `resolveModel` 闭包合法引用；逻辑等价。
+2. **`resolveModel` 用条件展开**而非 plan 字面 `providerId: p[...] || undefined`——后者在 `exactOptionalPropertyTypes` 下不可赋给 `{providerId?:string}`（显式 undefined 违例），改 `...(p[..]?{providerId}:{})`，语义同（空串=省略）。
+3. **`KeyInput.vue` 只 import `KeyReveal`（不 import `maskKey`）**——原生 `type=password` 即遮罩；`maskKey` 仍导出 + 单测（Task 2），留「遮罩态明文预览」未来用。并**加「清除」按钮**（gated on hasKey）使 `clear` emit→`deleteKey` 落地（deleteKey 在做实清单）。
+4. **`mock-bridge.ts` 加 `provider.*` 内存实现**（commit `d4f1ece`）——D3 onMounted 调 `listProviders/ollamaDetect`，dev 浏览器无真后端则渲染空；仅 dev 预览设施（Electron 下 `'desksoul' in window` 守卫 no-op），非生产路径。
+5. **provider/model 一致性**：依「worker 缺省模型兜底」结论，`onSelect` 仅写 `activeProvider`（遵 plan）；右栏默认模型 Select 显示值取 `activeModel∈当前provider模型 ? activeModel : 该provider首模型`（= worker 实际所用），用户改即持久。
+
+**残留 / 回 PM（需设计裁决，未自行扩范围）**：
+- **① 状态点「ok」用品牌暖色 `--ds-brand-to`(#ff8fab)**（遵 plan「绿用品牌暖色」注释）**，§7.3 文字图写「绿点」**；§2 有 `--ds-success`(#7fe3a1) 绿 token 可用。**未自行改**（按交接「设计取舍先记 RESULTS 回 PM」），PM 定夺保暖色还是换 success-green。
+- **② 右栏标题对 OpenAI 显示「OpenAI · OpenAI」**（name == format 标签）显冗余；其它 provider 正常（「Claude · Anthropic」「DeepSeek · OpenAI」）。可在 `name===formatLabel` 时省略后半，属 polish，待 PM 取舍。
+- **真 Electron 目视终审 + 真 Key 端到端 90s 旅程仍待**（P5 硬门槛）：本轮为浏览器 mock 截图；真窗需先解 `better-sqlite3` ABI（`electron-rebuild`）。
+
+**prettier**：仅本期**新增文件** `--write`（provider-status/key-reveal/chat-resolve + 各 test、KeyInput/ProviderList/ModelApiPage）；**改动的存量文件**（context-assembler/.test、chat-service、ipc-router、App.vue、mock-bridge、本 RESULTS）只手写保证自己新增行符合 prettier，**不 --write 整文件**（避免重排 P1–P3 旧表/旧测行，[[build-test-workflow-gotchas]]）。
+
+**衔接到 P5**：D8 关于（接 `openExternal` 外链）+ 全量验收（含**真 Electron GUI 冒烟 + 真 Key 端到端**）+ RESULTS 定稿 + tag。

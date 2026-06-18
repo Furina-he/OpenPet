@@ -48,7 +48,9 @@ const FALLBACK = [
   { value: 'error', label: '直接报错让我手动处理' },
 ];
 
-const activeId = computed(() => prefs.value['model.activeProvider'] || providers.value[0]?.id || '');
+const activeId = computed(
+  () => prefs.value['model.activeProvider'] || providers.value[0]?.id || '',
+);
 function modelsFor(id: string): string[] {
   if (id === 'ollama' && ollamaModels.value.length) return ollamaModels.value;
   return providers.value.find((p) => p.id === id)?.models ?? [];
@@ -247,7 +249,9 @@ async function testConnection(): Promise<void> {
         <Select
           :model-value="prefs['offline.fallbackMode']"
           :options="FALLBACK"
-          @update:model-value="(v) => set('offline.fallbackMode', v as Prefs['offline.fallbackMode'])"
+          @update:model-value="
+            (v) => set('offline.fallbackMode', v as Prefs['offline.fallbackMode'])
+          "
         />
       </SettingCard>
       <SettingCard label="Ollama 备用模型" indent>
