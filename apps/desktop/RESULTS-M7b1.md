@@ -90,3 +90,61 @@
 > 风险：`globalShortcut.register` 若热键被系统/他 app 占用会静默返回 false（本阶段不做冲突检测，J2 录制器在 M8）；⚙ 与热键互为冗余，单一失败不致完全不可达。冒烟时若热键无效，用 ⚙ 验证其余项。
 
 **衔接到 P3**：Hub 现可达，解锁后续 GUI 冒烟与 D3「配 Key」验收。P3 = D2 通用 + D6 隐私。
+
+## 视觉保真 Harness + Hub/D4 首轮保真审计（plan `2026-06-18-visual-fidelity-harness-plan.md`）
+
+**状态：✅ harness 落地（infra）+ Hub/D4 首轮保真修正完成**（分支 `feat/m7b1-d-series`）。验证：sidecar build 后 desktop **260 绿**（255 基线 + 新增 harness 单测 5：mock-bridge 3 / route 2，**0 回归**）/ typecheck（vue-tsc + tsc）exit 0。每 task 一提交。
+
+### Harness（T1–T4）
+
+| Task | commit | 内容 |
+| --- | --- | --- |
+| 1 | `c21dfad` | `renderer/dev/mock-bridge.ts` 内存版 `window.desksoul`（守卫 `'desksoul' in window` → 打包/Electron 下 no-op）；`getAll`/`set`→`changed` 广播；TDD 3 绿 |
+| 2 | `5ac33bf` | `renderer/dev/route.ts`（`initialRoute` 读 `?page=`）+ settings/overlay `main.ts` mount 前 `installMockBridge()` + `App.vue` 初始路由读 query；TDD 2 绿 + typecheck |
+| 4 | `44a4000` | `.gitignore` 加 `apps/desktop/artifacts/` + `.playwright-mcp/`（截图过程产物不入库） |
+
+**闭环跑通（T3 Runbook 实证）**：`pnpm --filter @desksoul/desktop dev` 起 renderer dev server（`http://localhost:5173`）→ Playwright MCP `browser_navigate` 到 `/settings/index.html?page=system.display` + `browser_resize` 1080×720 → `browser_take_screenshot` → `Read` 截图比对 → 改 SFC → HMR 重截。`browser_evaluate` 调 `app.prefs.set` 切主题，浅/深双版当场生效（活 demo，证 `changed`→theme-resolver 链在浏览器内联通）。
+
+### ⚠ 关键发现：设计图 PNG 文件名↔屏幕映射表损坏（回 PM）
+
+`ui-design §4.1/§7` 与 `CURRENT.md §5` 把 D4 指为 `UI/4ba6005f-…`，但**逐张 `Read` 核实，该映射多处错位**：
+
+| 文档标注 | 文件 | 实际像素内容 |
+| --- | --- | --- |
+| D4 显示与窗口 | `4ba6005f` | **A 系列「桌面宠物」设计规范**（A1 静默/A2 气泡/A3 穿戴 + 调色板）——非设置面板（§1767 也把此图标作「A3 穿透视觉指示」，自相矛盾） |
+| D3 模型 API | `3c9a77c6` | **E2/E3 角色详情抽屉 + 角色包导入** |
+| D2/D8 | `60ea4a18` | **B1/B2 聊天浮层 + 流式气泡** |
+| D5/D6/D7 综合 | `1d7669e3` | ✅ 正确（自身标题即「D5 / D7 Light Mode」，**唯一可信的设置面板设计语言参考**） |
+
+**结论**：无专属 D4 面板 PNG。本轮 D4 保真以 **`1d7669e3`（共享设置面板设计语言：卡片行/开关/滑块/分组/危险区）+ §7.4 文字版图 + §2 token** 为权威参照。**建议 PM 修订 §4.1/§7/CURRENT.md §5 的映射（按各 PNG 自身标题逐张重编），否则后续面板保真验收会持续踩错图。**
+
+### Task 5：Hub + D4 保真审计 → 修正（commit 见末，仅动样式/结构，不改行为）
+
+**优先修可复用件**（P3 的 D2/D6 直接复用）。逐项对 §2 token + §7.4 核出并修正：
+
+| # | 偏差（修前） | 修正 | 文件 |
+| --- | --- | --- | --- |
+| 1 | **Slider 完全未样式化**（裸 `<input type=range>` → 浏览器/OS 默认蓝色滑块，且蓝=`--ds-cool` 语义错（冷色专用于连接/状态）） | 暖色品牌渐变填充（`--ds-pct` 变量驱动 `--ds-brand-from→to`）+ 白色圆 thumb（brand 描边）+ 固定宽 11rem；跨浏览器 `::-webkit/-moz` thumb | `Slider.vue` |
+| 2 | **玻璃缺 `saturate(180%)`**（Tailwind `backdrop-blur-glass` 只给 blur）；**SettingSection 无阴影**（§2 要求所有玻璃面板带 `--ds-glass-shadow`，卡片显得扁平） | 收口 `.ds-glass` 单一真源（bg + 1px 描边 + `blur(28px) saturate(180%)` + shadow）于 `tokens.css @layer components`；`GlassPanel`/`SettingSection` 改用之 | `tokens.css` / `GlassPanel.vue` / `SettingSection.vue` |
+| 3 | **Switch 开态 solid `--ds-brand-to`**（与 Button primary 的品牌渐变、与滑块暖色不一致） | 开态改品牌渐变 `linear-gradient(90deg, from, to)`，全局暖色一致 | `Switch.vue` |
+| 4 | **Select 原生下拉箭头**（native chrome，出戏） | `appearance-none` + 自定义 `▾` chevron（wrapper relative 定位）；闭合态玻璃 bg/描边/圆角保留 | `Select.vue` |
+
+**修后比对（浅/深双主题，artifacts/visual/*-v2.png）**：滑块/开关全局暖色一致、玻璃带 saturate+微阴影（卡片浮起）、Select 自定义箭头、`⚠ 实验性` 段保留 `border-warning` 琥珀描边（SettingSection 重构后 `tone="warn"` 经 Tailwind utilities 覆盖 `.ds-glass` 描边色，验证仍生效）。结构对 §7.4：角色/多显示器/不打扰/实验性 四组 + 卡片行「左 Label+Desc / 右控件」均符合。**判定：在 token/设计语言层面「够像」**。
+
+**token 未改**：`tailwind.config.js`（radius 8/10/12/16/18 · spacing 4/8/12/16/24/32/48 · fontSize 12/13/14/16/20/28/36 · blur 28 · ease ds）与 `tokens.css` 色阶均已对齐 §2，无需校准。
+
+### 残留偏差清单（回 PM —— 需设计决策 / 后续里程碑功能 / PNG 缺，本任务不硬啃）
+
+- **Hub 左导航无图标**：§3.3 每项带 Lucide 图标（⌂◉✎⚡⊞☷⚙）；需引入图标集（Lucide）→ 单独决策。
+- **顶层 leaf 目的地（总览/模型 API/插件/知识库）渲染成暗灰组标题**，与可展开组（角色/对话/系统）视觉无法区分，且不可点（`nav-tree` 中 children 为空）。改为可点 + 区分 = **行为变更**且当前无对应页（点了只显「留待 M7b」）→ 留后续阶段（随各页落地）。
+- **顶栏仅占位文字「DeskSoul · 设置」**：§3.3 要角色头像（hover 切换）/ 面包屑 / 最小化关闭 → 需 M8 功能。
+- **状态条仅「● 就绪」**：§3.3 要 live 连接/内存/模型 → 需真实数据源（后续）。
+- **Slider 行无 min/max 翼标**：§7.4 示意 `缩放 50% ━●━ 200%` / `强度 弱 ━●━ 强`；当前用「Label + 当前值（100%）描述 + 右侧滑块」。低优先级 nuance，可后续加翼标。
+- **子项层级缩进**：§7.4 把「切换热键 / LookAt 强度 / 实验性警告语」作父开关的缩进子项；当前是平铺同级行（功能等价，层级感弱）。
+- **§7.4 未实现的功能行**：「切换热键 [Ctrl+Shift+P]」（J2 录制器=M8）、「计划不打扰 23:00→08:00」时段选择器、缩放「80px 微缩剪影实时预览」（需 mini 角色渲染——plan 已预判为残留）。
+- **Select 弹出选项列表仍 native**：闭合态已玻璃化，完整自定义下拉浮层 = 较大组件，留后续。
+- **overlay ⚙ 入口外观**：B1 聊天浮层最终玻璃形态=M8，本阶段不要求对齐（沿用 P2.5 约定）。
+
+> 残留多为「后续里程碑功能（M8 / live 数据 / 图标集）」或「设计决策（映射表修订 / 缩进层级 / 翼标）」，非本期纯样式可闭合项。
+
+**人工终审（仍待）**：CLI agent 环境用 Playwright MCP 在 renderer dev server（非 Electron 真窗）做了截图比对；M7b-1 P5 签收前仍需 `pnpm --filter @desksoul/desktop dev` 在真 Electron 下目视复核（兜玻璃 backdrop-filter 在透明窗的真实表现等最后一公里）。

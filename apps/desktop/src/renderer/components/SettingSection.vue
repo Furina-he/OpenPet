@@ -5,8 +5,8 @@ defineProps<{ title: string; tone?: 'default' | 'warn' }>();
 </script>
 <template>
   <section
-    class="mb-4 overflow-hidden rounded-card border bg-glass-bg backdrop-blur-glass"
-    :class="tone === 'warn' ? 'border-warning' : 'border-glass-border'"
+    class="ds-glass mb-4 overflow-hidden rounded-card"
+    :class="tone === 'warn' ? 'border-warning' : ''"
   >
     <header class="px-4 pt-3 text-sm text-text-sub">{{ title }}</header>
     <!-- 行间分隔线：子项用 SettingCard，靠 divide 工具类描边 -->

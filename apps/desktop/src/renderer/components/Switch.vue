@@ -8,7 +8,11 @@ const emit = defineEmits<{ 'update:modelValue': [boolean] }>();
     role="switch"
     :aria-checked="modelValue"
     class="relative h-6 w-11 rounded-full transition ease-ds"
-    :style="modelValue ? 'background: var(--ds-brand-to)' : 'background: var(--ds-glass-border)'"
+    :style="
+      modelValue
+        ? 'background: linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))'
+        : 'background: var(--ds-glass-border)'
+    "
     @click="emit('update:modelValue', !modelValue)"
   >
     <span
