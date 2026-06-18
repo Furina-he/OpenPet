@@ -1,7 +1,14 @@
 <!-- apps/desktop/src/renderer/components/Slider.vue -->
 <script setup lang="ts">
 import { computed } from 'vue';
-const props = defineProps<{ modelValue: number; min?: number; max?: number; step?: number }>();
+const props = defineProps<{
+  modelValue: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  minLabel?: string;
+  maxLabel?: string;
+}>();
 // update:modelValue 逐拖动（@input）即时预览；change 仅松手/键盘提交一次（用于持久化）。
 const emit = defineEmits<{ 'update:modelValue': [number]; change: [number] }>();
 // 已填充比例 → CSS 变量，驱动轨道暖色填充（§2 品牌锚点，非冷色）。
@@ -12,17 +19,21 @@ const pct = computed(() => {
 });
 </script>
 <template>
-  <input
-    type="range"
-    class="ds-slider"
-    :style="{ '--ds-pct': pct + '%' }"
-    :min="min ?? 0"
-    :max="max ?? 100"
-    :step="step ?? 1"
-    :value="modelValue"
-    @input="emit('update:modelValue', Number(($event.target as HTMLInputElement).value))"
-    @change="emit('change', Number(($event.target as HTMLInputElement).value))"
-  />
+  <div class="flex items-center gap-2">
+    <span v-if="minLabel" class="text-xs text-text-sub">{{ minLabel }}</span>
+    <input
+      type="range"
+      class="ds-slider"
+      :style="{ '--ds-pct': pct + '%' }"
+      :min="min ?? 0"
+      :max="max ?? 100"
+      :step="step ?? 1"
+      :value="modelValue"
+      @input="emit('update:modelValue', Number(($event.target as HTMLInputElement).value))"
+      @change="emit('change', Number(($event.target as HTMLInputElement).value))"
+    />
+    <span v-if="maxLabel" class="text-xs text-text-sub">{{ maxLabel }}</span>
+  </div>
 </template>
 <style scoped>
 .ds-slider {
