@@ -270,3 +270,102 @@
 - 残留③（真窗目视终审 + 真 Key 端到端 90s）认可，P5 先 `electron-rebuild`（[[p5-electron-gui-smoke-blocker]]）。
 
 **衔接到 P5**：D8 关于（接 `openExternal` 外链）+ 全量验收（含**真 Electron GUI 冒烟 + 真 Key 端到端**）+ RESULTS 定稿 + tag。
+
+---
+
+## P5 · D8 关于 + D3 视觉 polish + 真 Electron 验收 + 收尾
+
+**状态：代码全完成 + 全量绿（自跑）；真窗/真 Key 人工验收待人执行（诚实记录，未假装跑过）。** 分支 `feat/m7b1-d-series`。
+
+| Task | commit | 内容 |
+| --- | --- | --- |
+| 0 | （环境，非提交） | better-sqlite3 ABI 收口：证实 node(127)↔electron(123) 互斥，二者均可经 prebuild-install + npmmirror 产出并验证；详见下「Task 0 收口」 |
+| 1 | `c59ae55` | D3 polish：状态点 `ok`→`--ds-success` 绿 + provider 标题 `name===formatLabel` 去冗余（PM 裁决落地） |
+| 2 | `6f147e9` | D8 AboutPage（§7.8 五区：版本/致谢/帮助/诊断/法律）+ App.vue 接 `system.about`；外链经 `app.openExternal` |
+| 3 | `3e93b21` | D8 视觉 pass：帮助/诊断改 SettingCard 行式、补「给作者写信」邮件行、致谢许可证独立行（对齐 §7.8 行布局） |
+
+### Task 0 收口（[[p5-electron-gui-smoke-blocker]] 实质解决）
+
+- **plan 假设 `electron-rebuild` 二进制存在 → 实际未装**（`@electron/rebuild` 不在依赖）。改用等价内核 `electron-builder install-app-deps`（已装），但 pnpm 严格 node_modules 下报 `cannot find prebuild-install` 且**静默把二进制换成 electron-ABI(123)**——导致 vitest（Node 22 = ABI 127）`ERR_DLOPEN_FAILED`。
+- **根因确认**：错误信息明确 `NODE_MODULE_VERSION 123 vs 127`。即 **vitest 要 node-ABI(127)、Electron 30 要 electron-ABI(123)，同一 `better_sqlite3.node` 文件互斥**（这正是 blocker 本质，非可同时满足）。
+- **解法（直接调 better-sqlite3 自带 prebuild-install，镜像走 npmmirror）**：
+  ```bash
+  # 还原 node-ABI(127)（跑 vitest 用，仓库默认态）：
+  cd node_modules/.pnpm/better-sqlite3@11.10.0/node_modules/better-sqlite3
+  npm_config_better_sqlite3_binary_host_mirror=https://registry.npmmirror.com/-/binary/better-sqlite3 \
+    node <repo>/node_modules/.pnpm/prebuild-install@7.1.3/node_modules/prebuild-install/bin.js \
+    --runtime node --target 22.20.0 --arch x64 --platform win32
+  # 换 electron-ABI(123)（人工 `pnpm dev` GUI 冒烟前用）：把上面 --runtime/--target 改为 electron / 30.5.1
+  ```
+  > EBUSY 坑：换二进制前必须先杀残留 `electron.exe`（dev 退出后子进程仍持 `.node` 锁）。
+- **electron 运行时实证**：换 electron-ABI 后 `ELECTRON_RUN_AS_NODE=1 electron -e "new (require('better-sqlite3'))(':memory:')…"` →`ELECTRON better-sqlite3 OK, modules=123, electron=30.5.1`（建表+插入成功）。**即人工 `pnpm dev` 时 Electron 会用原生 better-sqlite3，不降级 in-memory**（Task 0 Step 2 实质达成）。
+- **交付态**：仓库二进制**已还原 node-ABI(127)**（`pnpm --filter @desksoul/desktop test` 默认绿）。**人工跑真窗前需先换 electron-ABI(123)，跑完若要再跑 vitest 须换回。**建议后续（M8/打包）引入 `@electron/rebuild` 或 `pnpm dev` 前置脚本固化此切换。
+
+### Task 1 · D3 polish（视觉闭环实证）
+
+- 浏览器 harness（`?page=model` 1080×720）截图 + `getComputedStyle` 取色：**绿点 = `rgb(127,227,161)` = `#7fe3a1` = `--ds-success` 精确命中**；待填灰点 = `--ds-text-sub`。Claude（有 Key）/Ollama（免 Key）显绿，其余灰。
+- **标题去冗余**：activeProvider=OpenAI 时右栏标题只显「OpenAI」（不再「OpenAI · OpenAI」）；`name!==formatLabel` 的（Claude · Anthropic 等）照常显格式标签。
+- `providerDot` 逻辑/3 测不变（仅常量改色，无需改测）。
+
+### Task 2/3 · D8 AboutPage（§7.8）
+
+- 五区齐：**版本**（名/版本/构建/slogan + [检查更新 disabled][打开官网][GitHub][社区]）、**致谢**（OSS 列表 + [完整开源许可证]）、**反馈与帮助**（用户手册[打开]/报告问题[GitHub Issues]/社区交流[Discord]/给作者写信 hello@desksoul.app）、**诊断**（[生成 .dsdiag] disabled + 说明）、**法律**（服务条款/隐私政策/开源许可证 (MIT)）。
+- 外链全经 `window.desksoul.rpc('app.openExternal',{url})`（P1 RPC，仅放行 http/https）。**URL/邮箱为占位常量**，上线前替换（文件内已标注）。
+- **存而不接**：[检查更新]（无 updater）、[生成 .dsdiag]（无诊断聚合后端）——均 disabled + title 提示。
+- 视觉闭环：`?page=system.about` 浅/深 截图逐区对照 `UI/1d7669e3` + §7.8 + §2 token，浅/深双主题均忠实（玻璃卡/暖灰边按钮/行分隔线/字阶）。
+
+**偏离 plan 的实现（待 PM 认可）**：plan 给的 AboutPage 代码把帮助/诊断画成按钮 chip 排且漏「给作者写信」行。Task 3 视觉 pass 据 **§7.8 文字图实读**（帮助/诊断是「标签左+动作右」行式、含第 4 行邮件）改为复用 `SettingCard` 行式 + 补邮件行（display-only，邮箱非 mailto——`openExternal` 仅 http/https）。**纯视觉对齐 §7.8 + 复用既有组件，未扩功能**；属 Task 3「偏差修正」职责内。
+
+### Task 6 · 全量验收（自跑，[[pm-review-trust-reports]] 口径可信）
+
+| 项 | 结果 |
+| --- | --- |
+| protocol build / sidecar build | tsc 干净 |
+| `pnpm -r typecheck` | 10/10 包 Done（exit 0） |
+| `pnpm --filter @desksoul/desktop test` | **273 passed (45 files)** |
+| `pnpm --filter @desksoul/protocol test` | **178 passed (10 files)** |
+| `pnpm --filter @desksoul/desktop build` | electron-vite build **exit 0**（三 renderer 全产出） |
+
+> D8 未加单测：AboutPage 纯展示/外链无逻辑，遵「SFC 薄渲染、逻辑下沉纯 TS 测、不引入 @vue/test-utils」约定。测试数维持 273（= P4 基线，无回归）。
+
+### Task 4/5 · 真 Electron GUI 冒烟 + 真 Key 端到端 —— ⚠ 人工待执行（执行体能力边界，未假装跑过）
+
+**已做到的自动化代偿**：
+- better-sqlite3 在 Electron 30.5.1 运行时可加载（上「Task 0 收口」实证）→ 真窗不降级 in-memory。
+- D8/D3 renderer 视觉经浏览器 harness 逐屏对照设计图（本阶段）；D2/D4/D6/Hub 见 P2.5/P3/P4 harness 抽验。
+- D8 外链 renderer 侧确认正确调用 `app.openExternal` RPC。
+
+**仍需人工真窗终审（执行体无法代劳的部分）**：
+- 透明 Electron 窗的合成/置顶/点击穿透、D4 缩放实时联动、真 app 重启后主题/缩放持久（OS 级，非浏览器可验）。
+- D8 外链点击是否真在**系统浏览器**打开（`shell.openExternal` OS 行为）。
+- D6 高风险二次确认在真窗的红描边 ConfirmDialog 目视。
+- **真 Key 端到端**：填真实 API Key→[测试连接]绿→overlay 发消息→听到**该 provider+model 的流式回复**（表情/动作双轨）。**执行体无真实 Key、无法"听到"流式回复**，必须人工。
+
+> 人工步骤：①按上「Task 0 收口」命令把二进制换 electron-ABI(123)；②`pnpm --filter @desksoul/desktop dev`；③按 plan Task 4/5 清单逐项目视/实测，偏差回填本节。**跑完若要再跑 vitest，须把二进制换回 node-ABI(127)。**
+
+### 残留总账（P5）
+
+- **真窗 GUI 冒烟 + 真 Key 端到端 = §6 硬门槛，仍待人工**（上节）。这是「不签收」的唯一卡点。
+- better-sqlite3 双 ABI 切换尚未脚本化（手动命令；建议 M8/打包引入 `@electron/rebuild` 固化）。
+- D8 外链 URL/邮箱为占位常量；[检查更新]/[生成 .dsdiag] 存而不接（无 updater/诊断后端）；七连击开发者模式彩蛋留后续。
+
+### tag 决策 → 回 PM 裁定（未自行打）
+
+**`mvp/M7b1-done` 暂未打。** 依 CURRENT.md §6「P5 前必须完成一次对齐设计图的完整 GUI 冒烟，否则不签收」，而真窗 GUI 冒烟 + 真 Key 是**人工硬门槛、执行体无法代劳**。按交接「诚实红线」不假装跑过、不自行扩范围 → **不擅自 tag**，请 PM 在人工 GUI 冒烟 + 真 Key 通过后裁定打 tag（或授权先 tag 代码完成态、GUI 冒烟另记）。
+
+---
+
+## M7b-1 整体收尾小结（P1–P5）
+
+| 阶段 | 交付 | 测试 |
+| --- | --- | --- |
+| P1 | prefs schema 扩容 + effects 接依赖 + `app.openExternal` | desktop 254 / protocol 177 |
+| P2 | D4 显示与窗口（SettingSection + characterScale 收编） | desktop 255 |
+| P2.5 | Hub 可达性（openHub RPC + 热键 + overlay ⚙ + hide-on-close） | desktop 255 |
+| 视觉 harness | dev mock-bridge + `?page=` route + Playwright MCP 截图↔PNG 闭环 | desktop 260 |
+| P3 | D2 通用 + D6 隐私（ConfirmDialog 二次确认 + nav polish） | desktop 262 / protocol 178 |
+| P4 | D3 模型 API 双栏 + chat 集成（resolveModel，worker 零改动） | desktop 273 / protocol 178 |
+| **P5** | **D8 关于 + D3 两 polish + 全量验收 + Task 0 ABI 收口** | **desktop 273 / protocol 178 / build exit 0** |
+
+**成果**：D 系列 5 面板齐（D2 通用 / D3 模型 API / D4 显示与窗口 / D6 隐私 / D8 关于）+ chat 动态 provider/model 集成 + Hub 可达 + 视觉保真 harness + prefs 即时生效契约全链。**desktop 273 / protocol 178 / typecheck 10/10 / electron-vite build exit 0**（全自跑实测）。
+**唯一未竟 = §6 真窗 GUI 冒烟 + 真 Key 端到端（人工硬门槛）**；Task 0 已为其铺平（electron-ABI 二进制可产出且实证可加载）。tag 待 PM 在人工验收后裁定。
