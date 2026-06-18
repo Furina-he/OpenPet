@@ -7,19 +7,18 @@
 
 ## 1. 一句话现状
 
-M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1（prefs 后端地基）+ P2（D4 显示面板）已完成**。**当前待办 = P2.5「Hub 可达性」**（见 §2 的发现）。
+M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1+P2 完成**；**P2.5（Hub 可达性）用户已在新对话做完**（PM 待复核归档）。**当前待办 = 视觉保真 harness**（render→screenshot→比对设计图 闭环，用 Playwright MCP），其后用它给 Hub/D4 做保真审计 + 继续 P3。
 
-## 2. ⚠ 架构发现 + 立即要做的事
+## 2. 立即要做的事
 
-**发现（2026-06-18，PM 复核 P2 时）**：Hub（settings 窗口）建出来是 `show:false`，**全 app 无任何打开入口**（无 `.show()`/`globalShortcut`/overlay ⚙/RPC），且关闭即销毁（无 hide-on-close）。后果：M7a/P2 做的 Hub 壳+主题+D4 面板**在运行时不可达** → 无法 GUI 冒烟、且会卡住 P4 的 D3「配 Key」验收。完整入口集（托盘/热键录制器/右键）在 M8，但**最小打开路径是 M7b-1 自身验收的前置**，故插入 P2.5。
+> P2 复核时发现的「Hub 运行时不可达」已由 **P2.5** 解决（`app.window.openHub` RPC + 全局热键 `Ctrl+Shift+,` + overlay ⚙ + settings 窗 hide-on-close）；用户已在新对话完成，**PM 待复核归档**（拿到 P2.5 结果后做）。
 
-**立即做**：
+**下一步执行 = 视觉保真 harness（infra 闭环）**：
 ```bash
 git checkout feat/m7b1-d-series
 ```
-按 **`docs/plans/2026-06-18-m7b1-p2_5-hub-reachability-plan.md`** 逐 task（executing-plans，TDD where logic）。P2.5 = openHub RPC + 全局热键 `Ctrl+Shift+,` + overlay ⚙ 按钮 + settings 窗 hide-on-close。**落地后这是第一个能真正 GUI 冒烟的节点**（见 §6 待验证）。
-
-> P2.5 落地后回 PM 出 P3（D2 通用 + D6 隐私）。
+按 **`docs/plans/2026-06-18-visual-fidelity-harness-plan.md`** 逐 task（executing-plans + **Playwright MCP**）。它给 renderer 装 dev mock-bridge → Hub 在浏览器可交互渲染 → Playwright MCP 截图 → `Read` 比对 `UI/*.png` → 迭代。**这是后续所有面板高还原设计图的标准闭环。**
+> harness 落地后回 PM：先用它给已建的 Hub/D4 做保真审计（列偏差→polish task），再出 P3（D2+D6）。
 
 ## 3. 路线图（PM 维护）
 
@@ -28,8 +27,10 @@ git checkout feat/m7b1-d-series
 | M1–M6 / B/C / M7a | 地基齐备 | ✅ main |
 | M7b-1 P1 | prefs schema 扩容 + effects 接依赖 + app.openExternal | ✅ 254 绿 |
 | M7b-1 P2 | D4 显示与窗口（SettingSection + characterScale 收编 + 完整面板） | ✅ 255 绿 |
-| **M7b-1 P2.5** | **Hub 可达性（openHub RPC + 热键 + overlay ⚙ + hide-on-close）** | 📋 **计划就绪，待执行** |
-| M7b-1 P3 | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general`） | ⏳ 待 P2.5 后出计划 |
+| M7b-1 P2.5 | Hub 可达性（openHub RPC + 热键 + overlay ⚙ + hide-on-close） | ✅ 用户完成（PM 待复核归档） |
+| **视觉保真 harness** | **dev mock-bridge + Playwright MCP 截图比对设计图闭环（infra）** | 📋 **计划就绪，待执行** |
+| Hub/D4 保真审计 | 用 harness 对照 PNG 列偏差 → polish | ⏳ 待 harness 后 |
+| M7b-1 P3 | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general`） | ⏳ |
 | M7b-1 P4 | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ⏳ |
 | M7b-1 P5 | D8 关于（接 openExternal 外链）+ 全量验收（含 GUI 冒烟）+ RESULTS 定稿 + tag | ⏳ |
 | M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ⏳ 独立 spec/plan |
