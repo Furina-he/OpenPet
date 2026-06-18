@@ -7,7 +7,7 @@
 
 ## 1. 一句话现状
 
-M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1+P2 完成**；**P2.5（Hub 可达性）用户已在新对话做完**（PM 待复核归档）。**当前待办 = 视觉保真 harness**（render→screenshot→比对设计图 闭环，用 Playwright MCP），其后用它给 Hub/D4 做保真审计 + 继续 P3。
+M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1+P2 完成**；**P2.5（Hub 可达性）完成、PM 已复核**（protocol 178 / desktop 255 绿；GUI 冒烟待 harness/人工）。**当前待办 = 视觉保真 harness**（render→screenshot→比对设计图 闭环，用 Playwright MCP），其后用它给 Hub/D4 做保真审计 + 继续 P3。
 
 ## 2. 立即要做的事
 
@@ -27,7 +27,7 @@ git checkout feat/m7b1-d-series
 | M1–M6 / B/C / M7a | 地基齐备 | ✅ main |
 | M7b-1 P1 | prefs schema 扩容 + effects 接依赖 + app.openExternal | ✅ 254 绿 |
 | M7b-1 P2 | D4 显示与窗口（SettingSection + characterScale 收编 + 完整面板） | ✅ 255 绿 |
-| M7b-1 P2.5 | Hub 可达性（openHub RPC + 热键 + overlay ⚙ + hide-on-close） | ✅ 用户完成（PM 待复核归档） |
+| M7b-1 P2.5 | Hub 可达性（openHub RPC + 热键 + overlay ⚙ + hide-on-close） | ✅ 完成 + PM 复核（178/255 绿；GUI 冒烟待 harness） |
 | **视觉保真 harness** | **dev mock-bridge + Playwright MCP 截图比对设计图闭环（infra）** | 📋 **计划就绪，待执行** |
 | Hub/D4 保真审计 | 用 harness 对照 PNG 列偏差 → polish | ⏳ 待 harness 后 |
 | M7b-1 P3 | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general`） | ⏳ |
