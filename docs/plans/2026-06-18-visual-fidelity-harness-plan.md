@@ -6,7 +6,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans 逐 task。步骤 `- [ ]`。执行需 **Playwright MCP**（用户环境已具备）。
 
-**Goal:** 给 headless 实现者补上"渲染→截图→对照设计图→迭代"的闭环，使 UI 能高还原 `UI/*.png`。一次投入，吃到 M7b 全部面板 + M8。
+**Goal:** 给 headless 实现者补上"渲染→截图→对照设计图→迭代"的闭环，使 UI 能高还原 `UI/*.png`。一次投入，吃到 M7b 全部面板 + M8。**本次执行还用该 harness 对 Hub 壳 + D4 跑首轮保真审计 + 修正（Task 5），并替代 P2.5 起 pending 的 GUI 冒烟。**
 
 **为什么需要它（瓶颈）：** 实现是"盲写"——能写 SFC/跑单测，但看不到渲染结果，只能把"脑内理解"翻成代码，翻译损耗=还原度损耗。token 化（已做）解决"原子级"对齐；本 harness 解决"成屏级"对齐。
 
@@ -219,6 +219,41 @@ const active = ref(initialRoute(window.location.search, 'system.display'));
 
 ---
 
+## Task 5: Hub + D4 首轮保真审计 + 修正（用本 harness）
+
+**Files（视偏差而定）:** Modify `apps/desktop/src/renderer/components/{GlassPanel,SettingSection,SettingCard,Switch,Select,Slider,Button,ToastHost}.vue`、`settings/App.vue`、`settings/pages/DisplayPage.vue`；仅当 token 值与 §2 有出入才动 `theme/tokens.css` / `tailwind.config.js`；Modify `apps/desktop/RESULTS-M7b1.md`
+
+> 视觉迭代任务（非单测逻辑）：判据是"渲染截图 ↔ 设计 PNG 够像"。硬约束：**只动样式/结构还原度，不改行为**；既有 **desktop 255 测试必须保持绿**（无回归）。优先修可复用件（GlassPanel/SettingSection/SettingCard）——P3 的 D2/D6 还要复用，先把它们拉对。
+
+- [ ] **Step 1: 截图**（按 §Task 3 Runbook）
+
+Playwright MCP 截 Hub 壳 + D4（`?page=system.display`）浅/深两版到 `artifacts/visual/`。视口 1080×720。
+
+- [ ] **Step 2: 逐项列偏差**
+
+`Read` 渲染截图 + `Read` 设计图：D4=`UI/4ba6005f-0abc-45f4-9690-2c5e7af15242.png`；Hub 结构对 ui-design §3.3（左导航 280 / 顶栏 56 / 状态条 32）。逐项对 §2 token 核：玻璃 `blur(28px) saturate(180%)` + 浅/深底色/描边/阴影；色阶（主文 `#171821`/次文 55% 等）；字号阶梯 12/13/14/16/20/28/36；圆角 按钮8/输入10/卡片12/浮层16；间距栅格 4/8/12/16/24/32/48；分组卡内分隔线 `rgba(white,.06)`；卡片行"左 Label+Desc / 右控件"对齐；控件各态（Switch 开关色、Select、Slider）。
+
+- [ ] **Step 3: 用 §2 token 修明显偏差**
+
+改 SFC 还原度（间距/玻璃质感/描边/色阶/分组/控件尺寸与态）。**优先改可复用件**。若发现 token 本身偏离 §2 → 校准 `tokens.css`/`tailwind.config.js`，但**动 token 要重截其它屏确认未连带改崩**。
+
+- [ ] **Step 4: 重截确认收敛 + 列残留**
+
+重截比对到"够像"。残留项（需设计决策 / 大改 / PNG 缺的细节，如 §7.4 D4 缩放的「80px 微缩剪影实时预览」需 mini 角色渲染——大概率列残留而非本任务实现）写清单。
+
+- [ ] **Step 5: 回归 + 归档 + 提交**
+
+Run: `pnpm --filter @desksoul/sidecar build && pnpm --filter @desksoul/desktop test`（**255 不回归**）+ `pnpm --filter @desksoul/desktop typecheck`。
+RESULTS-M7b1 加「视觉保真审计（Hub+D4）」段：并排"设计 PNG ↔ 渲染截图"+ 改了什么 + 残留清单。
+```bash
+git add apps/desktop/src/renderer apps/desktop/RESULTS-M7b1.md
+git commit -m "fix(desktop): visual-fidelity pass on Hub + D4 (match design PNGs)"
+```
+
+> 注：`artifacts/` 已 gitignore（Task 4），截图不入库，RESULTS 内嵌/引用即可。残留偏差回 PM → 据此 + 用户反馈决定补做还是带入后续。
+
+---
+
 ## Self-Review
 - **闭环成立**：mock-bridge(T1) 让浏览器可渲染 → Playwright MCP 截图(T3) → Read 比对 PNG → 迭代。✓
 - **交互 demo**：mock 的 set→changed 让主题/缩放在浏览器里当场生效（活 demo，非死图）。✓
@@ -226,3 +261,4 @@ const active = ref(initialRoute(window.location.search, 'system.display'));
 - **占位符**：无；T1/T2 含完整代码 + TDD，T3 是可执行 Runbook。
 - **范围**：组件画廊页（component gallery）留作可选增强，本期不做（YAGNI；逐屏截图已够）。
 - **依赖**：Playwright MCP（用户环境具备）；renderer dev server（electron-vite dev 现成）。
+- **T5 保真审计**：闭环建成后立即用于 Hub/D4，优先修可复用件（P3 复用）；只动样式不改行为、255 测试保持绿；残留（如 D4 80px 剪影预览）列清单回 PM，不在本任务硬啃。
