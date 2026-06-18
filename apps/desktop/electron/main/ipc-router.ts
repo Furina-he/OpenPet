@@ -71,6 +71,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
 
   const store = createConversationStore(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {});
   const characters = createCharacterService(deps.charactersRoot);
+  // 应用偏好（M7a）：单写者 PrefsStore。在 ChatService 之前声明，供 resolveModel 读当前 provider/model。
+  const prefsStore = deps.prefsStore ?? createPrefsStore({});
   const chat = new ChatService({
     providerEntryPath: deps.providerEntryPath,
     broadcast,
@@ -87,10 +89,16 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     ...(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
+    // §7.1：chat.send 未带 providerId 时，动态读 prefs 的当前 provider/model（D3 选择即生效）。
+    resolveModel: () => {
+      const p = prefsStore.getAll();
+      return {
+        ...(p['model.activeProvider'] ? { providerId: p['model.activeProvider'] } : {}),
+        ...(p['model.activeModel'] ? { model: p['model.activeModel'] } : {}),
+      };
+    },
   });
   const idleResponder = createIdleResponder(sendToCharacter);
-  // 应用偏好（M7a）：单写者 PrefsStore + 空副作用 seam。启动 hydrate 施加 Main 侧副作用。
-  const prefsStore = deps.prefsStore ?? createPrefsStore({});
   // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
   // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
   //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。

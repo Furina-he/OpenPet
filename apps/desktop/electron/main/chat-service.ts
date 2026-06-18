@@ -35,6 +35,7 @@ import {
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { createConversationStore, MemoryStore, type ConversationStore } from './db/index.js';
 import { assembleContext } from './context-assembler.js';
+import { resolveSendTarget } from './chat-resolve.js';
 import { exportDsbak } from './db/export-bundle.js';
 import { RpcError } from './router.js';
 
@@ -63,6 +64,8 @@ export interface ChatServiceOptions {
   defaultProviderId?: string;
   /** 降级链 [primary, ...fallbacks]；优先于 defaultProviderId。首 delta 前失败顺位重试一次。 */
   providerChain?: string[];
+  /** 动态解析当前 provider/model（无显式 providerId 时用）；ipc-router 从 prefs 注入。 */
+  resolveModel?: () => { providerId?: string; model?: string };
 }
 
 const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };
@@ -93,6 +96,8 @@ export class ChatService {
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
   private readonly providerChain: string[];
+  /** 无显式 providerId 时，从 prefs 取当前 provider/model（ipc-router 注入）。 */
+  private readonly resolveModel: (() => { providerId?: string; model?: string }) | undefined;
   /**
    * 在途轮的 provider 编排态（降级/首delta/工具回灌）。生命周期绑定「provider
    * 事件流」：done 时随 onProviderEvent 清理。一轮一个对象，取代原先 4 张并行 Map。
@@ -110,6 +115,7 @@ export class ChatService {
   constructor(opts: ChatServiceOptions) {
     this.providerChain =
       opts.providerChain ?? (opts.defaultProviderId ? [opts.defaultProviderId] : []);
+    this.resolveModel = opts.resolveModel;
     this.conv = opts.store ?? new MemoryStore();
     this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
     this.sqlitePath = opts.sqlitePath;
@@ -141,13 +147,15 @@ export class ChatService {
     if (this.session.isStreaming(sessionId)) {
       throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
     }
-    const chain = providerId ? [providerId] : this.providerChain;
+    const resolved = providerId ? undefined : this.resolveModel?.();
+    const { chain, model } = resolveSendTarget(providerId, this.providerChain, resolved);
     // ContextAssembler：system prompt(人设+persona+行为标签规约) + 最近 20 轮 + 当前 user。
     const request = assembleContext({
       store: this.conv,
       character: this.getCharacter(),
       sessionId,
       userText: text,
+      ...(model ? { model } : {}),
     });
     this.turns.set(sessionId, {
       chain,
