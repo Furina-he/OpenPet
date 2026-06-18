@@ -65,4 +65,11 @@ describe('assembleContext', () => {
     const req = assembleContext({ store, character: CH, sessionId: 's', userText: 'hi' });
     expect(req.messages.some((m) => m.content === 'secret')).toBe(false);
   });
+
+  it('透传 model 进 ChatRequest.model；未给则不带该键', () => {
+    const store = new MemoryStore();
+    const base = { store, character: { id: 'default', name: '小灵' }, sessionId: 's1', userText: 'hi' };
+    expect(assembleContext({ ...base, model: 'claude-sonnet-4-6' }).model).toBe('claude-sonnet-4-6');
+    expect('model' in assembleContext(base)).toBe(false);
+  });
 });

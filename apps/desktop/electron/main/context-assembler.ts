@@ -14,6 +14,8 @@ export interface AssembleInput {
   };
   sessionId: string;
   userText: string;
+  /** 当前选定模型；下沉到 ChatRequest.model（worker honor）。 */
+  model?: string;
 }
 
 /**
@@ -39,5 +41,6 @@ export function assembleContext(input: AssembleInput): ChatRequest {
       ...history,
       { role: 'user', content: input.userText },
     ],
+    ...(input.model ? { model: input.model } : {}),
   };
 }
