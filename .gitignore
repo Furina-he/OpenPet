@@ -19,3 +19,7 @@ apps/desktop/public/models/
 
 # Vitest coverage output
 coverage/
+
+# Visual-fidelity harness artifacts (screenshots are process output, not source)
+apps/desktop/artifacts/
+.playwright-mcp/
