@@ -6,6 +6,7 @@ import GeneralPage from './pages/GeneralPage.vue';
 import DisplayPage from './pages/DisplayPage.vue';
 import PrivacyPage from './pages/PrivacyPage.vue';
 import ModelApiPage from './pages/ModelApiPage.vue';
+import AboutPage from './pages/AboutPage.vue';
 import ToastHost from '../components/ToastHost.vue';
 import { initialRoute } from '../dev/route';
 
@@ -57,6 +58,7 @@ function saved(): void {
         <DisplayPage v-else-if="active === 'system.display'" @saved="saved" />
         <PrivacyPage v-else-if="active === 'system.privacy'" @saved="saved" />
         <ModelApiPage v-else-if="active === 'model'" @saved="saved" />
+        <AboutPage v-else-if="active === 'system.about'" />
         <div v-else class="text-text-sub">（{{ active }} 留待 M7b）</div>
       </main>
       <footer class="flex h-8 items-center border-t border-glass-border px-4 text-sm text-text-sub">
