@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { NAV_TREE, isActive } from './nav-tree';
+import GeneralPage from './pages/GeneralPage.vue';
 import DisplayPage from './pages/DisplayPage.vue';
 import ToastHost from '../components/ToastHost.vue';
 import { initialRoute } from '../dev/route';
@@ -40,7 +41,8 @@ function saved(): void {
         DeskSoul · 设置
       </header>
       <main class="flex-1 overflow-y-auto p-6">
-        <DisplayPage v-if="active === 'system.display'" @saved="saved" />
+        <GeneralPage v-if="active === 'system.general'" @saved="saved" />
+        <DisplayPage v-else-if="active === 'system.display'" @saved="saved" />
         <div v-else class="text-text-sub">（{{ active }} 留待 M7b）</div>
       </main>
       <footer class="flex h-8 items-center border-t border-glass-border px-4 text-sm text-text-sub">
