@@ -72,7 +72,8 @@ const activeP = computed(() => providers.value.find((p) => p.id === activeId.val
 const activeDialect = computed(() => getDialect(activeId.value));
 const activeFormatLabel = computed(() => {
   const f = activeDialect.value?.format;
-  return f ? (FORMAT_LABEL[f] ?? f) : '';
+  const label = f ? (FORMAT_LABEL[f] ?? f) : '';
+  return label && label !== activeP.value?.name ? label : '';
 });
 const activeModels = computed(() => modelsFor(activeId.value));
 const modelOptions = computed(() => activeModels.value.map((m) => ({ value: m, label: m })));
@@ -165,7 +166,7 @@ async function testConnection(): Promise<void> {
         <template v-if="activeP">
           <div class="text-md text-text-main">
             {{ activeP.name }}
-            <span class="text-text-sub">· {{ activeFormatLabel }}</span>
+            <span v-if="activeFormatLabel" class="text-text-sub">· {{ activeFormatLabel }}</span>
           </div>
           <div class="my-3 border-t border-glass-border"></div>
 

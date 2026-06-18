@@ -7,9 +7,9 @@ export function providerDot(input: { hasKey: boolean; lastTestOk?: boolean | nul
   return 'pending';
 }
 
-/** 点色 → CSS 变量（绿用品牌暖色，红用 danger，灰用 sub）。 */
+/** 点色 → CSS 变量（绿=可用用 success，红=失败用 danger，灰=待填用 sub）。 */
 export const DOT_COLOR: Record<ProviderDot, string> = {
-  ok: 'var(--ds-brand-to)',
+  ok: 'var(--ds-success)',
   fail: 'var(--ds-danger)',
   pending: 'var(--ds-text-sub)',
 };
