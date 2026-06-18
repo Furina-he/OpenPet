@@ -194,4 +194,10 @@
 
 **prettier**：仅 `--write` 本阶段新写/改文件（GeneralPage/PrivacyPage/ConfirmDialog/privacy-risk/nav-tree/App.vue/Slider/SettingCard/privacy-risk.test）；未动 methods.ts/index.ts 等存量欠账文件（[[build-test-workflow-gotchas]]）。
 
+**PM 复核（2026-06-18，独立验证，不凭报告）**：✅ **签收**。
+- git 提交链 6 commit 顺序核实、工作树干净；自跑 sidecar build → desktop **262 绿**（含 `privacy-risk` 2 / `nav-tree` 3）+ protocol **178 绿** + 全仓 typecheck **12/12**。
+- `privacy-risk.test.ts` 读源确认真测门控（`isHighRisk` 截屏/摄像头、`needsConfirm` 仅高风险 off→on）；`PrivacyPage.vue` 接线核实——仅 `screenshot/camera` 走 `toggleSwitch`，确认前 `return` 不落盘，`onConfirm` 才 `set`，`onCancel` 仅关框。
+- 视觉闭环 PM 自跑（dev server + Playwright MCP，1080×720）：D2 浅 / D6 浅+深 / ConfirmDialog 对照 `UI/1d7669e3` **够像**；端到端实证截屏 off→on 弹整张红描边框、`aria-checked` before/after 均 `false`（开关持 OFF 未落盘）、取消回退。console 仅 favicon 404（无害）。
+- 残留（lucide-vue-next 已 deprecated / 顶层 leaf 组空 / Select native / 存而不接系统访问 / 真 Electron 目视终审）认可，归 P5 硬门槛把关。
+
 **衔接到 P4**：D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send）。
