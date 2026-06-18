@@ -18,7 +18,10 @@ function saved(): void {
     <!-- 左导航 280px -->
     <nav class="w-[280px] shrink-0 overflow-y-auto border-r border-glass-border p-3">
       <template v-for="g in NAV_TREE" :key="g.id">
-        <div class="px-2 py-1 text-sm text-text-sub">{{ g.label }}</div>
+        <div class="flex items-center gap-2 px-2 py-1 text-sm text-text-sub">
+          <component :is="g.icon" :size="16" :stroke-width="1.5" />
+          <span>{{ g.label }}</span>
+        </div>
         <button
           v-for="c in g.children"
           :key="c.id"
