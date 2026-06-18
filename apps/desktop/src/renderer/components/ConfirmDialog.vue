@@ -9,7 +9,10 @@ const emit = defineEmits<{ confirm: []; cancel: [] }>();
     class="fixed inset-0 z-[60] flex items-center justify-center"
     style="background: rgba(0, 0, 0, 0.32)"
   >
-    <div class="ds-glass w-[420px] rounded-panel border-2 p-5" style="border-color: var(--ds-danger)">
+    <div
+      class="ds-glass w-[420px] rounded-panel border-2 p-5"
+      style="border-color: var(--ds-danger)"
+    >
       <div class="text-md text-text-main">{{ title }}</div>
       <div v-if="detail" class="mt-2 text-sm text-text-sub">{{ detail }}</div>
       <div class="mt-5 flex justify-end gap-2">

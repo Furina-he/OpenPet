@@ -148,3 +148,50 @@
 > 残留多为「后续里程碑功能（M8 / live 数据 / 图标集）」或「设计决策（映射表修订 / 缩进层级 / 翼标）」，非本期纯样式可闭合项。
 
 **人工终审（仍待）**：CLI agent 环境用 Playwright MCP 在 renderer dev server（非 Electron 真窗）做了截图比对；M7b-1 P5 签收前仍需 `pnpm --filter @desksoul/desktop dev` 在真 Electron 下目视复核（兜玻璃 backdrop-filter 在透明窗的真实表现等最后一公里）。
+
+## P3 · D2 通用 + D6 隐私（+ ConfirmDialog 二次确认 + 共享 polish）
+
+**状态：✅ 完成**（分支 `feat/m7b1-d-series`）。验证：protocol build + sidecar build 后 desktop **262 绿**（260 基线 + privacy-risk 新测 2，**0 回归**，`nav-tree.test` 仍 3 绿）/ typecheck（vue-tsc + tsc）exit 0 / 工作树干净。每 task 一提交。
+
+| Task | commit | 内容 |
+| --- | --- | --- |
+| 1 | `c35d62a` | 左导航 Lucide 图标（每组挂 `icon`，App.vue `<component :is>` 渲染 16px/1.5 描边）+ `system` 组首位加 `system.general` 叶子（§3.3/§2.5） |
+| 2 | `10d4bd5` | `Slider.vue` 加 `minLabel/maxLabel` 翼标（flex 包裹原 input，不改 emit/填充行为）+ `SettingCard.vue` 加 `indent` 子项缩进（`pl-8 pr-4`） |
+| 3 | `8b2cbb6` | D2 `GeneralPage.vue`（§7.2 启动/语言地区/更新/通知/Agent思考/开发者 6 组，全键绑 prefs）+ App.vue 接 `system.general` |
+| 4 | `b98dd4a` | `privacy-risk.ts`（`isHighRisk`/`needsConfirm`，TDD 先红后绿 2 测）+ `ConfirmDialog.vue`（§2.8 ②级整张红描边 + danger 确认按钮） |
+| 5 | `d348667` | D6 `PrivacyPage.vue`（§7.6 API Key加密/内容上送/系统访问/遥测崩溃 4 组）+ 截屏/摄像头 off→on 走 ConfirmDialog + App.vue 接 `system.privacy` |
+| 6 | （本提交） | 视觉闭环比对 + 全量回归 + RESULTS P3 + prettier（本阶段文件） |
+
+**测试增量**：desktop 260→**262**（`privacy-risk.test.ts`：`isHighRisk` 截屏/摄像头判定、`needsConfirm` 仅高风险 off→on）。protocol 不变（本阶段未改 protocol src）。
+
+**D6 二次确认做实（§2.8 ②级，Playwright MCP 实证）**：
+- **判定逻辑（TDD）**：`needsConfirm(key, from, to) = isHighRisk(key) && !from && to`——仅截屏/摄像头、且从关到开才需确认；关闭、非高风险（麦克风等）直接落盘。
+- **确认路径**：点 屏幕内容（截屏）开关 off→on → 弹整张红描边对话框「允许读取屏幕内容（截屏）？」，**此时开关仍 OFF（持有未落盘）** → 点「确认开启」→ 开关转 ON（`aria-checked=true`）、`app.prefs.set` 落盘、对话框关闭。✅
+- **取消路径**：点 摄像头 off→on → 弹「允许访问摄像头？」→ 点「取消」→ **开关保持 OFF**（`aria-checked=false`）、未落盘、对话框关闭。✅
+- 即 §2.8 ②级语义完整：高风险开启前红描边二次确认，确认才生效、取消即回退。
+
+**共享 polish（顺带闭合「视觉保真 Harness」首轮 3 项残留）**：
+- nav 左导航 Lucide 图标 ⇒ 闭合残留「Hub 左导航无图标」。
+- Slider `低 ━●━ 高` 翼标 ⇒ 闭合残留「Slider 行无 min/max 翼标」（D2 主动发言频率实证：翼标 + 暖色填充 + 白圆 thumb）。
+- SettingCard `indent` 子项缩进 ⇒ 闭合残留「子项层级缩进」（D2「主动发言频率」作「角色主动发言」缩进子项实证）。
+
+**视觉闭环比对（Playwright MCP，renderer dev server `localhost:5173`，1080×720，浅/深双版，参照 `UI/1d7669e3` 设置设计语言 + §7.2/§7.6 + §2 token）**：
+
+| 屏 | 浅色 | 深色 | 判定 |
+| --- | --- | --- | --- |
+| D2 通用 | 分组卡（启动/语言地区/更新/通知/Agent思考/开发者）+ 暖色开关 + 玻璃化 Select（chevron）+ nav 图标 | 暗玻璃卡对比正常、暖色开关仍醒目、文字可读 | 在 token/设计语言层「够像」 ✓ |
+| D2 主动发言频率（子项） | 缩进子项 + 滑块 `低 ━●━ 高` 暖色填充 | — | 翼标 + 缩进符合 §7.2 ✓ |
+| D6 隐私 | 4 组卡 + 系统访问段（默认全关：剪贴板/截屏/摄像头 off，麦克风/通知/画像 on）+ 上下文窗 Select | 暗玻璃卡对比正常、开关态正确（截屏 ON/摄像头 OFF 验证 gating 持久） | 够像 ✓ |
+| D6 ConfirmDialog | 半透明遮罩 + 整张红描边 + danger「确认开启」按钮 + 标题/说明 | — | §2.8 ②级符合 ✓ |
+
+> 两面板复用「视觉保真 Harness」已调优的 `.ds-glass`(blur+saturate+shadow)/`Slider`(暖色)/`Switch`(渐变)/`Select`(chevron)，故面板级无新增散装样式偏差；本轮闭环主要验「组合后整体够像」+「ConfirmDialog 红描边」+「polish 三项落地」。
+
+**残留 / 回 PM（非本期纯样式可闭合）**：
+- **`lucide-vue-next@1.0.0` 已 deprecated（上游改名 `@lucide/vue`）**：1.0.0 是可用终版（dist/types/图标齐全，typecheck+渲染均正常），本期按计划沿用以贴合 plan import；**建议后续（M9 打磨期）迁到 `@lucide/vue`**。属技术债，不阻塞。
+- 顶层 leaf 组（总览/模型 API/插件/知识库）仍渲染为带图标的不可点组标题（children 空）——与可展开组视觉难区分，且点无页（留各页落地阶段）。沿用「视觉保真 Harness」残留判定。
+- Select 弹出列表仍 native（闭合态已玻璃化）；顶栏/状态条仍占位（M8 / live 数据）；存而不接开关（剪贴板/截屏/摄像头/麦克风等系统访问的真实 OS 权限接入）留后续——本期仅「渲染 + 持久 + 高风险二次确认」。
+- **真 Electron 目视终审仍待**（同前述 P5 硬门槛）：本轮为 renderer dev server 浏览器截图，非透明 Electron 真窗。
+
+**prettier**：仅 `--write` 本阶段新写/改文件（GeneralPage/PrivacyPage/ConfirmDialog/privacy-risk/nav-tree/App.vue/Slider/SettingCard/privacy-risk.test）；未动 methods.ts/index.ts 等存量欠账文件（[[build-test-workflow-gotchas]]）。
+
+**衔接到 P4**：D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send）。

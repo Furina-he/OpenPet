@@ -4,10 +4,7 @@
 defineProps<{ label: string; description?: string; indent?: boolean }>();
 </script>
 <template>
-  <div
-    class="flex items-center justify-between gap-4 py-3"
-    :class="indent ? 'pl-8 pr-4' : 'px-4'"
-  >
+  <div class="flex items-center justify-between gap-4 py-3" :class="indent ? 'pl-8 pr-4' : 'px-4'">
     <div class="min-w-0">
       <div class="text-base text-text-main">{{ label }}</div>
       <div v-if="description" class="text-sm text-text-sub">{{ description }}</div>

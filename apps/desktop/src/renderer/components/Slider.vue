@@ -15,7 +15,9 @@ const emit = defineEmits<{ 'update:modelValue': [number]; change: [number] }>();
 const pct = computed(() => {
   const min = props.min ?? 0;
   const max = props.max ?? 100;
-  return max === min ? 0 : Math.min(100, Math.max(0, ((props.modelValue - min) / (max - min)) * 100));
+  return max === min
+    ? 0
+    : Math.min(100, Math.max(0, ((props.modelValue - min) / (max - min)) * 100));
 });
 </script>
 <template>
