@@ -263,4 +263,10 @@
 
 **prettier**：仅本期**新增文件** `--write`（provider-status/key-reveal/chat-resolve + 各 test、KeyInput/ProviderList/ModelApiPage）；**改动的存量文件**（context-assembler/.test、chat-service、ipc-router、App.vue、mock-bridge、本 RESULTS）只手写保证自己新增行符合 prettier，**不 --write 整文件**（避免重排 P1–P3 旧表/旧测行，[[build-test-workflow-gotchas]]）。
 
+**PM 复核（2026-06-18，独立审计；按 [[pm-review-trust-reports]] 口径不重跑已通过测试）**：✅ **签收（功能 + 集成 + 测试做实）**；2 视觉 polish 裁决转 P5。
+- 提交链 10 commit 顺序核实、工作树干净；测试数信任报告（desktop 273 / protocol 178 / typecheck 12/12）。
+- chat 集成读源审计：`chat-service` resolveModel 缺省 `undefined`→`resolveSendTarget` 回退静态链 + 省 model→行为同改前（22 测 0 回归有据）；`ipc-router` prefsStore 上移 + 条件展开注入（偏离 1/2，`exactOptionalPropertyTypes` 必要，等价）；`mock-bridge` `'desksoul' in window` 守卫 = Electron no-op（偏离 4，dev-only 不污染生产）。**偏离 1–5 全部认可**。
+- **视觉裁决（PM）**：① 状态点 `ok` **改 `--ds-success` 绿**——§7.3 明写「绿点」，`--ds-brand-to`(#ff8fab) 是粉红暖色，违「冷色仅状态用」约定；此为 **P4 plan 的 `DOT_COLOR` 疏漏**（执行者忠实遵循 + 诚实回报，非执行问题）。② provider 标题 `name===formatLabel` 时**省后半**（去「OpenAI · OpenAI」冗余）。二者纯样式微调，纳入 **P5 polish**（真 Electron 窗终审时一并目视调）。
+- 残留③（真窗目视终审 + 真 Key 端到端 90s）认可，P5 先 `electron-rebuild`（[[p5-electron-gui-smoke-blocker]]）。
+
 **衔接到 P5**：D8 关于（接 `openExternal` 外链）+ 全量验收（含**真 Electron GUI 冒烟 + 真 Key 端到端**）+ RESULTS 定稿 + tag。

@@ -1,19 +1,19 @@
 # DeskSoul · 项目当前状态 / 新对话对接入口
 
 > **任何新对话的第一份要读的文件**。读完即可零上下文接续。架构/PM 每阶段末更新。
-> 最后更新：2026-06-18（分支 `feat/m7b1-d-series`，M7b-1 **P1–P3 已落 + PM 复核**；下一步 P4）。
+> 最后更新：2026-06-18（分支 `feat/m7b1-d-series`，M7b-1 **P1–P4 已落 + PM 复核**；下一步 P5 收尾）。
 
 ---
 
 ## 1. 一句话现状
 
-M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2 通用 + D6 隐私 + §2.8 ②级高风险二次确认 + nav/Slider polish）完成、PM 已复核**（desktop 262 绿）。**当前待办 = P4（D3 模型 API 双栏 + chat 集成）**。⚠ 设计图 PNG 映射表已证实损坏并修订（见 ui-design §4.1 顶部）：**D2/D3/D4/D8 无专属 PNG，设置面板统一以 `UI/1d7669e3`（设置设计语言）+ §7 + §2 token 为参照**。
+M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 模型 API 双栏 + chat 集成，worker 零改动）完成、PM 已复核**（desktop 273 绿）。**当前待办 = P5（D8 + 真窗验收 + tag）**。⚠ 设计图 PNG 映射表已证实损坏并修订（见 ui-design §4.1 顶部）：**D2/D3/D4/D8 无专属 PNG，设置面板统一以 `UI/1d7669e3`（设置设计语言）+ §7 + §2 token 为参照**。
 
 ## 2. 立即要做的事
 
 > P1/P2/P2.5 + 视觉保真 harness + Hub/D4 保真审计 + **P3（D2/D6）** 均已完成并经 PM 复核（**262 绿**）。视觉闭环（`renderer/dev/mock-bridge.ts` + `?page=` route + Playwright MCP 截图↔PNG）已就绪，后续每屏复用。
 
-**下一步执行 = P4（D3 模型 API 双栏 + chat 集成）**：`git checkout feat/m7b1-d-series`，按 **`docs/plans/2026-06-18-m7b1-p4-d3-chat-plan.md`**（PM 即将产出）逐 task（executing-plans）。核心（见 §7.1 决策）：**D3 worker 零改动**——`ChatRequest.model` 已存在且 worker 已 honor，集成纯 Main + renderer（chat.send 从 prefs 读 `activeProvider`→降级链、`activeModel`→`request.model`）。D3 双栏面板视觉：**用任何 PNG 前先 `Read` 核实像素**（§4.1 修订称 D3 无专属 PNG → 参照 `UI/1d7669e3` + §7.3 + §2 token；但 harness Runbook 曾写 D3=`UI/3c9a77c6…`，二者矛盾，P4 规划时 Read 定夺）。
+**下一步执行 = P5（M7b-1 收尾）**：`git checkout feat/m7b1-d-series`，按 **`docs/plans/2026-06-18-m7b1-p5-d8-acceptance-plan.md`**（PM 即将产出）逐 task。含：① **先 `electron-rebuild` better-sqlite3**（ABI 127≠123，[[p5-electron-gui-smoke-blocker]]）；② D3 两视觉 polish（状态点 `ok`→`--ds-success` 绿；provider 标题 `name===formatLabel` 去冗余）；③ D8 关于面板（接 `app.openExternal` 外链，RPC 已在 P1 就绪）；④ **真 Electron GUI 冒烟**（对照设计图逐屏目视，§6 硬门槛）+ **真 Key→听到回复 90s 端到端**；⑤ 全量验收 + RESULTS 定稿 + tag `mvp/M7b1-done`。
 
 ## 3. 路线图（PM 维护）
 
@@ -26,8 +26,8 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | **视觉保真 harness** | dev mock-bridge + Playwright MCP 截图比对设计图闭环（infra） | ✅ 完成 + PM 复核（260 绿） |
 | Hub/D4 保真审计 | 用 harness 对照 PNG，修 Slider/Switch/Select/.ds-glass 等可复用件 | ✅ 完成（残留见 RESULTS / §7 决策） |
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
-| **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | 📋 待规划（PM 出 plan）→ 执行 |
-| M7b-1 P5 | D8 关于（接 openExternal 外链）+ 全量验收（含 GUI 冒烟）+ RESULTS 定稿 + tag | ⏳ |
+| **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
+| **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + 全量验收 + RESULTS 定稿 + tag | 📋 待规划（PM 出 plan）→ 执行 |
 | M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ⏳ 独立 spec/plan |
 | M8 / M9 | 聊天UI+气泡+系统集成（托盘/热键录制器正式入口）/ 打包打磨 | ⏳ |
 
