@@ -7,12 +7,14 @@ import { ChatView } from './chat-view';
 import type { ChatMessage } from './chat-view';
 import { groupMessages } from './bubble-view';
 import Bubble from './components/Bubble.vue';
+import type { ErrorAction } from './error-copy';
 
 const SESSION_ID = 'default';
 const messages = ref<ChatMessage[]>([]);
 const streaming = ref(false);
 const ready = ref(false);
 const draft = ref('');
+const emotion = ref('');
 const charName = ref('小灵');
 const modelLabel = ref('未连接');
 const connected = ref(false);
@@ -40,6 +42,8 @@ onMounted(async () => {
           text: '为什么程序员分不清万圣节和圣诞节？因为 Oct 31 == Dec 25 ：)',
           finishReason: 'stop',
         },
+        { role: 'user', text: '在吗', finishReason: null },
+        { role: 'assistant', text: '', finishReason: 'error', errorKind: 'auth' },
       ],
     });
     charName.value = '小灵';
@@ -51,6 +55,15 @@ onMounted(async () => {
   unsubs.push(
     window.desksoul.on('chat.stream', (p) => view.onStream(p as never)),
     window.desksoul.on('chat.done', (p) => view.onDone(p as never)),
+    window.desksoul.on('behavior.applyEmotion', (p) => {
+      emotion.value = (p as { name: string }).name;
+    }),
+    window.desksoul.on('behavior.setIntent', (p) => {
+      emotion.value = (p as { mood: string }).mood;
+    }),
+    window.desksoul.on('chat.done', () => {
+      emotion.value = ''; // 流结束清空（错误/正常都清）
+    }),
   );
   try {
     const [snap, char, prefs] = await Promise.all([
@@ -94,6 +107,32 @@ function cancel(): void {
 }
 function openHub(): void {
   void window.desksoul.rpc('app.window.openHub', {});
+}
+function lastUserText(): string {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]!;
+    if (m.role === 'user') return m.text;
+  }
+  return '';
+}
+async function onAction(a: ErrorAction): Promise<void> {
+  if (a === 'retry') {
+    const text = lastUserText();
+    if (!text || streaming.value) return;
+    view.echoUser(text);
+    try {
+      await window.desksoul.rpc('chat.send', { sessionId: SESSION_ID, text });
+    } catch {
+      view.rollbackEcho();
+    }
+    return;
+  }
+  openHub(); // switchModel / changeKey → Hub D3
+}
+// 情绪 chip 只挂在「最后一条、流式中的 assistant」气泡。
+function emotionFor(m: ChatMessage): string {
+  const last = messages.value[messages.value.length - 1];
+  return streaming.value && m === last && m.role === 'assistant' ? emotion.value : '';
 }
 function avatar(role: ChatMessage['role']): string {
   return role === 'assistant' ? '🐧' : '🙂';
@@ -140,7 +179,14 @@ function avatar(role: ChatMessage['role']): string {
           class="flex min-w-0 flex-1 flex-col gap-1"
           :class="g.role === 'user' ? 'items-end' : 'items-start'"
         >
-          <Bubble v-for="(m, mi) in g.messages" :key="mi" :message="m" :streaming="streaming" />
+          <Bubble
+            v-for="(m, mi) in g.messages"
+            :key="mi"
+            :message="m"
+            :streaming="streaming"
+            :emotion="emotionFor(m)"
+            @action="onAction"
+          />
         </div>
       </div>
     </main>
