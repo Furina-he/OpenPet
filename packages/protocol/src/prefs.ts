@@ -67,6 +67,8 @@ export const PrefsSchema = z.object({
   // offline（D3 离线兜底；本期仅持久化）
   'offline.fallbackMode': z.enum(['ollama', 'demo', 'error']).default('ollama'),
   'offline.ollamaModel': z.string().default(''),
+  // onboarding（M7b-2 首启引导）
+  'onboarding.completed': z.boolean().default(false),
 });
 
 export type Prefs = z.infer<typeof PrefsSchema>;

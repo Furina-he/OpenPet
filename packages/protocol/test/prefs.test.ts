@@ -39,3 +39,13 @@ describe('PrefsSchema D-series expansion', () => {
     expect(PrefsSchema.shape['budget.warnAt'].safeParse(150).success).toBe(false);
   });
 });
+
+describe('PrefsSchema onboarding flag (M7b-2)', () => {
+  it('defaults onboarding.completed to false', () => {
+    expect(DEFAULT_PREFS['onboarding.completed']).toBe(false);
+  });
+  it('validates onboarding.completed as boolean', () => {
+    expect(PrefsSchema.shape['onboarding.completed'].safeParse(true).success).toBe(true);
+    expect(PrefsSchema.shape['onboarding.completed'].safeParse('yes').success).toBe(false);
+  });
+});
