@@ -12,7 +12,7 @@
 | M6 | 状态层 + 数据层 | ✅ main | `apps/desktop/RESULTS-M6.md` |
 | M7a | 前端地基（prefs/Tailwind/Hub 壳） | ✅ main | `apps/desktop/RESULTS-M7a.md` · `../plans/2026-06-17-m7a-foundation-{spec,plan}.md` |
 | **M7b-1** | D 系列设置面板 + chat 集成 | 🚧 P5 收尾 | [`M7b-1/`](M7b-1/) — spec + plans + RESULTS + README |
-| M7b-2 | C 系列首启引导 | ⏳ 未开 | 待建 |
+| **M7b-2** | C 系列首启引导（C1–C4，务实降级） | 🚧 spec 就绪 | [`M7b-2/`](M7b-2/) — spec + README（plans 待写） |
 | M8 / M9 | 聊天 UI/气泡/系统集成 · 打包打磨 | ⏳ | 待建 |
 
 > **历史（M1–M7a）按 B 增量未强迁**：RESULTS 仍在 `apps/desktop/RESULTS-M*.md`、plan 仍在 `docs/plans/`。**M7b-1 起**按 [`doc-conventions`](../design/doc-conventions.md) 新结构（每里程碑一目录）。
