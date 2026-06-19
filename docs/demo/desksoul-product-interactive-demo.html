@@ -776,6 +776,287 @@
         background: var(--warm-soft);
       }
 
+      .astr-provider {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: min(620px, calc(100vh - 200px));
+        overflow: hidden;
+        padding: 0;
+      }
+
+      .astr-provider-head {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: 14px;
+        padding: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .provider-source-select {
+        position: relative;
+      }
+
+      .source-button {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        min-height: 50px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 18px;
+        background: rgba(23, 24, 33, 0.05);
+        color: rgba(23, 24, 33, 0.42);
+        text-align: left;
+        font-size: 15px;
+      }
+
+      .source-button.selected {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.78);
+        border: 1px solid rgba(255, 138, 0, 0.28);
+      }
+
+      .source-menu {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 58px;
+        z-index: 6;
+        display: none;
+        max-height: 520px;
+        overflow: auto;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+      }
+
+      .source-menu.open {
+        display: grid;
+      }
+
+      .source-option {
+        display: grid;
+        grid-template-columns: 32px 1fr auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 52px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        text-align: left;
+        font-size: 15px;
+      }
+
+      .source-option:hover {
+        background: rgba(23, 24, 33, 0.05);
+      }
+
+      .astr-add {
+        min-width: 76px;
+        border: 0;
+        background: transparent;
+        color: #1677c8;
+        font-weight: 650;
+      }
+
+      .source-trash {
+        display: none;
+        min-width: 36px;
+        border: 0;
+        background: transparent;
+        color: #ff3b30;
+        font-size: 20px;
+      }
+
+      .source-trash.show {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .provider-empty {
+        display: grid;
+        place-items: center;
+        min-height: 430px;
+        color: rgba(23, 24, 33, 0.5);
+        text-align: center;
+      }
+
+      .cursor-empty-icon {
+        position: relative;
+        width: 58px;
+        height: 58px;
+        margin: 0 auto 10px;
+      }
+
+      .cursor-empty-icon::before {
+        content: "";
+        position: absolute;
+        left: 23px;
+        top: 13px;
+        width: 17px;
+        height: 38px;
+        background: #6b6b6b;
+        clip-path: polygon(0 0, 100% 55%, 62% 63%, 79% 100%, 55% 100%, 39% 68%, 0 92%);
+      }
+
+      .cursor-empty-icon::after {
+        content: "";
+        position: absolute;
+        inset: 4px;
+        background: repeating-conic-gradient(from 0deg, #7b7b7b 0 16deg, transparent 16deg 45deg);
+        mask: radial-gradient(circle, transparent 0 17px, #000 18px 25px, transparent 26px);
+      }
+
+      .provider-config {
+        display: none;
+        overflow: auto;
+      }
+
+      .provider-config.show {
+        display: block;
+      }
+
+      .provider-config-grid {
+        display: grid;
+        grid-template-columns: minmax(220px, 0.7fr) minmax(360px, 1.3fr);
+        gap: 12px;
+      }
+
+      .provider-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .provider-detail-head {
+        padding: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .provider-detail-head h2 {
+        margin-bottom: 8px;
+        font-size: 24px;
+      }
+
+      .provider-save-bar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 44px;
+        margin-top: 16px;
+        border: 0;
+        border-radius: 18px;
+        background: rgba(22, 119, 200, 0.11);
+        color: #1677c8;
+        font-size: 16px;
+      }
+
+      .provider-detail-body {
+        display: grid;
+        gap: 20px;
+        padding: 20px 18px 26px;
+      }
+
+      .provider-block {
+        display: grid;
+        gap: 12px;
+      }
+
+      .provider-block h2 {
+        margin: 0 0 4px;
+      }
+
+      .astr-row {
+        display: grid;
+        grid-template-columns: minmax(180px, 0.45fr) minmax(320px, 1fr);
+        gap: 24px;
+        align-items: center;
+        min-height: 62px;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .astr-row-title {
+        font-weight: 760;
+      }
+
+      .astr-row-help {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .input-with-action {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+      }
+
+      .pale-blue-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 7px;
+        background: rgba(22, 119, 200, 0.11);
+        color: #1677c8;
+      }
+
+      .model-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .model-search {
+        max-width: 300px;
+        border-radius: 18px;
+        background: rgba(23, 24, 33, 0.05);
+        border-color: transparent;
+      }
+
+      .model-empty {
+        display: grid;
+        place-items: center;
+        min-height: 150px;
+        color: rgba(23, 24, 33, 0.52);
+        text-align: center;
+      }
+
+      .model-empty-icon {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        margin: 0 auto 8px;
+        color: #7b7b7b;
+        font-size: 34px;
+      }
+
+      .count-pill {
+        display: inline-grid;
+        place-items: center;
+        min-width: 28px;
+        height: 26px;
+        border-radius: 8px;
+        background: rgba(23, 24, 33, 0.08);
+        color: rgba(23, 24, 33, 0.72);
+        font-size: 13px;
+      }
+
       .status-dot {
         width: 9px;
         height: 9px;
@@ -1377,29 +1658,104 @@
 
                 <div class="hub-page" data-page="model">
                   <div class="section-title"><span class="bar"></span><h1>D3 模型 API</h1></div>
-                  <div class="two-col">
-                    <div class="card">
-                      <h2>模型提供商</h2>
-                      <div class="provider-list" id="providerList">
-                        <button class="provider-item active" data-provider="Claude"><span><strong>Claude</strong><br /><span class="muted">Anthropic</span></span><span class="tag">默认</span></button>
-                        <button class="provider-item" data-provider="OpenAI"><span><strong>OpenAI</strong><br /><span class="muted">api.openai.com</span></span><span class="status-dot"></span></button>
-                        <button class="provider-item" data-provider="Gemini"><span><strong>Gemini</strong><br /><span class="muted">makersuite.google.com</span></span><span class="status-dot"></span></button>
-                        <button class="provider-item" data-provider="Ollama"><span><strong>Ollama</strong><br /><span class="muted">本地运行</span></span><span class="status-dot warn"></span></button>
+                  <div class="card astr-provider">
+                    <div class="astr-provider-head">
+                      <div class="provider-source-select">
+                        <button class="source-button" id="providerSourceButton">
+                          <span id="providerSourceLabel">请选择一个提供商源</span>
+                          <span>⌄</span>
+                        </button>
+                        <div class="source-menu" id="providerSourceMenu">
+                          <button class="source-option" data-source="openai_2" data-provider-name="openai_2" data-base-url="https://api.openai.com/v1"><span>◎</span><span>OpenAI Compatible</span><span></span></button>
+                          <button class="source-option" data-source="gemini_1" data-provider-name="gemini_1" data-base-url="https://generativelanguage.googleapis.com/v1beta"><span style="color: #4285f4">◆</span><span>Google Gemini</span><span></span></button>
+                          <button class="source-option" data-source="anthropic_1" data-provider-name="anthropic_1" data-base-url="https://api.anthropic.com/v1"><span><strong>AI</strong></span><span>Anthropic</span><span></span></button>
+                          <button class="source-option" data-source="kimi_coding_1" data-provider-name="kimi_coding_1" data-base-url="https://api.moonshot.cn/v1"><span><strong>K</strong></span><span>Kimi Coding Plan</span><span></span></button>
+                          <button class="source-option" data-source="moonshot_1" data-provider-name="moonshot_1" data-base-url="https://api.moonshot.cn/v1"><span><strong>K</strong></span><span>Moonshot</span><span></span></button>
+                          <button class="source-option" data-source="minimax_1" data-provider-name="minimax_1" data-base-url="https://api.minimax.chat/v1"><span>〽</span><span>MiniMax</span><span></span></button>
+                          <button class="source-option" data-source="minimax_token_1" data-provider-name="minimax_token_1" data-base-url="https://api.minimax.chat/v1"><span>〽</span><span>MiniMax Token Plan</span><span></span></button>
+                          <button class="source-option" data-source="xiaomi_1" data-provider-name="xiaomi_1" data-base-url="https://api.xiaomi.com/v1"><span>mi</span><span>Xiaomi</span><span></span></button>
+                          <button class="source-option" data-source="xiaomi_token_1" data-provider-name="xiaomi_token_1" data-base-url="https://api.xiaomi.com/v1"><span>mi</span><span>Xiaomi Token Plan</span><span></span></button>
+                          <button class="source-option" data-source="xai_1" data-provider-name="xai_1" data-base-url="https://api.x.ai/v1"><span><strong>x</strong></span><span>xAI</span><span></span></button>
+                          <button class="source-option" data-source="deepseek_1" data-provider-name="deepseek_1" data-base-url="https://api.deepseek.com/v1"><span>◒</span><span>DeepSeek</span><span></span></button>
+                          <button class="source-option" data-source="zhipu_1" data-provider-name="zhipu_1" data-base-url="https://open.bigmodel.cn/api/paas/v4"><span>✣</span><span>Zhipu</span><span></span></button>
+                          <button class="source-option" data-source="longcat_1" data-provider-name="longcat_1" data-base-url="https://api.longcat.chat/openai/v1"><span style="color: #22c55e">M</span><span>LongCat</span><span></span></button>
+                          <button class="source-option" data-source="aihubmix_1" data-provider-name="aihubmix_1" data-base-url="https://aihubmix.com/v1"><span style="color: #1677c8">●</span><span>AIHubMix</span><span></span></button>
+                          <button class="source-option" data-source="openrouter_1" data-provider-name="openrouter_1" data-base-url="https://openrouter.ai/api/v1"><span>↔</span><span>OpenRouter</span><span></span></button>
+                          <button class="source-option" data-source="nvidia_1" data-provider-name="nvidia_1" data-base-url="https://integrate.api.nvidia.com/v1"><span style="color: #76b900">▰</span><span>NVIDIA</span><span></span></button>
+                          <button class="source-option" data-source="azure_openai_1" data-provider-name="azure_openai_1" data-base-url="https://example.openai.azure.com/openai"><span><strong>A</strong></span><span>Azure OpenAI</span><span></span></button>
+                        </div>
+                      </div>
+                      <button class="source-trash" id="deleteProviderSource">⌫</button>
+                      <button class="astr-add" id="addProviderSource">＋ 新增</button>
+                    </div>
+                    <div class="provider-empty" id="providerEmpty">
+                      <div>
+                        <div class="cursor-empty-icon"></div>
+                        <p>请选择一个提供商源</p>
                       </div>
                     </div>
-                    <div class="card">
-                      <h2 id="providerTitle">Claude</h2>
-                      <div class="row"><span>启用</span><button class="switch on"></button></div>
-                      <label>API Key</label><input class="input" value="••••••••••••••••••••••••" />
-                      <label>API 端点</label><input class="input" value="https://api.anthropic.com/v1" />
-                      <label>默认模型</label><select class="input"><option>claude-3-5-sonnet-20240620</option></select>
-                      <div class="tag-row"><span class="tag">claude-3-5-sonnet</span><span class="tag">claude-3-opus</span><span class="tag">＋ 添加模型</span></div>
-                      <div class="divider"></div>
-                      <button class="ghost-btn" id="testProvider">测试连接</button>
-                      <button class="danger-btn">删除</button>
+                    <div class="provider-config" id="providerConfig">
+                      <div class="provider-detail-head">
+                        <h2 id="providerTitle">openai_2</h2>
+                        <p id="providerBaseUrl">https://api.openai.com/v1</p>
+                        <button class="provider-save-bar" id="testProvider">▣ 保存配置</button>
+                      </div>
+                      <div class="provider-detail-body">
+                        <section class="provider-block">
+                          <h2>设置</h2>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">ID</div><div class="astr-row-help">提供商源唯一 ID（不是提供商 ID）</div></div>
+                            <input class="input" id="providerIdInput" value="openai_2" />
+                          </div>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">API Key</div><div class="astr-row-help">API 密钥</div></div>
+                            <div class="input-with-action"><input class="input" value="" /><button class="pale-blue-btn">添加更多</button></div>
+                          </div>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">API Base URL</div><div class="astr-row-help">自定义 API 端点 URL</div></div>
+                            <input class="input" id="providerBaseInput" value="https://api.openai.com/v1" />
+                          </div>
+                        </section>
+
+                        <section class="provider-block">
+                          <h2>高级配置...</h2>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">超时时间</div><div class="astr-row-help">超时时间，单位为秒。</div></div>
+                            <input class="input" value="120" />
+                          </div>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">代理地址</div><div class="astr-row-help">HTTP/HTTPS 代理地址，格式如 http://127.0.0.1:7890。</div></div>
+                            <input class="input" value="" />
+                          </div>
+                          <div class="astr-row">
+                            <div><div class="astr-row-title">自定义请求头</div><div class="astr-row-help">会合并到 OpenAI SDK 的 default_headers 中。</div></div>
+                            <div class="input-with-action"><span>暂无项目</span><button class="pale-blue-btn">修改</button></div>
+                          </div>
+                        </section>
+
+                        <section class="provider-block">
+                          <div class="model-toolbar">
+                            <input class="input model-search" placeholder="搜索模型或 ID" />
+                            <button class="pale-blue-btn">⬇ 保存并获取模型</button>
+                            <button class="ghost-btn">✦ 自定义模型</button>
+                          </div>
+                          <h2>模型</h2>
+                          <p>可用模型 0</p>
+                          <div class="row"><strong>已配置的模型</strong><span class="count-pill">0</span></div>
+                          <div class="model-empty"><div><div class="model-empty-icon">□</div><p>暂无已配置的模型，点击上方的“获取模型列表”添加</p></div></div>
+                          <div class="divider"></div>
+                          <div class="row"><strong>可用模型</strong><span class="count-pill">0</span></div>
+                          <div class="model-empty"><div><div class="model-empty-icon">⌕</div><p>未找到可用模型</p></div></div>
+                        </section>
+
+                        <section class="card">
+                          <h2>DeskSoul 预算提醒</h2>
+                          <p>本月已使用 <strong style="color: var(--red)">$28.67 / $20.00 (143%)</strong></p>
+                          <button class="primary-btn">管理预算</button>
+                        </section>
+                      </div>
                     </div>
                   </div>
-                  <div class="card" style="margin-top: 12px"><h2>预算提醒</h2><p>本月已使用 <strong style="color: var(--red)">$28.67 / $20.00 (143%)</strong></p><button class="primary-btn">管理预算</button></div>
                 </div>
 
                 <div class="hub-page" data-page="display">
@@ -1673,10 +2029,46 @@
           $$(".provider-item").forEach((item) => item.classList.remove("active"));
           button.classList.add("active");
           $("#providerTitle").textContent = button.dataset.provider;
+          $("#providerSourceLabel").textContent = `${button.dataset.provider} · 提供商源`;
           showToast(`已切换到 ${button.dataset.provider}`);
         });
       });
       $("#testProvider").addEventListener("click", () => showToast("连接成功，模型可用"));
+
+      function showProviderConfig(sourceName, baseUrl = "https://api.openai.com/v1") {
+        $("#providerSourceLabel").textContent = sourceName;
+        $("#providerSourceButton").classList.add("selected");
+        $("#providerSourceMenu").classList.remove("open");
+        $("#providerEmpty").style.display = "none";
+        $("#providerConfig").classList.add("show");
+        $("#deleteProviderSource").classList.add("show");
+        $("#providerTitle").textContent = sourceName;
+        $("#providerBaseUrl").textContent = baseUrl;
+        $("#providerIdInput").value = sourceName;
+        $("#providerBaseInput").value = baseUrl;
+      }
+
+      $("#providerSourceButton").addEventListener("click", () => {
+        $("#providerSourceMenu").classList.toggle("open");
+      });
+      $$(".source-option").forEach((button) => {
+        button.addEventListener("click", () =>
+          showProviderConfig(button.dataset.providerName || button.dataset.source, button.dataset.baseUrl),
+        );
+      });
+      $("#addProviderSource").addEventListener("click", () => {
+        showProviderConfig("openai_3", "https://api.openai.com/v1");
+        $("#providerTitle").textContent = "新提供商源";
+        showToast("已创建新的提供商源草稿");
+      });
+      $("#deleteProviderSource").addEventListener("click", () => {
+        $("#providerSourceLabel").textContent = "请选择一个提供商源";
+        $("#providerSourceButton").classList.remove("selected");
+        $("#providerEmpty").style.display = "grid";
+        $("#providerConfig").classList.remove("show");
+        $("#deleteProviderSource").classList.remove("show");
+        showToast("提供商源已移除");
+      });
 
       $("#scaleRange").addEventListener("input", (event) => {
         const value = event.target.value;
