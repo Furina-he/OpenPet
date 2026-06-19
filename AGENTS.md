@@ -43,6 +43,7 @@ docs/
   status/CURRENT.md   实时状态 + 新对话对接入口（★先读它）
   milestones/<M>/     各里程碑：spec + plans/ + RESULTS + README（见 doc-conventions）
   plans/              M7a 及更早历史 plan/spec（未规整，由 milestones/README 登记）
+  demo/               产品可交互 demo（前端开发交互参考；视觉真源仍是 UI/ 高保真图）
 UI/                   高保真设计图 PNG（19 张覆盖 43 屏，前端视觉真源；映射见 ui-design §4）
 PRD.md · README.md    产品需求 · 仓库说明
 ```

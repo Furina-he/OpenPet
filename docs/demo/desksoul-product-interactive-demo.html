@@ -1,0 +1,1732 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeskSoul Product Interactive Demo</title>
+    <style>
+      :root {
+        --panel: rgba(255, 255, 255, 0.72);
+        --panel-strong: rgba(255, 255, 255, 0.9);
+        --line: rgba(23, 24, 33, 0.08);
+        --text: #171821;
+        --muted: rgba(23, 24, 33, 0.56);
+        --soft: rgba(23, 24, 33, 0.06);
+        --warm: #ff8a00;
+        --warm-soft: rgba(255, 138, 0, 0.1);
+        --amber: #ffd166;
+        --blue: #6fa8ff;
+        --green: #35c56f;
+        --red: #ff6b7a;
+        --radius-panel: 16px;
+        --radius-card: 12px;
+        --radius-control: 10px;
+        --shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+        font-family:
+          Inter, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+        color: var(--text);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 23% 18%, rgba(255, 180, 162, 0.24), transparent 34%),
+          radial-gradient(circle at 78% 8%, rgba(111, 168, 255, 0.18), transparent 28%),
+          linear-gradient(135deg, #ffffff 0%, #f5f6fa 52%, #f8fbff 100%);
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr) 320px;
+        gap: 16px;
+        height: 100vh;
+        padding: 18px;
+      }
+
+      .rail,
+      .panel,
+      .inspector,
+      .toast,
+      .modal-card,
+      .tray-menu,
+      .chat-window,
+      .bubble,
+      .hotkey-card {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(28px) saturate(180%);
+      }
+
+      .rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 10px;
+        border-radius: var(--radius-panel);
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        margin-bottom: 8px;
+        border-radius: 14px;
+        background: linear-gradient(145deg, #1f232a, #3a3d46);
+        color: white;
+        font-size: 25px;
+        box-shadow: 0 12px 20px rgba(23, 24, 33, 0.16);
+      }
+
+      .nav-button {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        border: 0;
+        border-radius: 12px;
+        background: transparent;
+        color: rgba(23, 24, 33, 0.6);
+        font-size: 22px;
+      }
+
+      .nav-button.active {
+        background: linear-gradient(135deg, rgba(255, 178, 77, 0.24), rgba(255, 143, 171, 0.14));
+        color: var(--warm);
+        box-shadow: inset 3px 0 0 var(--warm);
+      }
+
+      .stage {
+        position: relative;
+        min-width: 0;
+        overflow: hidden;
+        border-radius: 22px;
+      }
+
+      .view {
+        display: none;
+        height: 100%;
+        min-height: 0;
+      }
+
+      .view.active {
+        display: block;
+      }
+
+      .panel {
+        height: 100%;
+        border-radius: var(--radius-panel);
+        overflow: hidden;
+      }
+
+      .desktop {
+        position: relative;
+        height: 100%;
+        border-radius: var(--radius-panel);
+        overflow: hidden;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.7)),
+          url("../../UI/4ba6005f-0abc-45f4-9690-2c5e7af15242.png") center/cover;
+      }
+
+      .pet-wrap {
+        position: absolute;
+        left: 11%;
+        bottom: 7%;
+        width: clamp(220px, 28vw, 360px);
+        height: clamp(320px, 44vw, 480px);
+      }
+
+      .pet {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        width: 72%;
+        aspect-ratio: 0.74;
+        transform: translateX(-50%) scale(var(--pet-scale, 1));
+        transform-origin: bottom center;
+        transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms;
+      }
+
+      .pet::before {
+        content: "";
+        position: absolute;
+        inset: 12% 0 0;
+        border-radius: 48% 48% 44% 44%;
+        background: linear-gradient(145deg, #33394f 0 62%, #202638 100%);
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.12), 0 24px 40px rgba(31, 36, 52, 0.2);
+      }
+
+      .pet::after {
+        content: "";
+        position: absolute;
+        left: 31%;
+        top: 12%;
+        width: 38%;
+        height: 19%;
+        background: #f4c318;
+        clip-path: polygon(50% 100%, 0 16%, 100% 16%);
+      }
+
+      .face {
+        position: absolute;
+        left: 22%;
+        top: 25%;
+        width: 56%;
+        height: 29%;
+        border-radius: 48%;
+        background: #ffd4ca;
+        overflow: hidden;
+      }
+
+      .face::before {
+        content: "";
+        position: absolute;
+        inset: -14% 4% 52%;
+        border-radius: 0 0 44% 44%;
+        background: #20222e;
+      }
+
+      .eye {
+        position: absolute;
+        top: 43%;
+        width: 13%;
+        height: 23%;
+        border-radius: 50%;
+        background: linear-gradient(#20243a 0 38%, #6fa8ff 39% 100%);
+      }
+
+      .eye.left {
+        left: 28%;
+      }
+
+      .eye.right {
+        right: 28%;
+      }
+
+      .mouth {
+        position: absolute;
+        left: 50%;
+        top: 67%;
+        width: 16%;
+        height: 12%;
+        border-radius: 0 0 999px 999px;
+        background: #e95b5b;
+        transform: translateX(-50%);
+      }
+
+      .belly {
+        position: absolute;
+        left: 27%;
+        bottom: 11%;
+        width: 46%;
+        height: 35%;
+        border-radius: 50% 50% 46% 46%;
+        background: linear-gradient(#fff, #f0edf7);
+      }
+
+      .foot-glow {
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        bottom: 0;
+        height: 30px;
+        border-radius: 50%;
+        background: radial-gradient(ellipse, rgba(255, 178, 77, 0.38), transparent 70%);
+      }
+
+      .mode-line {
+        position: absolute;
+        left: 24%;
+        right: 24%;
+        bottom: 9px;
+        height: 5px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, transparent, var(--warm), transparent);
+      }
+
+      .desktop.dragging .pet {
+        transform: translateX(-50%) scale(var(--pet-scale, 1)) rotate(-2deg);
+      }
+
+      .desktop.sleep .pet {
+        opacity: 0.38;
+      }
+
+      .bubble {
+        position: absolute;
+        left: min(45%, 520px);
+        top: 17%;
+        max-width: 410px;
+        padding: 18px 20px;
+        border-radius: 18px;
+        font-size: 18px;
+        line-height: 1.5;
+      }
+
+      .bubble::before {
+        content: "";
+        position: absolute;
+        left: -3px;
+        top: 20px;
+        width: 4px;
+        height: 64px;
+        border-radius: 999px;
+        background: linear-gradient(var(--warm), #ffb454);
+      }
+
+      .quick-actions {
+        position: absolute;
+        right: 24px;
+        top: 24px;
+        display: flex;
+        gap: 10px;
+      }
+
+      .ghost-btn,
+      .primary-btn,
+      .danger-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 0 16px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--text);
+        font-weight: 650;
+      }
+
+      .primary-btn {
+        border-color: transparent;
+        background: linear-gradient(135deg, #ffb454, var(--warm));
+        color: white;
+        box-shadow: 0 10px 18px rgba(255, 138, 0, 0.24);
+      }
+
+      .danger-btn {
+        color: #e74758;
+        border-color: rgba(255, 107, 122, 0.42);
+        background: rgba(255, 107, 122, 0.04);
+      }
+
+      .status-bar {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        bottom: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 42px;
+        padding: 0 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(18px);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin: 0 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .chat-canvas {
+        position: relative;
+        display: grid;
+        place-items: center;
+        height: 100%;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.8)),
+          url("../../UI/03950c77-81a2-49b3-afaf-5e98a6c6f798.png") center/cover;
+      }
+
+      .chat-window {
+        display: grid;
+        grid-template-rows: 54px 1fr 74px;
+        width: min(440px, calc(100vw - 160px));
+        height: min(620px, calc(100vh - 110px));
+        border-radius: var(--radius-panel);
+        overflow: hidden;
+      }
+
+      .chat-head,
+      .hub-head,
+      .modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .chat-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 760;
+      }
+
+      .mini-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 50% 63%, #ffd4ca 0 24%, transparent 25%),
+          radial-gradient(circle at 39% 43%, #20243a 0 4%, transparent 5%),
+          radial-gradient(circle at 61% 43%, #20243a 0 4%, transparent 5%),
+          linear-gradient(145deg, #303649 0 45%, #f4c318 46% 58%, #202638 59%);
+        box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.06);
+      }
+
+      .chat-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+        padding: 18px;
+      }
+
+      .msg {
+        max-width: 82%;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 14px;
+      }
+
+      .msg.ai {
+        align-self: flex-start;
+        border-bottom-left-radius: 6px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .msg.me {
+        align-self: flex-end;
+        border-bottom-right-radius: 6px;
+        background: linear-gradient(135deg, rgba(255, 180, 84, 0.95), rgba(255, 138, 0, 0.95));
+        color: white;
+      }
+
+      .typing::after {
+        content: "";
+        display: inline-block;
+        width: 7px;
+        height: 1em;
+        margin-left: 2px;
+        vertical-align: -2px;
+        background: var(--warm);
+        animation: blink 0.8s infinite;
+      }
+
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+
+      .chat-compose {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        padding: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .input {
+        min-width: 0;
+        height: 42px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-control);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--text);
+        outline: 0;
+      }
+
+      .onboarding {
+        display: grid;
+        grid-template-columns: 1fr minmax(360px, 480px);
+        height: 100%;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.78)),
+          url("../../UI/d63b4f97-677b-4f72-8008-0b6834741f68.png") center/cover;
+      }
+
+      .onboarding-art {
+        position: relative;
+      }
+
+      .guide-card {
+        align-self: center;
+        margin-right: 42px;
+        padding: 24px;
+        border-radius: var(--radius-panel);
+      }
+
+      .steps {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+
+      .step-dot {
+        flex: 1;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(23, 24, 33, 0.12);
+      }
+
+      .step-dot.active {
+        background: linear-gradient(90deg, #ffb454, var(--warm));
+      }
+
+      .guide-step {
+        display: none;
+      }
+
+      .guide-step.active {
+        display: block;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        line-height: 1.25;
+      }
+
+      h2 {
+        font-size: 20px;
+        line-height: 1.25;
+      }
+
+      h3 {
+        font-size: 15px;
+        line-height: 1.35;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .provider-grid,
+      .character-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .provider-card,
+      .character-card,
+      .setting-card,
+      .metric-card,
+      .plugin-row,
+      .memory-row {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      .provider-card,
+      .character-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 62px;
+        padding: 12px;
+      }
+
+      .provider-card.active,
+      .character-card.active {
+        border-color: rgba(255, 138, 0, 0.5);
+        background: var(--warm-soft);
+      }
+
+      .hub {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        height: 100%;
+      }
+
+      .hub-side {
+        padding: 18px 12px;
+        border-right: 1px solid var(--line);
+      }
+
+      .hub-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px 18px;
+        font-weight: 760;
+      }
+
+      .hub-nav {
+        display: grid;
+        gap: 6px;
+      }
+
+      .hub-nav button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 38px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: rgba(23, 24, 33, 0.66);
+        text-align: left;
+      }
+
+      .hub-nav button.active {
+        background: linear-gradient(90deg, rgba(255, 138, 0, 0.14), rgba(255, 138, 0, 0.04));
+        color: var(--text);
+        box-shadow: inset 3px 0 0 var(--warm);
+      }
+
+      .hub-content {
+        display: grid;
+        grid-template-rows: 58px 1fr;
+        min-width: 0;
+      }
+
+      .hub-head input {
+        width: min(360px, 48vw);
+      }
+
+      .hub-pages {
+        overflow: auto;
+        padding: 18px;
+      }
+
+      .hub-page {
+        display: none;
+      }
+
+      .hub-page.active {
+        display: block;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .bar {
+        width: 4px;
+        height: 28px;
+        border-radius: 999px;
+        background: linear-gradient(var(--warm), #ffb454);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .metric-card {
+        min-height: 104px;
+        padding: 14px;
+      }
+
+      .metric-value {
+        margin-top: 12px;
+        font-size: 28px;
+        font-weight: 760;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: minmax(250px, 0.9fr) minmax(340px, 1.35fr);
+        gap: 12px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: var(--panel-strong);
+        padding: 16px;
+      }
+
+      .setting-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .setting-card {
+        padding: 16px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 38px;
+        margin: 8px 0;
+        color: rgba(23, 24, 33, 0.74);
+      }
+
+      .switch {
+        position: relative;
+        width: 38px;
+        height: 22px;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(23, 24, 33, 0.12);
+      }
+
+      .switch::after {
+        content: "";
+        position: absolute;
+        left: 3px;
+        top: 3px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: white;
+        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.18);
+        transition: left 160ms;
+      }
+
+      .switch.on {
+        background: linear-gradient(90deg, var(--warm), #ffb454);
+      }
+
+      .switch.on::after {
+        left: 19px;
+      }
+
+      .switch.danger.on {
+        background: linear-gradient(90deg, #ff6b7a, #ff9d8d);
+      }
+
+      .range-line {
+        display: grid;
+        grid-template-columns: 1fr 56px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--warm);
+      }
+
+      .provider-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .provider-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 64px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .provider-item.active {
+        border-color: rgba(255, 138, 0, 0.5);
+        background: var(--warm-soft);
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .status-dot.warn {
+        background: var(--warm);
+      }
+
+      .status-dot.muted {
+        background: rgba(23, 24, 33, 0.28);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        color: rgba(23, 24, 33, 0.7);
+        font-size: 13px;
+      }
+
+      .character-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .character-card {
+        display: grid;
+        min-height: 190px;
+      }
+
+      .char-art {
+        display: grid;
+        place-items: center;
+        height: 96px;
+        font-size: 56px;
+      }
+
+      .plugin-row,
+      .memory-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+
+      .progress {
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(23, 24, 33, 0.08);
+        overflow: hidden;
+      }
+
+      .progress > span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--warm), #ffb454);
+      }
+
+      .about-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .about-hero {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .app-icon {
+        display: grid;
+        place-items: center;
+        width: 116px;
+        height: 116px;
+        border-radius: 28px;
+        background: linear-gradient(145deg, #242830, #454850);
+        color: white;
+        font-size: 64px;
+        box-shadow: 0 20px 38px rgba(23, 24, 33, 0.18);
+      }
+
+      .system-canvas {
+        position: relative;
+        height: 100%;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.78)),
+          url("../../UI/6a38a202-bd67-4c58-a0c8-937acb9d93f7.png") center/cover;
+      }
+
+      .tray-menu {
+        position: absolute;
+        left: 80px;
+        top: 86px;
+        width: 310px;
+        padding: 10px;
+        border-radius: 14px;
+      }
+
+      .tray-menu button {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        align-items: center;
+        width: 100%;
+        min-height: 38px;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        text-align: left;
+      }
+
+      .tray-menu button:hover,
+      .tray-menu button.active {
+        background: rgba(23, 24, 33, 0.05);
+      }
+
+      .hotkey-card {
+        position: absolute;
+        right: 60px;
+        top: 82px;
+        width: min(560px, 46vw);
+        padding: 24px;
+        border-radius: var(--radius-panel);
+      }
+
+      .keys {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin: 28px 0;
+      }
+
+      .key {
+        display: grid;
+        place-items: center;
+        min-width: 76px;
+        height: 54px;
+        padding: 0 18px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.76);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
+        font-size: 22px;
+        font-weight: 650;
+      }
+
+      .error-card {
+        position: absolute;
+        left: 62px;
+        bottom: 72px;
+        display: grid;
+        grid-template-columns: 190px minmax(260px, 410px);
+        align-items: center;
+        gap: 24px;
+      }
+
+      .error-bubble {
+        padding: 24px;
+        border: 1px solid rgba(255, 138, 0, 0.2);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.82);
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: minmax(280px, 360px) 1fr;
+        gap: 14px;
+        height: 100%;
+        padding: 14px;
+      }
+
+      .gallery-list {
+        overflow: auto;
+        display: grid;
+        align-content: start;
+        gap: 10px;
+      }
+
+      .shot-button {
+        display: grid;
+        grid-template-columns: 84px 1fr;
+        gap: 10px;
+        width: 100%;
+        min-height: 70px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: rgba(255, 255, 255, 0.66);
+        text-align: left;
+      }
+
+      .shot-button.active {
+        border-color: rgba(255, 138, 0, 0.55);
+        background: var(--warm-soft);
+      }
+
+      .shot-button img {
+        width: 84px;
+        height: 54px;
+        object-fit: cover;
+        border-radius: 8px;
+      }
+
+      .shot-viewer {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-width: 0;
+      }
+
+      .shot-frame {
+        min-height: 0;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: rgba(255, 255, 255, 0.6);
+      }
+
+      .shot-frame img {
+        display: block;
+        width: 100%;
+        min-width: 780px;
+        height: auto;
+      }
+
+      .inspector {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-width: 0;
+        padding: 16px;
+        border-radius: var(--radius-panel);
+      }
+
+      .inspector h2 {
+        margin-bottom: 4px;
+      }
+
+      .checklist {
+        display: grid;
+        align-content: start;
+        gap: 10px;
+        overflow: auto;
+        padding: 12px 0;
+      }
+
+      .check-item {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-card);
+        background: rgba(255, 255, 255, 0.58);
+        font-size: 13px;
+      }
+
+      .tick {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: rgba(53, 197, 111, 0.16);
+        color: var(--green);
+        font-weight: 760;
+      }
+
+      .toast {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        z-index: 20;
+        min-width: 220px;
+        min-height: 42px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        transform: translate(-50%, -80px);
+        opacity: 0;
+        transition: transform 180ms, opacity 180ms;
+        text-align: center;
+        color: rgba(23, 24, 33, 0.72);
+      }
+
+      .toast.show {
+        transform: translate(-50%, 0);
+        opacity: 1;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 18;
+        display: none;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.35);
+        backdrop-filter: blur(8px);
+      }
+
+      .modal.show {
+        display: grid;
+      }
+
+      .modal-card {
+        width: min(460px, calc(100vw - 36px));
+        border-radius: var(--radius-panel);
+        overflow: hidden;
+      }
+
+      .modal-body {
+        padding: 18px;
+      }
+
+      .modal-card.danger {
+        border-color: rgba(255, 107, 122, 0.76);
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding-top: 16px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .fine {
+        font-size: 12px;
+      }
+
+      .divider {
+        height: 1px;
+        margin: 10px 0;
+        background: var(--line);
+      }
+
+      @media (max-width: 1180px) {
+        .app {
+          grid-template-columns: 68px minmax(0, 1fr);
+        }
+
+        .inspector {
+          display: none;
+        }
+
+        .metrics,
+        .setting-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .hub {
+          grid-template-columns: 210px 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        body {
+          overflow: auto;
+        }
+
+        .app {
+          grid-template-columns: 1fr;
+          height: auto;
+          min-height: 100vh;
+        }
+
+        .rail {
+          position: sticky;
+          top: 8px;
+          z-index: 4;
+          flex-direction: row;
+          overflow: auto;
+        }
+
+        .stage {
+          min-height: 760px;
+        }
+
+        .hub,
+        .onboarding,
+        .gallery,
+        .two-col {
+          grid-template-columns: 1fr;
+        }
+
+        .hub {
+          min-height: 900px;
+        }
+
+        .hub-side {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .hub-content {
+          grid-template-rows: auto 1fr;
+        }
+
+        .metrics,
+        .setting-grid,
+        .character-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hotkey-card {
+          left: 18px;
+          right: 18px;
+          width: auto;
+        }
+
+        .error-card {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <nav class="rail" aria-label="主导航">
+        <div class="brand-mark">◖</div>
+        <button class="nav-button active" data-view="desktop" title="桌宠">◉</button>
+        <button class="nav-button" data-view="chat" title="聊天">☰</button>
+        <button class="nav-button" data-view="onboarding" title="首启">◇</button>
+        <button class="nav-button" data-view="hub" title="Hub">⌘</button>
+        <button class="nav-button" data-view="system" title="系统">☼</button>
+        <button class="nav-button" data-view="gallery" title="UI 图">▧</button>
+      </nav>
+
+      <main class="stage">
+        <section class="view active" id="view-desktop">
+          <div class="desktop" id="desktopScene">
+            <div class="quick-actions">
+              <button class="ghost-btn" data-open-chat>聊天</button>
+              <button class="ghost-btn" data-open-hub>设置</button>
+              <button class="primary-btn" id="toggleMode">鼠标穿透</button>
+            </div>
+            <div class="bubble" id="desktopBubble">嗯...我在想要不要请你喝杯热可可！双击我可以打开聊天。</div>
+            <div class="pet-wrap" id="petWrap">
+              <div class="foot-glow"></div>
+              <div class="pet" id="pet" title="双击打开聊天">
+                <div class="face">
+                  <span class="eye left"></span>
+                  <span class="eye right"></span>
+                  <span class="mouth"></span>
+                </div>
+                <span class="belly"></span>
+              </div>
+              <div class="mode-line" id="modeLine"></div>
+            </div>
+            <div class="status-bar">
+              <span>状态：<span class="dot"></span><span id="petStatus">可交互</span></span>
+              <span>模型：Claude · 已连接</span>
+              <span>Token：32.6K / 200K</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-chat">
+          <div class="chat-canvas">
+            <div class="chat-window">
+              <header class="chat-head">
+                <div class="chat-title"><span class="mini-avatar"></span><span>小灵</span><span class="tag">活泼陪伴型</span></div>
+                <div>
+                  <button class="ghost-btn" data-hub-target="memory">记忆</button>
+                  <button class="ghost-btn" data-open-hub>⚙</button>
+                </div>
+              </header>
+              <div class="chat-body" id="chatBody">
+                <div class="msg ai">早上好呀，我在这里。今天想先聊工作，还是让我帮你整理一下待办？</div>
+                <div class="msg me">帮我把今天的重点排个序。</div>
+                <div class="msg ai">可以！我会按「紧急程度、是否卡住别人、需要深度专注」三条线来排。</div>
+              </div>
+              <form class="chat-compose" id="chatForm">
+                <input class="input" id="chatInput" value="先看 API 接入和 UI 评审" aria-label="聊天输入" />
+                <button class="primary-btn" type="submit">发送</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-onboarding">
+          <div class="onboarding">
+            <div class="onboarding-art">
+              <div class="pet-wrap" style="left: 24%; bottom: 9%">
+                <div class="foot-glow"></div>
+                <div class="pet">
+                  <div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div>
+                  <span class="belly"></span>
+                </div>
+              </div>
+            </div>
+            <div class="guide-card panel">
+              <div class="steps" id="steps">
+                <span class="step-dot active"></span><span class="step-dot"></span><span class="step-dot"></span><span class="step-dot"></span>
+              </div>
+              <div class="guide-step active">
+                <h1>欢迎来到 DeskSoul</h1>
+                <p>一个桌面常驻的 AI 角色伙伴。它会在桌面陪伴你，也能进入 Hub 管理角色、模型、记忆和插件。</p>
+                <button class="primary-btn" data-next-guide>开始配置</button>
+              </div>
+              <div class="guide-step">
+                <h1>选择模型路径</h1>
+                <p>可以连接在线 Provider，也可以先用本地或演示模式完成体验。</p>
+                <div class="provider-grid">
+                  <button class="provider-card active"><strong>Claude / OpenAI 兼容</strong><span class="muted">需要 API Key</span></button>
+                  <button class="provider-card"><strong>Ollama 本地模型</strong><span class="muted">检测到 deepseek-r1:7b</span></button>
+                </div>
+                <div style="margin-top: 14px"><button class="primary-btn" data-next-guide>继续</button></div>
+              </div>
+              <div class="guide-step">
+                <h1>选择你的角色</h1>
+                <div class="character-grid">
+                  <button class="character-card active"><span class="char-art">🐧</span><strong>小灵</strong><span class="muted">活泼陪伴型</span></button>
+                  <button class="character-card"><span class="char-art">◐</span><strong>零度</strong><span class="muted">冷静分析型</span></button>
+                  <button class="character-card"><span class="char-art">◆</span><strong>团子先生</strong><span class="muted">聊天搭子</span></button>
+                </div>
+                <div style="margin-top: 14px"><button class="primary-btn" data-next-guide>选好了</button></div>
+              </div>
+              <div class="guide-step">
+                <h1>试着说第一句话</h1>
+                <p>选择一个 chip，小灵会打开聊天浮层并开始流式回复。</p>
+                <div class="tag-row">
+                  <button class="tag" data-finish-guide>今天适合先做什么？</button>
+                  <button class="tag" data-finish-guide>帮我检查模型配置</button>
+                  <button class="tag" data-finish-guide>陪我整理需求</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-hub">
+          <div class="hub panel">
+            <aside class="hub-side">
+              <div class="hub-logo"><span class="mini-avatar"></span>DeskSoul P0</div>
+              <div class="hub-nav">
+                <button class="active" data-hub="overview">⌂ 总览</button>
+                <button data-hub="general">☷ 通用</button>
+                <button data-hub="model">⚙ 模型 API</button>
+                <button data-hub="display">◱ 显示与窗口</button>
+                <button data-hub="voice">〰 语音 / 数据</button>
+                <button data-hub="privacy">◇ 隐私 / 关于</button>
+                <button data-hub="characters">◉ 角色</button>
+                <button data-hub="memory">✎ 记忆</button>
+                <button data-hub="plugins">▣ 插件</button>
+              </div>
+              <div style="margin-top: 24px" class="card">
+                <div class="chat-title"><span class="mini-avatar"></span><span>小企鹅</span></div>
+                <p class="fine" style="margin: 8px 0 0"><span class="dot"></span>在线</p>
+              </div>
+            </aside>
+            <section class="hub-content">
+              <header class="hub-head">
+                <input class="input" placeholder="搜索对话、角色、知识库..." />
+                <div><button class="ghost-btn">＋</button><button class="ghost-btn">☼</button></div>
+              </header>
+              <div class="hub-pages">
+                <div class="hub-page active" data-page="overview">
+                  <div class="section-title"><span class="bar"></span><div><h1>早上好，小企鹅！</h1><p>今天也要元气满满。</p></div></div>
+                  <div class="metrics">
+                    <div class="metric-card"><span class="muted">当前角色</span><div class="metric-value">小灵</div><span class="tag">使用中</span></div>
+                    <div class="metric-card"><span class="muted">对话总数</span><div class="metric-value">128</div><span class="muted">较昨日 +12</span></div>
+                    <div class="metric-card"><span class="muted">Token 使用</span><div class="metric-value">32.6K</div><div class="progress"><span style="width: 42%"></span></div></div>
+                    <div class="metric-card"><span class="muted">资源使用</span><div class="metric-value">良好</div><span class="muted">CPU 28% · 内存 46%</span></div>
+                  </div>
+                  <div class="two-col">
+                    <div class="card"><h2>最近对话</h2><p>产品需求讨论 · 代码重构建议 · 设计评审 UI · API 接口方案确认</p></div>
+                    <div class="card"><h2>近期问题</h2><p><span style="color: var(--red)">● 插件天气助手加载失败</span><br />● 知识库同步延迟<br />● 模型 API 响应慢</p></div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="general">
+                  <div class="section-title"><span class="bar"></span><h1>D2 通用</h1></div>
+                  <div class="setting-grid">
+                    <div class="setting-card"><h2>启动</h2><div class="row"><span>开机自启动</span><button class="switch on"></button></div><div class="row"><span>最小化到托盘</span><button class="switch on"></button></div><div class="row"><span>启动后打开</span><select class="input"><option>Hub 窗口</option></select></div></div>
+                    <div class="setting-card"><h2>通知</h2><div class="row"><span>系统通知</span><button class="switch on"></button></div><div class="row"><span>声音提醒</span><button class="switch on"></button></div><div class="row"><span>免打扰模式</span><button class="switch"></button></div></div>
+                    <div class="setting-card"><h2>Agent 思考过程</h2><div class="row"><span>显示思考过程</span><button class="switch on"></button></div><div class="row"><span>详细程度</span><div class="range-line"><input type="range" value="68" /><span>详细</span></div></div></div>
+                    <div class="setting-card"><h2>开发者</h2><div class="row"><span>开发者模式</span><button class="switch"></button></div><button class="ghost-btn">导出日志</button><button class="danger-btn">清除缓存</button></div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="model">
+                  <div class="section-title"><span class="bar"></span><h1>D3 模型 API</h1></div>
+                  <div class="two-col">
+                    <div class="card">
+                      <h2>模型提供商</h2>
+                      <div class="provider-list" id="providerList">
+                        <button class="provider-item active" data-provider="Claude"><span><strong>Claude</strong><br /><span class="muted">Anthropic</span></span><span class="tag">默认</span></button>
+                        <button class="provider-item" data-provider="OpenAI"><span><strong>OpenAI</strong><br /><span class="muted">api.openai.com</span></span><span class="status-dot"></span></button>
+                        <button class="provider-item" data-provider="Gemini"><span><strong>Gemini</strong><br /><span class="muted">makersuite.google.com</span></span><span class="status-dot"></span></button>
+                        <button class="provider-item" data-provider="Ollama"><span><strong>Ollama</strong><br /><span class="muted">本地运行</span></span><span class="status-dot warn"></span></button>
+                      </div>
+                    </div>
+                    <div class="card">
+                      <h2 id="providerTitle">Claude</h2>
+                      <div class="row"><span>启用</span><button class="switch on"></button></div>
+                      <label>API Key</label><input class="input" value="••••••••••••••••••••••••" />
+                      <label>API 端点</label><input class="input" value="https://api.anthropic.com/v1" />
+                      <label>默认模型</label><select class="input"><option>claude-3-5-sonnet-20240620</option></select>
+                      <div class="tag-row"><span class="tag">claude-3-5-sonnet</span><span class="tag">claude-3-opus</span><span class="tag">＋ 添加模型</span></div>
+                      <div class="divider"></div>
+                      <button class="ghost-btn" id="testProvider">测试连接</button>
+                      <button class="danger-btn">删除</button>
+                    </div>
+                  </div>
+                  <div class="card" style="margin-top: 12px"><h2>预算提醒</h2><p>本月已使用 <strong style="color: var(--red)">$28.67 / $20.00 (143%)</strong></p><button class="primary-btn">管理预算</button></div>
+                </div>
+
+                <div class="hub-page" data-page="display">
+                  <div class="section-title"><span class="bar"></span><h1>D4 显示与窗口</h1></div>
+                  <div class="two-col">
+                    <div class="card">
+                      <h2>角色</h2>
+                      <div class="row"><span>大小（Scale）</span><div class="range-line"><input id="scaleRange" type="range" min="70" max="200" value="120" /><span id="scaleValue">120%</span></div></div>
+                      <div class="row"><span>始终置顶</span><button class="switch on"></button></div>
+                      <div class="row"><span>鼠标穿透</span><button class="switch"></button></div>
+                      <div class="row"><span>跟随鼠标主题</span><button class="switch on"></button></div>
+                      <div class="row"><span>物理效果</span><button class="switch on"></button></div>
+                    </div>
+                    <div class="card"><h2>实时预览</h2><div class="pet-wrap" style="position: relative; left: auto; bottom: auto; width: 230px; height: 310px; margin: 0 auto"><div class="foot-glow"></div><div class="pet" id="previewPet"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div><span class="belly"></span></div></div></div>
+                  </div>
+                  <div class="setting-grid" style="margin-top: 12px">
+                    <div class="setting-card"><h2>多显示器</h2><select class="input"><option>在主显示器上显示</option></select><select class="input"><option>限制在当前屏幕内</option></select></div>
+                    <div class="setting-card"><h2>不打扰</h2><div class="row"><span>全屏时自动隐藏</span><button class="switch on"></button></div><div class="row"><span>播放视频时自动隐藏</span><button class="switch on"></button></div></div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="voice">
+                  <div class="section-title"><span class="bar"></span><h1>D5 语音 / D7 数据管理</h1></div>
+                  <div class="two-col">
+                    <div class="card"><h2>语音输入输出</h2><div class="row"><span>启用 ASR</span><button class="switch on"></button></div><select class="input"><option>Whisper.cpp</option></select><div class="row"><span>启用 TTS</span><button class="switch on"></button></div><select class="input"><option>Edge TTS</option></select><div class="row"><span>嘴型同步</span><button class="switch on"></button></div></div>
+                    <div class="card"><h2>备份与导出</h2><div class="tag-row"><span class="tag">全部数据</span><span class="tag">仅设置</span><span class="tag">仅角色与模型</span></div><button class="primary-btn">立即备份</button><button class="ghost-btn">导出数据包</button><div class="divider"></div><h3>存储占用</h3><div class="progress"><span style="width: 64%"></span></div><p>12.68 GB / 50.00 GB</p></div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="privacy">
+                  <div class="section-title"><span class="bar"></span><h1>D6 隐私 / D8 关于</h1></div>
+                  <div class="two-col">
+                    <div class="card">
+                      <h2>系统访问（默认全关）</h2>
+                      <div class="row"><span>屏幕捕获 <span class="tag">敏感</span></span><button class="switch danger" data-risk="屏幕捕获"></button></div>
+                      <div class="row"><span>摄像头访问 <span class="tag">敏感</span></span><button class="switch danger" data-risk="摄像头访问"></button></div>
+                      <div class="row"><span>文件系统访问 <span class="tag">敏感</span></span><button class="switch danger" data-risk="文件系统访问"></button></div>
+                      <div class="row"><span>麦克风</span><button class="switch on"></button></div>
+                    </div>
+                    <div class="card about-hero">
+                      <div class="app-icon">◖</div>
+                      <div><h1>DeskSoul</h1><p>版本 0.1.0（P0）· 预览版</p><p>AI 陪伴 · 效率增强 · 本地优先</p><button class="ghost-btn">检查更新</button><button class="ghost-btn">GitHub</button></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="characters">
+                  <div class="section-title"><span class="bar"></span><h1>E1 角色库</h1></div>
+                  <div class="tag-row"><button class="ghost-btn">导入 .dspack</button><button class="ghost-btn">浏览角色商店</button><input class="input" placeholder="搜索角色..." /></div>
+                  <div class="character-grid">
+                    <button class="character-card active"><span class="char-art">🐧</span><h2>小灵 ★</h2><p>活泼陪伴型 · 通用助手</p></button>
+                    <button class="character-card"><span class="char-art">◐</span><h2>零度</h2><p>冷静分析型 · 逻辑助手</p></button>
+                    <button class="character-card"><span class="char-art">◆</span><h2>团子先生</h2><p>幽默风趣型 · 聊天搭子</p></button>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="memory">
+                  <div class="section-title"><span class="bar"></span><h1>F 记忆与人格</h1></div>
+                  <div class="two-col">
+                    <div class="card"><h2>System Prompt</h2><textarea class="input" style="height: 220px; padding: 12px">你是「小灵」，DeskSoul 中一只可爱的企鹅女孩助手。你活泼开朗，热情友好，喜欢用轻松自然的语气与用户交流。</textarea><button class="primary-btn">保存并应用</button></div>
+                    <div class="card"><h2>长期记忆事实</h2><div class="memory-row"><span>用户正在推进 DeskSoul M7b-1</span><span class="tag">工作</span></div><div class="memory-row"><span>偏好浅色玻璃风格 UI</span><span class="tag">偏好</span></div><div class="memory-row"><span>关注模型 API 与本地优先</span><span class="tag">技术</span></div></div>
+                  </div>
+                </div>
+
+                <div class="hub-page" data-page="plugins">
+                  <div class="section-title"><span class="bar"></span><h1>G 插件</h1></div>
+                  <div class="card">
+                    <div class="plugin-row"><span><strong>天气助手</strong><br /><span class="muted">网络访问 · 当前失败</span></span><button class="switch"></button></div>
+                    <div class="plugin-row"><span><strong>网页搜索</strong><br /><span class="muted">Agent 工具 · 已启用</span></span><button class="switch on"></button></div>
+                    <div class="plugin-row"><span><strong>文件整理</strong><br /><span class="muted">文件读写 · 需要授权</span></span><button class="switch danger" data-risk="文件整理插件的文件读写权限"></button></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="view-system">
+          <div class="system-canvas panel">
+            <div class="tray-menu">
+              <button><span>●</span><span>Claude 已连接</span><span></span></button>
+              <div class="divider"></div>
+              <button data-open-chat><span>☰</span><span>聊天</span><span>Ctrl+D</span></button>
+              <button><span>◉</span><span>显示/隐藏角色</span><span>Ctrl+Shift+H</span></button>
+              <button id="trayPierce"><span>◎</span><span>鼠标穿透</span><span>开</span></button>
+              <button><span>☾</span><span>不打扰</span><span>09:00</span></button>
+              <button data-open-hub><span>⌂</span><span>打开 Hub</span><span>↗</span></button>
+              <button data-hotkey><span>⌘</span><span>设置热键</span><span></span></button>
+              <button><span>↩</span><span>退出</span><span></span></button>
+            </div>
+            <div class="hotkey-card" id="hotkeyCard">
+              <h1>设置全局热键</h1>
+              <p>按下组合键...</p>
+              <div class="keys"><span class="key">Ctrl</span><span>＋</span><span class="key">Shift</span><span>＋</span><span class="key" id="hotkeyLast">D</span></div>
+              <p class="tag">该热键已被系统占用：Ctrl + Shift + D（开发者工具）</p>
+              <div class="modal-actions"><button class="ghost-btn" id="cycleHotkey">重新录制</button><button class="primary-btn">确定</button></div>
+            </div>
+            <div class="error-card">
+              <div class="pet-wrap" style="position: relative; left: auto; bottom: auto; width: 190px; height: 270px"><div class="pet" style="transform: translateX(-50%) rotate(-8deg)"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div><span class="belly"></span></div></div>
+              <div class="error-bubble"><h2>哎呀，连接大脑失败了...</h2><p>API 返回错误（429：请求过于频繁），可能是网络波动或模型太忙啦。</p><button class="ghost-btn">重试</button><button class="primary-btn" data-hub-target="model">换个模型</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-gallery">
+          <div class="gallery panel">
+            <div class="gallery-list" id="galleryList"></div>
+            <div class="shot-viewer">
+              <div class="section-title"><span class="bar"></span><div><h1 id="shotTitle">UI 原图对照</h1><p id="shotDesc">点击左侧缩略图查看高保真设计图。</p></div></div>
+              <div class="shot-frame"><img id="shotImage" src="../../UI/774644b7-bde9-483e-98a0-02e91c017647.png" alt="UI 原图" /></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <div>
+          <h2>DeskSoul Demo</h2>
+          <p>基于 `UI/` 高保真图的可交互产品原型。</p>
+        </div>
+        <div class="checklist">
+          <div class="check-item"><span class="tick">✓</span><span>桌宠层：双击打开聊天、穿透状态、状态栏反馈。</span></div>
+          <div class="check-item"><span class="tick">✓</span><span>聊天层：发送消息后模拟流式回复与打字光标。</span></div>
+          <div class="check-item"><span class="tick">✓</span><span>Hub：左导航、多设置页、Provider 选择、即时保存 toast。</span></div>
+          <div class="check-item"><span class="tick">✓</span><span>隐私：高风险权限 off→on 触发红描边二次确认。</span></div>
+          <div class="check-item"><span class="tick">✓</span><span>系统：托盘菜单、热键录制器、API 失败角色态。</span></div>
+          <div class="check-item"><span class="tick">✓</span><span>原图对照：内置 19 张 UI 图快速浏览。</span></div>
+        </div>
+        <div>
+          <button class="primary-btn" data-open-hub style="width: 100%">打开 Hub</button>
+        </div>
+      </aside>
+    </div>
+
+    <div class="toast" id="toast">✓ 已保存</div>
+
+    <div class="modal" id="riskModal" role="dialog" aria-modal="true">
+      <div class="modal-card danger">
+        <header class="modal-head"><strong>高风险权限确认</strong><button class="ghost-btn" data-close-modal>×</button></header>
+        <div class="modal-body">
+          <h2 id="riskTitle">开启权限</h2>
+          <p>该操作会允许 DeskSoul 在你主动使用相关功能时访问敏感能力。请确认你理解影响后再开启。</p>
+          <label class="row" style="grid-template-columns: auto 1fr"><input id="riskCheck" type="checkbox" /> <span>我理解该权限的风险</span></label>
+          <div class="modal-actions"><button class="ghost-btn" data-close-modal>取消</button><button class="danger-btn" id="confirmRisk">允许</button></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+      const toast = $("#toast");
+      let toastTimer = 0;
+      function showToast(text = "✓ 已保存") {
+        toast.textContent = text;
+        toast.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove("show"), 1200);
+      }
+
+      function setView(name) {
+        $$(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
+        $$(".nav-button").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
+      }
+
+      function setHubPage(name) {
+        setView("hub");
+        $$(".hub-page").forEach((page) => page.classList.toggle("active", page.dataset.page === name));
+        $$(".hub-nav button").forEach((button) => button.classList.toggle("active", button.dataset.hub === name));
+      }
+
+      $$(".nav-button").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+      $$("[data-open-chat]").forEach((button) => button.addEventListener("click", () => setView("chat")));
+      $$("[data-open-hub]").forEach((button) => button.addEventListener("click", () => setHubPage("overview")));
+      $$("[data-hub-target]").forEach((button) =>
+        button.addEventListener("click", () => setHubPage(button.dataset.hubTarget)),
+      );
+      $$(".hub-nav button").forEach((button) => button.addEventListener("click", () => setHubPage(button.dataset.hub)));
+
+      $("#pet").addEventListener("dblclick", () => setView("chat"));
+      $("#pet").addEventListener("pointerdown", () => $("#desktopScene").classList.add("dragging"));
+      window.addEventListener("pointerup", () => $("#desktopScene").classList.remove("dragging"));
+
+      let pierced = false;
+      $("#toggleMode").addEventListener("click", () => {
+        pierced = !pierced;
+        $("#petStatus").textContent = pierced ? "鼠标穿透" : "可交互";
+        $("#modeLine").style.background = pierced
+          ? "linear-gradient(90deg, transparent, #4fc3f7, transparent)"
+          : "linear-gradient(90deg, transparent, var(--warm), transparent)";
+        showToast(pierced ? "鼠标穿透已开启" : "已回到可交互模式");
+      });
+
+      $("#chatForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = $("#chatInput");
+        const text = input.value.trim();
+        if (!text) return;
+        const body = $("#chatBody");
+        const mine = document.createElement("div");
+        mine.className = "msg me";
+        mine.textContent = text;
+        body.appendChild(mine);
+        input.value = "";
+        const ai = document.createElement("div");
+        ai.className = "msg ai typing";
+        body.appendChild(ai);
+        body.scrollTop = body.scrollHeight;
+        const reply = "收到，我会先把 API 接入风险排在前面，再把 UI 评审拆成可验收的小项。需要的话我也能直接打开 Hub 帮你检查模型配置。";
+        let i = 0;
+        const timer = setInterval(() => {
+          ai.textContent = reply.slice(0, i++);
+          body.scrollTop = body.scrollHeight;
+          if (i > reply.length) {
+            clearInterval(timer);
+            ai.classList.remove("typing");
+          }
+        }, 28);
+      });
+
+      let guideIndex = 0;
+      function updateGuide() {
+        $$(".guide-step").forEach((step, index) => step.classList.toggle("active", index === guideIndex));
+        $$(".step-dot").forEach((dot, index) => dot.classList.toggle("active", index <= guideIndex));
+      }
+      $$("[data-next-guide]").forEach((button) =>
+        button.addEventListener("click", () => {
+          guideIndex = Math.min(3, guideIndex + 1);
+          updateGuide();
+        }),
+      );
+      $$("[data-finish-guide]").forEach((button) =>
+        button.addEventListener("click", () => {
+          setView("chat");
+          $("#chatInput").value = button.textContent;
+          showToast("引导完成，聊天已打开");
+        }),
+      );
+
+      $$(".switch").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (button.dataset.risk && !button.classList.contains("on")) {
+            pendingRiskSwitch = button;
+            $("#riskTitle").textContent = `开启「${button.dataset.risk}」`;
+            $("#riskCheck").checked = false;
+            $("#riskModal").classList.add("show");
+            return;
+          }
+          button.classList.toggle("on");
+          showToast();
+        });
+      });
+
+      let pendingRiskSwitch = null;
+      $$("[data-close-modal]").forEach((button) =>
+        button.addEventListener("click", () => $("#riskModal").classList.remove("show")),
+      );
+      $("#confirmRisk").addEventListener("click", () => {
+        if (!$("#riskCheck").checked) {
+          showToast("请先勾选风险确认");
+          return;
+        }
+        pendingRiskSwitch?.classList.add("on");
+        $("#riskModal").classList.remove("show");
+        showToast("高风险权限已开启");
+      });
+
+      $$(".provider-item").forEach((button) => {
+        button.addEventListener("click", () => {
+          $$(".provider-item").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          $("#providerTitle").textContent = button.dataset.provider;
+          showToast(`已切换到 ${button.dataset.provider}`);
+        });
+      });
+      $("#testProvider").addEventListener("click", () => showToast("连接成功，模型可用"));
+
+      $("#scaleRange").addEventListener("input", (event) => {
+        const value = event.target.value;
+        $("#scaleValue").textContent = `${value}%`;
+        $("#previewPet").style.setProperty("--pet-scale", String(value / 120));
+      });
+
+      $("#cycleHotkey").addEventListener("click", () => {
+        const keys = ["D", "K", ","];
+        const current = $("#hotkeyLast").textContent;
+        $("#hotkeyLast").textContent = keys[(keys.indexOf(current) + 1) % keys.length];
+        showToast("正在监听键盘输入...");
+      });
+      $("[data-hotkey]").addEventListener("click", () => showToast("热键录制器已打开"));
+
+      const shots = [
+        ["03950c77-81a2-49b3-afaf-5e98a6c6f798.png", "B3/B4/B5 · 历史/语音/Token"],
+        ["1d7669e3-5aca-41f6-9470-2035385ca5aa.png", "D5/D7 · 语音与数据"],
+        ["36b542fb-067e-41e6-88f5-26e9ce399226.png", "D3/D4 · 模型与显示"],
+        ["3c9a77c6-8afc-4fc2-8fdc-b809796e8bfc.png", "E2/E3 · 详情与导入"],
+        ["4ba6005f-0abc-45f4-9690-2c5e7af15242.png", "A1/A2/A3 · 桌面宠物"],
+        ["60ea4a18-bf4e-4a3f-9d05-9080e49bfd8a.png", "B1/B2 · 聊天浮层"],
+        ["6a38a202-bd67-4c58-a0c8-937acb9d93f7.png", "J · 系统集成"],
+        ["6cbd3419-b9b6-4cb5-955d-3ac680e5c8ed.png", "H4/I · Agent 与 IM"],
+        ["7075fa1f-2e1d-49e4-ad59-1881a0191a98.png", "D6/D8 · 隐私与关于"],
+        ["7283fb5f-7df4-446d-b963-b7f7f95af5f8.png", "E4/E5 · 编辑器与商店"],
+        ["774644b7-bde9-483e-98a0-02e91c017647.png", "D1/D2 · Hub 与通用"],
+        ["8cb478c0-ff55-4b5b-8a3b-0223a13fd285.png", "A4/J4 · 专注与离线"],
+        ["98171885-4324-458d-9cef-c76d8794bb10.png", "C3/C4 · 角色选择与互动"],
+        ["9c5783f4-403f-46c6-8fd3-ac49fa2c9492.png", "G1/G2 · 插件"],
+        ["b837df11-8842-45c8-976d-c74fbe78f3ad.png", "G3/G4 · 市场与开发者"],
+        ["d63b4f97-677b-4f72-8008-0b6834741f68.png", "C1/C2 · 欢迎与模型配置"],
+        ["dc6e09f4-c258-4a74-aba5-ab30fa2c7ede.png", "E1/F1 · 角色与人格"],
+        ["e53d5e72-dde2-4321-9517-7ea3a32a30b8.png", "F2/F3/F4 · 上下文与关系"],
+        ["ea030568-bf0b-4f1d-8e1f-55230ec1c646.png", "H · 知识库与 Agent"],
+      ];
+      const gallery = $("#galleryList");
+      shots.forEach(([file, title], index) => {
+        const button = document.createElement("button");
+        button.className = `shot-button${index === 10 ? " active" : ""}`;
+        button.innerHTML = `<img src="../../UI/${file}" alt=""><span><strong>${title}</strong><br><span class="muted fine">${file.slice(0, 8)}...</span></span>`;
+        button.addEventListener("click", () => {
+          $$(".shot-button").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          $("#shotImage").src = `../../UI/${file}`;
+          $("#shotTitle").textContent = title;
+          $("#shotDesc").textContent = file;
+        });
+        gallery.appendChild(button);
+      });
+    </script>
+  </body>
+</html>
