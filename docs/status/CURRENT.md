@@ -7,13 +7,13 @@
 
 ## 1. 一句话现状
 
-M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 模型 API 双栏 + chat 集成，worker 零改动）完成、PM 已复核**（desktop 273 绿）。**当前待办 = P5（D8 + 真窗验收 + tag）**。✅ **ui-design 已 v0.2 重写**（2026-06-19）：视觉真源=`UI/` 高保真图，**43 屏全有专属图**，文件→屏映射经作者逐张核准（D1/D2=`774644b7`、D3/D4=`36b542fb`、D5/D7=`1d7669e3`、D6/D8=`7075fa1f`、E1/F1=`60ea4a18`…完整见 ui-design §4）；已删全部 ASCII 线稿，§2 token + §15.1 默认表 + 各屏契约保留。
+M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 双栏 + chat 集成）+ P5（D8 + D3 polish + ABI 收口）代码完成、PM 已复核**（desktop 273 / protocol 178 / build exit 0）。**当前待办 = P5 人工硬门槛**：真 Electron GUI 冒烟（D8 按 `7075fa1f`）+ 真 Key 端到端 + 裁定 tag。✅ **ui-design 已 v0.2 重写**（2026-06-19）：视觉真源=`UI/` 高保真图，**43 屏全有专属图**，文件→屏映射经作者逐张核准（D1/D2=`774644b7`、D3/D4=`36b542fb`、D5/D7=`1d7669e3`、D6/D8=`7075fa1f`、E1/F1=`60ea4a18`…完整见 ui-design §4）；已删全部 ASCII 线稿，§2 token + §15.1 默认表 + 各屏契约保留。
 
 ## 2. 立即要做的事
 
 > P1/P2/P2.5 + 视觉保真 harness + Hub/D4 保真审计 + **P3（D2/D6）** 均已完成并经 PM 复核（**262 绿**）。视觉闭环（`renderer/dev/mock-bridge.ts` + `?page=` route + Playwright MCP 截图↔PNG）已就绪，后续每屏复用。
 
-**下一步执行 = P5（M7b-1 收尾）**：`git checkout feat/m7b1-d-series`，按 **`docs/milestones/M7b-1/plans/p5-d8-acceptance.md`** 逐 task。含：① **先 `electron-rebuild` better-sqlite3**（ABI 127≠123，[[p5-electron-gui-smoke-blocker]]）；② D3 两视觉 polish（状态点 `ok`→`--ds-success` 绿；provider 标题 `name===formatLabel` 去冗余）；③ D8 关于面板（接 `app.openExternal` 外链，RPC 已在 P1 就绪）；④ **真 Electron GUI 冒烟**（对照设计图逐屏目视，§6 硬门槛）+ **真 Key→听到回复 90s 端到端**；⑤ 全量验收 + RESULTS 定稿 + tag `mvp/M7b1-done`。
+**P5 代码已完成 + PM 复核**（Codex 跑，desktop 273 / protocol 178 / build exit 0）：D3 两 polish + D8 关于 + Task 0 ABI 收口均签收。**当前待办 = P5 人工硬门槛（§6）**：① 按 RESULTS『Task 0 收口』把 better-sqlite3 换 electron-ABI(123) → `pnpm --filter @desksoul/desktop dev`；② **真 Electron GUI 冒烟**逐屏对照设计图（**D8 按 `7075fa1f` 右半**核，非 1d7669e3）；③ **真 Key→听到回复 90s 端到端**；④ 通过后裁定打 tag `mvp/M7b1-done`。详见 [`milestones/M7b-1/plans/p5-d8-acceptance.md`](../milestones/M7b-1/plans/p5-d8-acceptance.md) + RESULTS。
 
 ## 3. 路线图（PM 维护）
 
@@ -27,7 +27,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | Hub/D4 保真审计 | 用 harness 对照 PNG，修 Slider/Switch/Select/.ds-glass 等可复用件 | ✅ 完成（残留见 RESULTS / §7 决策） |
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
-| **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + 全量验收 + RESULTS 定稿 + tag | 📋 待规划（PM 出 plan）→ 执行 |
+| **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；**真窗冒烟 + 真 Key + tag 待人工**（§6 硬门槛） |
 | M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ⏳ 独立 spec/plan |
 | M8 / M9 | 聊天UI+气泡+系统集成（托盘/热键录制器正式入口）/ 打包打磨 | ⏳ |
 
