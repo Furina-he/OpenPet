@@ -26,6 +26,7 @@ import {
 } from './prefs/index.js';
 import { createPrefsService } from './prefs-service.js';
 import { createAppService } from './app-service.js';
+import { createOnboardingService } from './onboarding-service.js';
 
 export interface IpcRouterDeps {
   targets: () => WebContents[];
@@ -33,6 +34,10 @@ export interface IpcRouterDeps {
   characterWindow: () => BrowserWindow | null;
   /** Hub（settings 窗口）定位器；index 注入。openHub RPC 用它 show+focus。 */
   settingsWindow?: () => BrowserWindow | null;
+  /** 引导窗定位器（M7b-2）；finishOnboarding hide 它。 */
+  onboardingWindow?: () => BrowserWindow | null;
+  /** overlay 窗定位器（M7b-2）；finishOnboarding show 它。 */
+  overlayWindow?: () => BrowserWindow | null;
   /** 角色包根目录（dev: apps/desktop/characters；打包: resources/characters）。 */
   charactersRoot: string;
   providerEntryPath: string;
@@ -120,6 +125,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     ...(deps.providerService ?? {}),
     ...prefsService,
     ...(deps.appService ?? {}),
+    ...createOnboardingService({
+      prefsStore,
+      onboardingWindow: deps.onboardingWindow ?? (() => null),
+      overlayWindow: deps.overlayWindow ?? (() => null),
+    }),
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),

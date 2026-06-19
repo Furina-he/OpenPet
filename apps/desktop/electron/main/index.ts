@@ -13,6 +13,7 @@ import { createProviderConfig } from './provider-config.js';
 import { createProviderService } from './provider-service.js';
 import { createPrefsStore } from './prefs/index.js';
 import { createAppService } from './app-service.js';
+import { decideStartup } from './startup.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,6 +50,8 @@ app.whenReady().then(() => {
     targets: rendererTargets(wins),
     characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
     settingsWindow: () => (wins && !wins.settings.isDestroyed() ? wins.settings : null),
+    onboardingWindow: () => (wins && !wins.onboarding.isDestroyed() ? wins.onboarding : null),
+    overlayWindow: () => (wins && !wins.overlay.isDestroyed() ? wins.overlay : null),
     charactersRoot,
     providerEntryPath,
     sqlitePath: path.join(dataDir, 'sessions.db'),
@@ -63,6 +66,12 @@ app.whenReady().then(() => {
     setLoginItem: (open) => app.setLoginItemSettings({ openAtLogin: open }),
     appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
   });
+
+  // M7b-2 首启：未完成引导 → 收起 overlay、弹引导窗（character 照常显示，"先看到角色"）。
+  if (decideStartup(prefsStore.getAll()).showOnboarding) {
+    wins.overlay.hide();
+    wins.onboarding.show();
+  }
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),
     send: (p) => {

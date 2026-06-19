@@ -19,11 +19,12 @@ export interface AppWindows {
   character: BrowserWindow;
   overlay: BrowserWindow;
   settings: BrowserWindow;
+  onboarding: BrowserWindow;
 }
 
 async function loadRenderer(
   win: BrowserWindow,
-  name: 'character' | 'overlay' | 'settings',
+  name: 'character' | 'overlay' | 'settings' | 'onboarding',
 ): Promise<void> {
   if (process.env.ELECTRON_RENDERER_URL) {
     await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${name}/index.html`);
@@ -89,20 +90,45 @@ export function createAppWindows(): AppWindows {
     },
   });
 
+  // 首启引导壳（M7b-2）：480×600 表单玻璃窗，吸附角色左侧 24px（角色在右下角，
+  // 放其右侧会出屏，故置左侧）。常驻 show:false，首启时由 index.ts show。
+  const ONBOARDING = { width: 480, height: 600 };
+  const onboarding = new BrowserWindow({
+    width: ONBOARDING.width,
+    height: ONBOARDING.height,
+    x: Math.max(
+      workArea.x,
+      workArea.x + workArea.width - CHARACTER_BASE_SIZE.width - margin - ONBOARDING.width - 24,
+    ),
+    y: workArea.y + Math.max(0, Math.round((workArea.height - ONBOARDING.height) / 2)),
+    show: false,
+    frame: false,
+    resizable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: PRELOAD,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
   attachCrashRecovery(character, 'character');
   attachCrashRecovery(overlay, 'overlay');
   attachCrashRecovery(settings, 'settings');
+  attachCrashRecovery(onboarding, 'onboarding');
 
   void loadRenderer(character, 'character');
   void loadRenderer(overlay, 'overlay');
   void loadRenderer(settings, 'settings');
+  void loadRenderer(onboarding, 'onboarding');
 
-  return { character, overlay, settings };
+  return { character, overlay, settings, onboarding };
 }
 
 export function rendererTargets(wins: AppWindows): () => WebContents[] {
   return () =>
-    [wins.character, wins.overlay, wins.settings]
+    [wins.character, wins.overlay, wins.settings, wins.onboarding]
       .filter((w) => !w.isDestroyed())
       .map((w) => w.webContents);
 }

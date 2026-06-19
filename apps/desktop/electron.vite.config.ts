@@ -27,6 +27,7 @@ export default defineConfig({
           character: resolve(__dirname, 'src/renderer/character/index.html'),
           overlay: resolve(__dirname, 'src/renderer/overlay/index.html'),
           settings: resolve(__dirname, 'src/renderer/settings/index.html'),
+          onboarding: resolve(__dirname, 'src/renderer/onboarding/index.html'),
         },
       },
     },
