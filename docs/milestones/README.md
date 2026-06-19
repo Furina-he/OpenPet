@@ -14,8 +14,8 @@
 | **M7b-1** | D 系列设置面板 + chat 集成 | 🚧 `mvp/M7b1-code-done`；真窗/真 Key 待人工 | [`M7b-1/`](M7b-1/) — spec + plans + RESULTS + README |
 | **M7b-2** | C 系列首启引导（C1–C4，务实降级） | 🚧 代码完成；真窗/真 Key 待人工 | [`M7b-2/`](M7b-2/) — spec + plans + RESULTS + README |
 | **M8a** | 聊天体验（B1 浮层 + B2 双轨气泡 + J3 错误分级） | 📋 spec + P1–P4 计划就绪 | [`M8a/`](M8a/) — spec + plans + README |
-| **M8b** | 桌面层（A1 交互 + A2 气泡 + A3 穿透 + A4 徽标/全屏） | 📝 spec 草案（待 M8a 后细化） | [`M8b/`](M8b/) — spec(draft) |
-| **M8c** | 系统集成（J1 托盘 + J2 热键录制器 + J5 崩溃上报） | 📝 spec 草案（待 M8a/b 后细化） | [`M8c/`](M8c/) — spec(draft) |
+| **M8b** | 桌面层（A1 交互 + A2 气泡 + A3 穿透 + A4 徽标/全屏） | 📋 spec + P1–P4 计划就绪 | [`M8b/`](M8b/) — spec + plans + README |
+| **M8c** | 系统集成（J1 托盘 + J2 热键录制器 + J5 崩溃上报） | 📋 spec + P1–P4 计划就绪 | [`M8c/`](M8c/) — spec + plans + README |
 | M9 | 打包 + 体验打磨 + 文档 | ⏳ | 待建 |
 
 > **M8 三拆（已认可）**：M8a 聊天 → M8b 桌面层 → M8c 系统集成。顺序理由：M8b 双击/右键、M8c 托盘/热键都把"打开 B1"当目标，B1 须先有。
