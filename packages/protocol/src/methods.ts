@@ -61,6 +61,11 @@ export const Methods = {
     params: z.object({}),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.window.finishOnboarding': {
+    // 首启引导完成/跳过完成：置 onboarding.completed + 收起引导窗 + 唤起 overlay。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
 
   // --- request/response: Renderer → Main（数据管理，M6；D7 UI 在 M7 接）---
   'app.storageUsage': {
