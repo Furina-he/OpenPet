@@ -92,6 +92,8 @@ export class ChatService {
   private readonly getCharacter: () => CharacterRef;
   private readonly sqlitePath: string | undefined;
   private readonly queue: NotificationQueue;
+  /** J3：error done 时直发 confused 表情驱动角色歪头（旁路背压队列，错误一次性）。 */
+  private readonly broadcast: (channel: string, params: unknown) => void;
   private readonly core: ConversationCore;
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
@@ -124,6 +126,7 @@ export class ChatService {
       characterId: () => this.getCharacter().id,
     });
     this.queue = new NotificationQueue(opts.broadcast, opts.queue ?? {});
+    this.broadcast = opts.broadcast;
     this.plugins = createPluginGateway(opts.plugins ?? {});
     this.core = new ConversationCore((n) => this.onNotification(n));
     const fetchGateway = opts.fetch ? createFetchGateway(opts.fetch) : null;
@@ -300,6 +303,10 @@ export class ChatService {
       case 'chat.done':
         this.session.finishAssistant(n.sessionId, n.params.finishReason);
         if (n.params.finishReason === 'stop') this.updatePersona(n.sessionId);
+        if (n.params.finishReason === 'error') {
+          // J3：错误时驱动角色"歪头"（character 哑播放器消费 applyEmotion）。
+          this.broadcast('behavior.applyEmotion', { name: 'confused', weight: 1 });
+        }
         this.lastIntent.delete(n.sessionId);
         this.queue.push(
           { channel: n.channel, sessionId: n.sessionId, params: n.params },

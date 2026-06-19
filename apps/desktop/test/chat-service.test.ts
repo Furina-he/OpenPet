@@ -193,6 +193,25 @@ describe('ChatService · 守卫与恢复', () => {
     expect(snap.messages[1]!.finishReason).toBe('error');
   });
 
+  it('error done 时广播 behavior.applyEmotion(confused)（J3 角色歪头）', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 30, baseBackoffMs: 50 },
+      queue: { flushIntervalMs: 5 },
+      store: new MemoryStore(),
+    });
+    svc.send('s1', '你好');
+    await until(() => sent.some((s) => s.channel === 'chat.stream'), 'first delta');
+    svc.killWorkerForTest(); // 合成 finishReason:'error'
+    await until(() => !!doneOf(sent, 's1'), 'error done');
+    expect(doneOf(sent, 's1')!.params.finishReason).toBe('error');
+    expect(
+      sent.some((s) => s.channel === 'behavior.applyEmotion' && s.params.name === 'confused'),
+    ).toBe(true);
+  });
+
   it('reads history from the injected store across service restarts (chat.snapshot 数据源)', async () => {
     const store = new MemoryStore();
     const sent: Sent[] = [];
