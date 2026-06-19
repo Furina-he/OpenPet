@@ -1,14 +1,21 @@
+<!-- apps/desktop/src/renderer/overlay/App.vue — B1 聊天浮层（ui-design §6.1；视觉 UI/60ea4a18 B1 区）
+     复用 chat-view 会话模型；玻璃 + 顶栏（角色名/模型/连接态/⚙）+ 头像气泡列表 + 输入行。
+     ?fixture=chat：注入假快照做视觉 harness（不连 Main）。 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
-import { ChatView, type ChatMessage } from './chat-view';
+import { ChatView } from './chat-view';
+import type { ChatMessage } from './chat-view';
+import { groupMessages } from './bubble-view';
+import Bubble from './components/Bubble.vue';
 
 const SESSION_ID = 'default';
-
 const messages = ref<ChatMessage[]>([]);
 const streaming = ref(false);
 const ready = ref(false);
-const draft = ref('你好呀');
-const meta = ref('○ 连接中…');
+const draft = ref('');
+const charName = ref('小灵');
+const modelLabel = ref('未连接');
+const connected = ref(false);
 const unsubs: Array<() => void> = [];
 
 const view = new ChatView(SESSION_ID, () => {
@@ -16,22 +23,53 @@ const view = new ChatView(SESSION_ID, () => {
   streaming.value = view.streaming;
 });
 
+const isFixture = new URLSearchParams(window.location.search).get('fixture') === 'chat';
+
 onMounted(async () => {
-  // 先订阅后快照：竞态由 ChatView 的 seq 缓冲处理
+  if (isFixture) {
+    view.applySnapshot({
+      sessionId: SESSION_ID,
+      seq: 3,
+      streaming: false,
+      messages: [
+        { role: 'user', text: '你好呀', finishReason: null },
+        { role: 'assistant', text: '嗨~ 我是小灵，很高兴见到你！', finishReason: 'stop' },
+        { role: 'user', text: '给我讲个笑话', finishReason: null },
+        {
+          role: 'assistant',
+          text: '为什么程序员分不清万圣节和圣诞节？因为 Oct 31 == Dec 25 ：)',
+          finishReason: 'stop',
+        },
+      ],
+    });
+    charName.value = '小灵';
+    modelLabel.value = 'gpt-4o';
+    connected.value = true;
+    ready.value = true;
+    return;
+  }
   unsubs.push(
-    window.desksoul.on('chat.stream', (p) => view.onStream(p)),
-    window.desksoul.on('chat.done', (p) => {
-      view.onDone(p);
-      meta.value = `○ done (${p.finishReason})`;
-    }),
+    window.desksoul.on('chat.stream', (p) => view.onStream(p as never)),
+    window.desksoul.on('chat.done', (p) => view.onDone(p as never)),
   );
   try {
-    const snap = await window.desksoul.rpc('chat.snapshot', { sessionId: SESSION_ID });
-    view.applySnapshot(snap);
+    const [snap, char, prefs] = await Promise.all([
+      window.desksoul.rpc('chat.snapshot', { sessionId: SESSION_ID }),
+      window.desksoul.rpc('character.current', {}).catch(() => null),
+      window.desksoul.rpc('app.prefs.getAll', {}).catch(() => null),
+    ]);
+    view.applySnapshot(snap as never);
+    if (char && (char as { manifest?: { name?: string } }).manifest?.name) {
+      charName.value = (char as { manifest: { name: string } }).manifest.name;
+    }
+    const model = (prefs as Record<string, unknown> | null)?.['model.activeModel'];
+    if (typeof model === 'string' && model) {
+      modelLabel.value = model;
+      connected.value = true;
+    }
     ready.value = true;
-    meta.value = view.streaming ? '● streaming…' : '○ idle';
-  } catch (e) {
-    meta.value = `✗ snapshot failed: ${(e as Error).message}`;
+  } catch {
+    ready.value = true; // 失败也放行输入（错误态在发送时反馈）
   }
 });
 
@@ -40,176 +78,98 @@ onUnmounted(() => {
 });
 
 async function send(): Promise<void> {
-  if (streaming.value || !ready.value || !draft.value) return;
-  view.echoUser(draft.value);
-  meta.value = '● streaming…';
+  if (streaming.value || !ready.value || !draft.value.trim()) return;
+  const text = draft.value;
+  view.echoUser(text);
+  draft.value = '';
   try {
-    await window.desksoul.rpc('chat.send', { sessionId: SESSION_ID, text: draft.value });
-    draft.value = '';
-  } catch (e) {
+    await window.desksoul.rpc('chat.send', { sessionId: SESSION_ID, text });
+  } catch {
     view.rollbackEcho();
-    meta.value = `✗ ${(e as Error).message}`;
   }
 }
-
 function cancel(): void {
   if (!streaming.value) return;
   void window.desksoul.rpc('chat.cancel', { sessionId: SESSION_ID });
-  meta.value = '○ cancelling…';
 }
-
 function openHub(): void {
   void window.desksoul.rpc('app.window.openHub', {});
+}
+function avatar(role: ChatMessage['role']): string {
+  return role === 'assistant' ? '🐧' : '🙂';
 }
 </script>
 
 <template>
-  <div class="overlay">
-    <div class="head">
-      <h2>DeskSoul · 对话（M2）</h2>
-      <button class="gear" title="设置 (Ctrl+Shift+,)" @click="openHub">⚙</button>
-    </div>
-    <div class="history">
-      <div v-for="(m, i) in messages" :key="i" class="msg" :class="`msg-${m.role}`">
-        <span class="text">{{ m.text }}</span>
-        <span v-if="m.role === 'assistant' && m.finishReason === null && streaming" class="caret" />
-        <span v-if="m.finishReason === 'cancel'" class="chip">已取消</span>
-        <span v-else-if="m.finishReason === 'error'" class="chip chip-err">出错了</span>
+  <div class="ds-glass flex h-screen flex-col text-base text-text-main">
+    <!-- 顶栏：角色名 + 模型 + 连接态 + 设置 -->
+    <header class="flex items-center justify-between border-b border-glass-border px-4 py-3">
+      <div class="flex items-center gap-2">
+        <span class="text-md">{{ charName }}</span>
+        <span class="text-sm text-text-sub">{{ modelLabel }}</span>
+        <span
+          class="h-2 w-2 rounded-full"
+          :style="`background: ${connected ? 'var(--ds-success)' : 'var(--ds-danger)'}`"
+          :title="connected ? '已连接' : '模型未连接'"
+        />
       </div>
-    </div>
-    <div class="meta">{{ meta }}</div>
-    <div class="row">
-      <input v-model="draft" :disabled="streaming || !ready" @keydown.enter="send" />
-      <button class="send" :disabled="streaming || !ready" @click="send">发送</button>
-      <button :disabled="!streaming" @click="cancel">取消</button>
-    </div>
+      <button
+        class="rounded-btn px-2 py-1 text-text-sub hover:text-text-main"
+        title="设置"
+        @click="openHub"
+      >
+        ⚙
+      </button>
+    </header>
+
+    <!-- 消息列表：按 role 分组，组内共享头像 -->
+    <main class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <div
+        v-for="(g, gi) in groupMessages(messages)"
+        :key="gi"
+        class="flex items-start gap-2"
+        :class="g.role === 'user' ? 'flex-row-reverse' : ''"
+      >
+        <div
+          class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg"
+          style="background: var(--ds-glass-border)"
+        >
+          {{ avatar(g.role) }}
+        </div>
+        <div
+          class="flex min-w-0 flex-1 flex-col gap-1"
+          :class="g.role === 'user' ? 'items-end' : 'items-start'"
+        >
+          <Bubble v-for="(m, mi) in g.messages" :key="mi" :message="m" :streaming="streaming" />
+        </div>
+      </div>
+    </main>
+
+    <!-- 输入行 -->
+    <footer class="flex items-center gap-2 border-t border-glass-border p-3">
+      <input
+        v-model="draft"
+        class="flex-1 rounded-input border border-glass-border bg-transparent px-3 py-2 text-base outline-none"
+        placeholder="和小灵说点什么…"
+        :disabled="!ready"
+        @keydown.enter="send"
+      />
+      <button
+        v-if="!streaming"
+        class="rounded-btn px-4 py-2 text-base text-white disabled:opacity-50"
+        style="background: linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))"
+        :disabled="!ready || !draft.trim()"
+        @click="send"
+      >
+        发送
+      </button>
+      <button
+        v-else
+        class="rounded-btn border border-glass-border px-4 py-2 text-base text-text-sub"
+        @click="cancel"
+      >
+        取消
+      </button>
+    </footer>
   </div>
 </template>
-
-<style scoped>
-.overlay {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 16px;
-  gap: 12px;
-  box-sizing: border-box;
-  font-family: system-ui, sans-serif;
-  background: #f6f7fb;
-  color: #15151a;
-}
-h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #5b6472;
-}
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.gear {
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 8px;
-}
-.gear:hover {
-  background: #eef1f7;
-}
-.history {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.msg {
-  max-width: 86%;
-  border-radius: 12px;
-  padding: 10px 14px;
-  font-size: 15px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.msg-user {
-  align-self: flex-end;
-  background: #5b8def;
-  color: #fff;
-}
-.msg-assistant {
-  align-self: flex-start;
-  background: #fff;
-  border: 1px solid #e3e6ee;
-}
-.chip {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: #eef1f7;
-  color: #8a93a3;
-}
-.chip-err {
-  background: #fdecec;
-  color: #c2504d;
-}
-.caret {
-  display: inline-block;
-  width: 7px;
-  height: 1.1em;
-  margin-left: 1px;
-  vertical-align: text-bottom;
-  background: #5b8def;
-  animation: blink 1s steps(2) infinite;
-}
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  50.01%,
-  100% {
-    opacity: 0;
-  }
-}
-.meta {
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  color: #8a93a3;
-  min-height: 1.4em;
-}
-.row {
-  display: flex;
-  gap: 8px;
-}
-input {
-  flex: 1;
-  font-size: 14px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid #cdd3df;
-}
-button {
-  font-size: 14px;
-  padding: 9px 18px;
-  border-radius: 8px;
-  border: 1px solid #cdd3df;
-  background: #fff;
-  cursor: pointer;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.send {
-  background: #5b8def;
-  border-color: #5b8def;
-  color: #fff;
-}
-</style>
