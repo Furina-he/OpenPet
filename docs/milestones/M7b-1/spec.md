@@ -2,7 +2,7 @@
 
 | 版本 | 日期 | 状态 | 关联文档 |
 | --- | --- | --- | --- |
-| v0.1 | 2026-06-17 | Approved（brainstorming 收敛） | [m7a-spec](2026-06-17-m7a-foundation-spec.md) · [ui-design §7](2026-05-01-desksoul-ui-design.md) · [impl-plan §M7](2026-05-01-desksoul-impl-plan.md) |
+| v0.1 | 2026-06-17 | Approved（brainstorming 收敛） | [m7a-spec](../../plans/2026-06-17-m7a-foundation-spec.md) · [ui-design §8](../../design/ui-design.md) · [impl-plan §M7](../../design/impl-plan.md) |
 
 > M7b 拆两片（已定）：**M7b-1 = D 系列设置面板（D2/D3/D4/D6/D8）**，本文；M7b-2 = C 系列首启引导（后续）。M7b-1 直接建在 M7a 地基（PrefsStore + app.prefs.* + effects seam + Hub 壳 + 组件库）之上。
 

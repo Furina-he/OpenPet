@@ -1,8 +1,8 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (and other coding agents) when working with code in this repository.
 
-> 本文件是**项目地图**：目标 / 整体概况 / 项目结构 / 架构 / 关键约束，便于快速理解项目。**不含实时进度**——在做哪个阶段、测试数、下一步、对接入口一律见 `docs/status/CURRENT.md`（任何新对话先读它）。
+> 本文件是**项目地图**：目标 / 整体概况 / 项目结构 / 架构 / 关键约束，便于快速理解项目。**不含实时进度**——在做哪个阶段、测试数、下一步、对接入口一律见 `docs/status/CURRENT.md`（任何新对话先读它）。与 `CLAUDE.md` 内容一致（双 agent 共用同一张地图）。
 
 ## 项目概览
 
@@ -16,7 +16,7 @@ DeskSoul 是桌面常驻的 AI 角色伙伴（桌宠 + AI 内核 + 角色/插件
 
 完整产品需求见 `PRD.md`；架构真源 `docs/design/tech-design.md`（v0.2 Electron Pivot）；总任务清单 `docs/design/impl-plan.md`；前端真源 `docs/design/ui-design.md`（v0.2 起以高保真图为视觉真源）；文档组织规范 `docs/design/doc-conventions.md`。
 
-> 实现计划用 `superpowers:executing-plans` 按任务逐条推进；提交遵循 Conventional Commits（`feat:` `fix:` `chore:` `test:` `docs:` `refactor:`）。
+> 实现计划用 `executing-plans` 按任务逐条推进；提交遵循 Conventional Commits（`feat:` `fix:` `chore:` `test:` `docs:` `refactor:`）。
 
 ## 项目结构
 

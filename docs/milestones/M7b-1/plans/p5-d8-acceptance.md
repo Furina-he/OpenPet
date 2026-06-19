@@ -240,4 +240,4 @@ import AboutPage from './pages/AboutPage.vue';
 ---
 
 ## 执行交接
-Plan 已存 `docs/plans/2026-06-18-m7b1-p5-d8-acceptance-plan.md`。**`executing-plans` inline 逐 task**。**Task 0（electron-rebuild）是 Task 4/5 真窗验收的前置**——无法 electron-rebuild 或真 Key 时，Task 1–3 + 6 的代码/全量仍可完成，Task 4/5 记录阻塞回 PM（勿假装跑过）。完成打 tag `mvp/M7b1-done`，M7b-1 收官。
+Plan 已存 `docs/milestones/M7b-1/plans/p5-d8-acceptance.md`。**`executing-plans` inline 逐 task**。**Task 0（electron-rebuild）是 Task 4/5 真窗验收的前置**——无法 electron-rebuild 或真 Key 时，Task 1–3 + 6 的代码/全量仍可完成，Task 4/5 记录阻塞回 PM（勿假装跑过）。完成打 tag `mvp/M7b1-done`，M7b-1 收官。

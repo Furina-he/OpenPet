@@ -13,7 +13,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 
 > P1/P2/P2.5 + 视觉保真 harness + Hub/D4 保真审计 + **P3（D2/D6）** 均已完成并经 PM 复核（**262 绿**）。视觉闭环（`renderer/dev/mock-bridge.ts` + `?page=` route + Playwright MCP 截图↔PNG）已就绪，后续每屏复用。
 
-**下一步执行 = P5（M7b-1 收尾）**：`git checkout feat/m7b1-d-series`，按 **`docs/plans/2026-06-18-m7b1-p5-d8-acceptance-plan.md`**（PM 即将产出）逐 task。含：① **先 `electron-rebuild` better-sqlite3**（ABI 127≠123，[[p5-electron-gui-smoke-blocker]]）；② D3 两视觉 polish（状态点 `ok`→`--ds-success` 绿；provider 标题 `name===formatLabel` 去冗余）；③ D8 关于面板（接 `app.openExternal` 外链，RPC 已在 P1 就绪）；④ **真 Electron GUI 冒烟**（对照设计图逐屏目视，§6 硬门槛）+ **真 Key→听到回复 90s 端到端**；⑤ 全量验收 + RESULTS 定稿 + tag `mvp/M7b1-done`。
+**下一步执行 = P5（M7b-1 收尾）**：`git checkout feat/m7b1-d-series`，按 **`docs/milestones/M7b-1/plans/p5-d8-acceptance.md`** 逐 task。含：① **先 `electron-rebuild` better-sqlite3**（ABI 127≠123，[[p5-electron-gui-smoke-blocker]]）；② D3 两视觉 polish（状态点 `ok`→`--ds-success` 绿；provider 标题 `name===formatLabel` 去冗余）；③ D8 关于面板（接 `app.openExternal` 外链，RPC 已在 P1 就绪）；④ **真 Electron GUI 冒烟**（对照设计图逐屏目视，§6 硬门槛）+ **真 Key→听到回复 90s 端到端**；⑤ 全量验收 + RESULTS 定稿 + tag `mvp/M7b1-done`。
 
 ## 3. 路线图（PM 维护）
 
@@ -35,12 +35,10 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 
 ## 4. 权威文档索引
 
-- 产品 `PRD.md`；架构真源 `docs/plans/2026-05-01-desksoul-tech-design.md`；总清单 `...-impl-plan.md`
-- 前端真源（做 renderer 前必读）`docs/plans/2026-05-01-desksoul-ui-design.md`（**v0.2 以图为主**：§2 设计系统/§3 IA/**§4 图索引（文件→屏映射）**/§8 D 面板/§15.1 默认表）
-- M7a：`...-m7a-foundation-{spec,plan}.md`
-- **M7b-1 设计（WHAT）**：`docs/plans/2026-06-17-m7b1-d-series-spec.md`
-- 阶段计划（HOW）：`...-p1-foundation-plan.md`(✅) · `...-p2-d4-plan.md`(✅) · `...-p2_5-hub-reachability-plan.md`(待执行)
-- 阶段结果：`apps/desktop/RESULTS-M7b1.md`（P1+P2 已记）
+- **长期真源 `docs/design/`**：架构 `tech-design.md` · 前端 `ui-design.md`（v0.2 以图为主：§2 设计系统 / §3 IA / §4 图索引（文件→屏映射）/ §8 D 面板 / §15.1 默认表）· 总清单 `impl-plan.md` · 文档规范 `doc-conventions.md`；产品需求根 `PRD.md`。
+- **里程碑索引 `docs/milestones/README.md`**：各里程碑入口总览。
+- **M7b-1（当前）`docs/milestones/M7b-1/`**：`README.md`（spec→plans→RESULTS 关系链）· `spec.md`（WHAT）· `plans/p1…p5 + visual-fidelity-harness`（HOW）· `RESULTS.md`（交付）。
+- 历史 M1–M7a：RESULTS 在 `apps/desktop/RESULTS-M*.md`、plan 在 `docs/plans/`（见 `milestones/README.md`，B 增量未强迁）。
 
 ## 5. 关键约定（务必遵守）
 
