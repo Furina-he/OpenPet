@@ -9,10 +9,14 @@
  * 本地回显：echoUser 在 rpc 发出前乐观插入 user + assistant 占位（与 Main 侧
  * SessionStore 的 appendUser+beginAssistant 同构），rpc 失败时 rollbackEcho。
  */
+import type { ErrorKind } from '@desksoul/protocol';
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   finishReason: 'stop' | 'cancel' | 'error' | null;
+  /** J3：仅 finishReason==='error' 时有意义（错误分级台词用）。 */
+  errorKind?: ErrorKind;
 }
 
 export interface StreamEvent {
@@ -24,6 +28,7 @@ export interface StreamEvent {
 export interface DoneEvent {
   sessionId: string;
   finishReason: 'stop' | 'cancel' | 'error';
+  errorKind?: ErrorKind;
 }
 
 export interface Snapshot {
@@ -113,6 +118,7 @@ export class ChatView {
     const last = this.messages[this.messages.length - 1];
     if (last && last.role === 'assistant' && last.finishReason === null) {
       last.finishReason = ev.finishReason;
+      if (ev.errorKind !== undefined) last.errorKind = ev.errorKind;
     }
     this.streaming = false;
     if (!opts.silent) this.onChange();
