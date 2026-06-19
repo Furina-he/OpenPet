@@ -1,7 +1,7 @@
 # DeskSoul · 项目当前状态 / 新对话对接入口
 
 > **任何新对话的第一份要读的文件**。读完即可零上下文接续。架构/PM 每阶段末更新。
-> 最后更新：2026-06-18（分支 `feat/m7b1-d-series`，M7b-1 **P1–P4 已落 + PM 复核**；下一步 P5 收尾）。
+> 最后更新：2026-06-19（分支 `feat/m7b1-d-series`，M7b-1 **P5 代码完成 + `mvp/M7b1-code-done`**，真窗/真 Key 待人工；**M7b-2 spec + P1–P4 计划就绪，可开实现**）。
 
 ---
 
@@ -28,7 +28,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
 | **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；tag `mvp/M7b1-code-done` 已打；**真窗冒烟 + 真 Key + 收官 tag `mvp/M7b1-done` 待人工**（§6） |
-| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ⏳ 独立 spec/plan |
+| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | 📋 spec + P1–P4 计划就绪（[`milestones/M7b-2/`](../milestones/M7b-2/)）；可开实现 |
 | M8 / M9 | 聊天UI+气泡+系统集成（托盘/热键录制器正式入口）/ 打包打磨 | ⏳ |
 
 > 原 spec 把 D2/D4/D6 并一阶段；PM 据工作量细分 P2(D4)/P3(D2+D6)，并因可达性发现插入 P2.5。spec 是 WHAT 真源，phase 计划是 HOW/顺序。
