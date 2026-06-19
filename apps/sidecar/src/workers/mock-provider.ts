@@ -23,6 +23,35 @@ export const MOCK_SCRIPT: readonly string[] = [
   '喝杯热可可？<emo:happy/>',
 ];
 
+/**
+ * 演示模式台词池（M7b-2）：跳过配 Key → 无 active provider → ChatService 空链 →
+ * 本 mock 流式推送。每条含 intent + emo/act 标签，驱动表情/动作。第 0 条 = MOCK_SCRIPT
+ * （保证默认/既有行为不变）。worker-entry 按轮次 pickDemoScript 轮换，避免每轮同一句。
+ */
+export const DEMO_SCRIPTS: readonly (readonly string[])[] = [
+  MOCK_SCRIPT,
+  [
+    '[intent mood=happy energy=high]\n',
+    '嘿嘿<emo:happy/>',
+    '今天也要',
+    '<act:wave dur=1200/>',
+    '元气满满哦！',
+  ],
+  [
+    '[intent mood=curious energy=mid]\n',
+    '唔…<emo:shy/>',
+    '你想和我聊点什么呢？',
+    '<act:fidget dur=1000/>',
+    '我在认真听~',
+  ],
+];
+
+/** 按轮次取一条台词（回绕；负数也安全）。 */
+export function pickDemoScript(index: number): readonly string[] {
+  const n = DEMO_SCRIPTS.length;
+  return DEMO_SCRIPTS[((index % n) + n) % n]!;
+}
+
 export interface MockProviderOptions {
   /** Delay between chunks in ms (default 50). */
   intervalMs?: number;

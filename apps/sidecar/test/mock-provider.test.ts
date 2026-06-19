@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { mockProviderChat, MOCK_SCRIPT, type ChatEvent } from '../src/workers/mock-provider';
+import {
+  mockProviderChat,
+  MOCK_SCRIPT,
+  DEMO_SCRIPTS,
+  pickDemoScript,
+  type ChatEvent,
+} from '../src/workers/mock-provider';
 
 async function collect(gen: AsyncGenerator<ChatEvent>): Promise<ChatEvent[]> {
   const out: ChatEvent[] = [];
@@ -40,5 +46,23 @@ describe('mockProviderChat', () => {
     ac.abort();
     const events = await collect(mockProviderChat(ac.signal, { intervalMs: 5 }));
     expect(events).toEqual([{ type: 'done', finishReason: 'cancel' }]);
+  });
+});
+
+describe('demo 台词池（M7b-2 跳过演示）', () => {
+  it('DEMO_SCRIPTS[0] 即 MOCK_SCRIPT（默认不回归）', () => {
+    expect(DEMO_SCRIPTS[0]).toBe(MOCK_SCRIPT);
+  });
+  it('pickDemoScript 按 index 轮换 + 回绕', () => {
+    expect(pickDemoScript(0)).toBe(DEMO_SCRIPTS[0]);
+    expect(pickDemoScript(1)).toBe(DEMO_SCRIPTS[1]);
+    expect(pickDemoScript(DEMO_SCRIPTS.length)).toBe(DEMO_SCRIPTS[0]);
+  });
+  it('每条台词含 intent + 至少一个行为标签（驱动表情/动作）', () => {
+    for (const s of DEMO_SCRIPTS) {
+      const joined = s.join('');
+      expect(joined).toMatch(/\[intent /);
+      expect(joined).toMatch(/<(emo|act):/);
+    }
   });
 });
