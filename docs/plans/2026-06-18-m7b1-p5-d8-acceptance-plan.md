@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vue 3 SFC + Tailwind + 设计 token；`app.openExternal` RPC；Playwright MCP 视觉闭环；真 Electron `dev` 目视。
 
-**视觉真源:** D8 **无专属 PNG** → `UI/1d7669e3` + §7.8 文字图 + §2 token（与 D2/D3/D4/D6 同）。
+**视觉真源:** D8 专属高保真图 = `UI/7075fa1f-2e1d-49e4-ad59-1881a0191a98.png`（右半=D8 关于；左半=D6 隐私）+ ui-design §8.8 契约 + §2 token。（ui-design v0.2 已确认 43 屏全有专属图。）
 
 ---
 
@@ -55,7 +55,7 @@ export const DOT_COLOR: Record<ProviderDot, string> = {
 };
 ```
 
-> 依据：§7.3 文字图「绿点」+ §2 约定「冷色仅状态用」。`providerDot` 逻辑与其 3 测不变（颜色是常量，无需改测）。先确认 `--ds-success` 在 `theme/tokens.css` 浅/深都有定义（应有，#7fe3a1）；若缺则补 token。
+> 依据：D3 专属图 `UI/36b542fb…`（状态点为绿）+ §2 约定「暖色用于品牌、冷色/语义色仅用于状态」。`providerDot` 逻辑与其 3 测不变（颜色是常量，无需改测）。先确认 `--ds-success`(#7fe3a1) 在 `theme/tokens.css` 浅/深都有定义；若缺则补 token。
 
 - [ ] **Step 2: provider 标题去冗余** — `ModelApiPage.vue` 的 `activeFormatLabel` computed：`name` 与格式标签相同时返回空，模板按需隐藏。
 
@@ -80,14 +80,14 @@ const activeFormatLabel = computed(() => {
 
 ---
 
-## Task 2: D8 AboutPage（§7.8）
+## Task 2: D8 AboutPage（ui-design §8.8）
 
 **Files:** Create `settings/pages/AboutPage.vue`；Modify `settings/App.vue`
 
 - [ ] **Step 1: AboutPage.vue** — 五区（版本/致谢/帮助/法律/诊断），外链经 `app.openExternal`，检查更新 + 诊断包存而不接
 
 ```vue
-<!-- settings/pages/AboutPage.vue — D8 关于（ui-design §7.8；参照 1d7669e3 + §2 token）
+<!-- settings/pages/AboutPage.vue — D8 关于（ui-design §8.8；视觉参照 UI/7075fa1f 右半 + §2 token）
      做实：版本信息 + 致谢 + 帮助/法律外链（app.openExternal）。
      存而不接：[检查更新]（无 updater）/[生成 .dsdiag]（无诊断聚合后端）。
      URL 为占位，上线前替换。 -->
@@ -190,7 +190,7 @@ import AboutPage from './pages/AboutPage.vue';
 
 ## Task 3: D8 视觉闭环
 
-- [ ] **Step 1: 截图比对** — `pnpm --filter @desksoul/desktop dev` → Playwright MCP `?page=system.about` 浅/深 1080×720 → `Read` 比对 `UI/1d7669e3` + §7.8（版本卡/致谢/帮助/诊断/法律分区，玻璃卡 + 外链按钮）+ §2 token。偏差修正重截。
+- [ ] **Step 1: 截图比对** — `pnpm --filter @desksoul/desktop dev` → Playwright MCP `?page=system.about` 浅/深 1080×720 → `Read` 比对 **`UI/7075fa1f…`（右半 D8）** + ui-design §8.8（版本卡/致谢/帮助/诊断/法律分区，玻璃卡 + 外链按钮）+ §2 token。偏差修正重截。
 - [ ] **Step 2: 提交**（如有样式修正）— `git commit -m "style(desktop): D8 about visual pass"`（无修正则跳过）
 
 ---
@@ -201,7 +201,7 @@ import AboutPage from './pages/AboutPage.vue';
 
 - [ ] `pnpm --filter @desksoul/desktop dev` 起真 Electron（确认不降级 in-memory）。
 - [ ] 打开 Hub（`Ctrl+Shift+,` 或 overlay ⚙）→ 左导航各组 + 空组可点。 ☐
-- [ ] 逐屏对照设计图（`1d7669e3` 设置语言 + 各 §7）：D2 通用 / D3 模型 API 双栏 / D4 显示 / D6 隐私 / D8 关于。玻璃/分组卡/暖色开关/状态点绿/滑块翼标。 ☐
+- [ ] 逐屏对照**各屏专属图**：D2=`774644b7`(右半) / D3+D4=`36b542fb` / D6=`7075fa1f`(左半) / D8=`7075fa1f`(右半)。玻璃/分组卡/暖色开关/状态点绿/滑块翼标。 ☐
 - [ ] 主题：切深色 → Hub + overlay 同步换肤 + `✓ 已保存`；重启 app → 保持。 ☐
 - [ ] D4 缩放：拖 slider → 角色实时缩放；松手持久；重启保持。置顶/穿透即时。 ☐
 - [ ] D6 高风险二次确认：截屏/摄像头 off→on → 红描边 ConfirmDialog；确认才 ON、取消回退。 ☐
@@ -232,7 +232,7 @@ import AboutPage from './pages/AboutPage.vue';
 ---
 
 ## Self-Review
-- **spec/§7 覆盖**：D8 §7.8 五区（版本/致谢/帮助/诊断/法律）✓；外链 `app.openExternal`（P1 RPC）✓；§6 GUI 冒烟硬门槛（Task 4）✓；spec「配 Key→听到回复」验收（Task 5）✓；D3 PM 裁决 polish（Task 1）✓。
+- **spec/§8 覆盖**：D8 §8.8 五区（版本/致谢/帮助/诊断/法律）✓；外链 `app.openExternal`（P1 RPC）✓；§6 GUI 冒烟硬门槛（Task 4）✓；spec「配 Key→听到回复」验收（Task 5）✓；D3 PM 裁决 polish（Task 1）✓。
 - **存而不接已声明**：检查更新 / 诊断包（Task 2 disabled + 范围段）。
 - **placeholder**：Task 1/2 给全代码；URL 为占位常量并标注；人工 task（4/5）给清单。
 - **类型**：`open(url)`→`app.openExternal{url}` 与 app-service 签名一致 ✓。

@@ -7,7 +7,7 @@
 
 ## 1. 一句话现状
 
-M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 模型 API 双栏 + chat 集成，worker 零改动）完成、PM 已复核**（desktop 273 绿）。**当前待办 = P5（D8 + 真窗验收 + tag）**。⚠ 设计图 PNG 映射表已证实损坏并修订（见 ui-design §4.1 顶部）：**D2/D3/D4/D8 无专属 PNG，设置面板统一以 `UI/1d7669e3`（设置设计语言）+ §7 + §2 token 为参照**。
+M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 模型 API 双栏 + chat 集成，worker 零改动）完成、PM 已复核**（desktop 273 绿）。**当前待办 = P5（D8 + 真窗验收 + tag）**。✅ **ui-design 已 v0.2 重写**（2026-06-19）：视觉真源=`UI/` 高保真图，**43 屏全有专属图**，文件→屏映射经作者逐张核准（D1/D2=`774644b7`、D3/D4=`36b542fb`、D5/D7=`1d7669e3`、D6/D8=`7075fa1f`、E1/F1=`60ea4a18`…完整见 ui-design §4）；已删全部 ASCII 线稿，§2 token + §15.1 默认表 + 各屏契约保留。
 
 ## 2. 立即要做的事
 
@@ -36,7 +36,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 ## 4. 权威文档索引
 
 - 产品 `PRD.md`；架构真源 `docs/plans/2026-05-01-desksoul-tech-design.md`；总清单 `...-impl-plan.md`
-- 前端真源（做 renderer 前必读）`docs/plans/2026-05-01-desksoul-ui-design.md`（§2 设计系统/§3 IA/§7 D 面板/§14.1 默认表）
+- 前端真源（做 renderer 前必读）`docs/plans/2026-05-01-desksoul-ui-design.md`（**v0.2 以图为主**：§2 设计系统/§3 IA/**§4 图索引（文件→屏映射）**/§8 D 面板/§15.1 默认表）
 - M7a：`...-m7a-foundation-{spec,plan}.md`
 - **M7b-1 设计（WHAT）**：`docs/plans/2026-06-17-m7b1-d-series-spec.md`
 - 阶段计划（HOW）：`...-p1-foundation-plan.md`(✅) · `...-p2-d4-plan.md`(✅) · `...-p2_5-hub-reachability-plan.md`(待执行)
@@ -44,7 +44,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 
 ## 5. 关键约定（务必遵守）
 
-- **UI 视觉对齐设计图（硬验收，[[ui-must-match-design-pngs]]）**：最终效果必须像设计图 + ui-design §2 token（毛玻璃/色阶/字号/圆角/间距精确值，不自创）。**"能渲染+能持久+单测绿" 是必要非充分**；每个 UI 阶段验收含"用视觉闭环逐屏比对设计图"。**⚠ §4.1/§7 的 PNG→屏映射已证实多处错误（已修订，见 ui-design §4.1 顶部）：D2/D3/D4/D8 无专属 PNG，设置面板统一以 `UI/1d7669e3`（设置设计语言）+ §7 文字图 + §2 token 为参照**；用任何 PNG 前先 `Read` 核实像素。视觉闭环（mock-bridge + `?page=` + Playwright MCP）已就绪。分层：overlay 聊天浮层最终玻璃形态是 B1=M8（P2.5 的 ⚙ 是临时入口）。
+- **UI 视觉对齐设计图（硬验收，[[ui-must-match-design-pngs]]）**：最终效果必须像设计图 + ui-design §2 token（毛玻璃/色阶/字号/圆角/间距精确值，不自创）。**"能渲染+能持久+单测绿" 是必要非充分**；每个 UI 阶段验收含"用视觉闭环逐屏比对设计图"。**视觉真源 = `UI/` 高保真图**（ui-design **v0.2 已重写**，§4 文件→屏映射经作者逐张核准，43 屏全覆盖）：做某屏前打开其专属图（D3/D4=`36b542fb`、D6/D8=`7075fa1f`、D2=`774644b7` 等）+ §2 token。视觉闭环（mock-bridge + `?page=` + Playwright MCP）已就绪。分层：overlay 聊天浮层最终玻璃形态是 B1=M8（P2.5 的 ⚙ 是临时入口）。
 - **TDD**（有逻辑处先红后绿）；里程碑 inline 逐 task（subagent 派发 429 限流，**别派 subagent 跑实现**，[[project-subagent-inline]]）。
 - **不引入 `@vue/test-utils`**：逻辑下沉纯 TS 测，SFC 薄渲染。
 - **改 protocol src 后必 `pnpm --filter @desksoul/protocol build` 再跑 desktop**；跑全量 desktop 测试前 `pnpm --filter @desksoul/sidecar build`（[[build-test-workflow-gotchas]]）。
@@ -53,7 +53,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 
 ## 6. 待验证（PM 跟踪的债）
 
-- **GUI 冒烟尚未跑过（= 对照设计图 PNG 比对，非"能显示就行"）**：P1/P2 全是单测 + typecheck 绿，但 Electron 运行时**从未目视验证**。根因 = Hub 不可达（P2.5 解决）。**P2.5 落地后跑一次 `pnpm --filter @desksoul/desktop dev` 做累积冒烟**（M7a+P2+P2.5），并对 Hub 壳/D4 做**保真度 pass：逐项对照 `UI/4ba6005f…`(D4) + §3.3(Hub) + §2 token**，偏差立 polish task，结果记 RESULTS。**M7b-1 收尾（P5）前必须完成一次对齐设计图的完整 GUI 冒烟**，否则不签收。（P2.5/Hub-D4 + P3 的 D2/D6 已做 dev-server 浏览器视觉抽验对照 PNG；真透明 Electron 窗目视终审统一留 P5。）
+- **GUI 冒烟尚未跑过（= 对照设计图 PNG 比对，非"能显示就行"）**：P1/P2 全是单测 + typecheck 绿，但 Electron 运行时**从未目视验证**。根因 = Hub 不可达（P2.5 解决）。**P2.5 落地后跑一次 `pnpm --filter @desksoul/desktop dev` 做累积冒烟**（M7a+P2+P2.5），并对 Hub 壳/D4 做**保真度 pass：逐项对照各屏专属图（D4=`UI/36b542fb…`、Hub/D1=`UI/774644b7…`+`UI/03950c77…`）+ §2 token**，偏差立 polish task，结果记 RESULTS。**M7b-1 收尾（P5）前必须完成一次对齐设计图的完整 GUI 冒烟**，否则不签收。（P2.5/Hub-D4 + P3 的 D2/D6 已做 dev-server 浏览器视觉抽验对照 PNG；真透明 Electron 窗目视终审统一留 P5。）
 - 存而不接（持久但无 live 行为，留 M8 角色交互回顾）：`lookAt/footGlow` 渲染端响应、`lookAtStrength/physics/clickThroughBar/wallpaperMode/多显示器/不打扰/实验性` 各开关。
 
 ## 7. 架构决策记录（M7b-1）
