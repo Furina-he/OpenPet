@@ -21,7 +21,7 @@ import type {
   ChatEvent,
 } from '@desksoul/protocol';
 import { installFetchProxy } from '@desksoul/plugin-sdk';
-import { mockProviderChat } from './mock-provider.js';
+import { mockProviderChat, pickDemoScript } from './mock-provider.js';
 import { resolveProvider } from './provider-registry.js';
 
 // 兼容别名：帧定义已收口到 @desksoul/protocol（单一真源）。
@@ -29,6 +29,9 @@ export type StartMessage = ChatStartFrame;
 export type CancelMessage = ChatCancelFrame;
 export type InboundMessage = ProviderInboundFrame;
 export type EventMessage = ChatEventFrame;
+
+// 演示模式（空链 mock）按轮次轮换台词，避免每轮同一句。
+let demoTurn = 0;
 
 /**
  * Wires a MessagePort to the mock provider. Returns nothing; lives for the
@@ -62,10 +65,10 @@ async function runStream(
     const stream =
       start.providerId && start.providerId !== 'mock' && start.request
         ? resolveProviderStream(start.providerId, start.request, ac.signal)
-        : mockProviderChat(
-            ac.signal,
-            start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {},
-          );
+        : mockProviderChat(ac.signal, {
+            script: pickDemoScript(demoTurn++),
+            ...(start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {}),
+          });
     for await (const event of stream) {
       const out: EventMessage = {
         kind: 'chat.event',
