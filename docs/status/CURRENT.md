@@ -1,13 +1,15 @@
 # DeskSoul · 项目当前状态 / 新对话对接入口
 
 > **任何新对话的第一份要读的文件**。读完即可零上下文接续。架构/PM 每阶段末更新。
-> 最后更新：2026-06-19（分支 `feat/m7b1-d-series`，M7b-1 **P5 代码完成 + `mvp/M7b1-code-done`**，真窗/真 Key 待人工；**M7b-2 spec + P1–P4 计划就绪，可开实现**）。
+> 最后更新：2026-06-20（分支 `feat/m7b2-onboarding`，**M7b-2 C1–C4 代码完成**：protocol 180 / sidecar 37 / desktop 287、typecheck 干净、build exit 0；真窗 GUI 冒烟 + 真 Key + live 视觉逐屏对照待人工，PM 复核后打 tag。M7b-1 仍 `mvp/M7b1-code-done`，真窗/真 Key 待人工）。
 
 ---
 
 ## 1. 一句话现状
 
 M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 双栏 + chat 集成）+ P5（D8 + D3 polish + ABI 收口）代码完成、PM 已复核**（desktop 273 / protocol 178 / build exit 0）。**当前待办 = P5 人工硬门槛**：真 Electron GUI 冒烟（D8 按 `7075fa1f`）+ 真 Key 端到端 + 裁定 tag。✅ **ui-design 已 v0.2 重写**（2026-06-19）：视觉真源=`UI/` 高保真图，**43 屏全有专属图**，文件→屏映射经作者逐张核准（D1/D2=`774644b7`、D3/D4=`36b542fb`、D5/D7=`1d7669e3`、D6/D8=`7075fa1f`、E1/F1=`60ea4a18`…完整见 ui-design §4）；已删全部 ASCII 线稿，§2 token + §15.1 默认表 + 各屏契约保留。
+
+✅ **M7b-2（C1–C4 首启引导）代码完成**（2026-06-20，分支 `feat/m7b2-onboarding`，自 `feat/m7b1-d-series` HEAD 切出含全部 M7b-1 代码）：第 4 个 `onboarding` 窗（480×600 角色左侧）+ `onboarding.completed` prefs + `decideStartup` 首启判定 + `app.window.finishOnboarding` 编排 RPC + wizard 状态机/chips + C1 欢迎/C2 LLM 配置/C3 角色选择/C4 首句+完成页 + 抽 `ProviderConfigPanel`（D3 `ModelApiPage` 改用不回归）+ demo 台词池轮换（跳过 Key 也能听到回复+表情）。desktop 287 / protocol 180 / sidecar 37、typecheck 干净、build exit 0。**待人工硬门槛**：真窗首启逐屏对照 `d63b4f97`(C1/C2)+`98171885`(C3/C4) + 真 Key→C4 流式回复 90s 端到端 + live 视觉闭环；PM 复核后打 `mvp/M7b2-code-done` / 收官 `mvp/M7b2-done`。详见 [`milestones/M7b-2/RESULTS.md`](../milestones/M7b-2/RESULTS.md)。
 
 ## 2. 立即要做的事
 
@@ -28,7 +30,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
 | **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；tag `mvp/M7b1-code-done` 已打；**真窗冒烟 + 真 Key + 收官 tag `mvp/M7b1-done` 待人工**（§6） |
-| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | 📋 spec + P1–P4 计划就绪（[`milestones/M7b-2/`](../milestones/M7b-2/)）；可开实现 |
+| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | 🚧 代码完成 + PM 待复核（真窗/真 Key/live 视觉人工）；desktop 287 / protocol 180 / sidecar 37（[`milestones/M7b-2/RESULTS.md`](../milestones/M7b-2/RESULTS.md)） |
 | M8 / M9 | 聊天UI+气泡+系统集成（托盘/热键录制器正式入口）/ 打包打磨 | ⏳ |
 
 > 原 spec 把 D2/D4/D6 并一阶段；PM 据工作量细分 P2(D4)/P3(D2+D6)，并因可达性发现插入 P2.5。spec 是 WHAT 真源，phase 计划是 HOW/顺序。
