@@ -357,7 +357,7 @@
 
 ### PM 复核（2026-06-19，独立审计；[[pm-review-trust-reports]] 口径不重跑测试）
 
-✅ **代码层签收**（D3 polish + D8 AboutPage + Task 0 ABI 收口）；真窗 GUI 冒烟 + 真 Key = §6 人工硬门槛仍未做 → **暂不打 `mvp/M7b1-done`**，待人工通过或用户授权先 tag 代码态。
+✅ **代码层签收**（D3 polish + D8 AboutPage + Task 0 ABI 收口）；真窗 GUI 冒烟 + 真 Key = §6 人工硬门槛仍未做 → **暂不打 `mvp/M7b1-done`**，待人工通过或用户授权先 tag 代码态。 **→ 用户裁定 (b)（2026-06-19）：已打 `mvp/M7b1-code-done` 标记代码完成态；收官 tag `mvp/M7b1-done` 待人工真窗 GUI 冒烟 + 真 Key 通过后由 PM 补打。**
 - 提交链 4 commit（`c59ae55`/`6f147e9`/`3e93b21`/`76e298b`）核实；测试信任自跑（273/178/typecheck 10/10/build exit 0，未重跑）。
 - 读码：`provider-status.DOT_COLOR.ok='var(--ds-success)'` + 标题 `name===formatLabel` 去冗余 ✓；`AboutPage.vue` 五区齐 + 外链经 `app.openExternal` + 检查更新/诊断包 `disabled`（存而不接）✓。偏离 plan（SettingCard 行式 + 补「给作者写信」邮件行）认可——对齐 §8.8 行布局。Task 0 双 ABI 互斥（node-127 ↔ electron-123）查清 + prebuild-install 切换命令 + electron 运行时实证可加载，专业，认可。
 - ⚠ **D8 视觉基准更正**：Codex 按旧 plan 对照了 `1d7669e3`（含 `AboutPage.vue` 注释 line 1），D8 正确专属图 = **`7075fa1f` 右半**（ui-design v0.2 §4）。但 D8 五区源自 §8.8（= `7075fa1f` 的 D8），结构吻合 → 预计无需回炉；**像素终审归人工真窗冒烟，按 `7075fa1f` 核 D8**，若需微调连注释 `1d7669e3→7075fa1f` 一并改。

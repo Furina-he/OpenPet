@@ -27,7 +27,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | Hub/D4 保真审计 | 用 harness 对照 PNG，修 Slider/Switch/Select/.ds-glass 等可复用件 | ✅ 完成（残留见 RESULTS / §7 决策） |
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
-| **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；**真窗冒烟 + 真 Key + tag 待人工**（§6 硬门槛） |
+| **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；tag `mvp/M7b1-code-done` 已打；**真窗冒烟 + 真 Key + 收官 tag `mvp/M7b1-done` 待人工**（§6） |
 | M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ⏳ 独立 spec/plan |
 | M8 / M9 | 聊天UI+气泡+系统集成（托盘/热键录制器正式入口）/ 打包打磨 | ⏳ |
 
