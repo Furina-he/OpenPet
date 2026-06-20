@@ -72,6 +72,12 @@ export const PrefsSchema = z.object({
   'offline.ollamaModel': z.string().default(''),
   // onboarding（M7b-2 首启引导）
   'onboarding.completed': z.boolean().default(false),
+  // hotkeys（M8c J2；Electron accelerator 串）
+  'hotkeys.chat': z.string().default('CommandOrControl+Shift+D'),
+  'hotkeys.toggleHide': z.string().default('CommandOrControl+Shift+H'),
+  'hotkeys.clickThrough': z.string().default('CommandOrControl+Shift+P'),
+  'hotkeys.dnd': z.string().default('CommandOrControl+Shift+M'),
+  'hotkeys.openHub': z.string().default('CommandOrControl+Shift+,'),
 });
 
 export type Prefs = z.infer<typeof PrefsSchema>;

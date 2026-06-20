@@ -64,3 +64,10 @@ describe('PrefsSchema dnd/focus (M8b A4)', () => {
     expect(DEFAULT_PREFS['display.focusMode']).toBe(false);
   });
 });
+
+describe('PrefsSchema hotkeys (M8c J2)', () => {
+  it('hotkeys 默认值', () => {
+    expect(DEFAULT_PREFS['hotkeys.chat']).toBe('CommandOrControl+Shift+D');
+    expect(DEFAULT_PREFS['hotkeys.openHub']).toBe('CommandOrControl+Shift+,');
+  });
+});
