@@ -61,6 +61,16 @@ export const Methods = {
     params: z.object({}),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.window.showChat': {
+    // 显示+聚焦聊天浮层（A1 双击 / 托盘"聊天" / 热键）。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'app.window.popCharacterMenu': {
+    // 角色右键 → Main 弹原生桌面菜单（动作类，§14.2）。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'app.window.finishOnboarding': {
     // 首启引导完成/跳过完成：置 onboarding.completed + 收起引导窗 + 唤起 overlay。
     params: z.object({}),
