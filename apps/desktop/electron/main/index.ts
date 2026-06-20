@@ -97,6 +97,13 @@ app.whenReady().then(() => {
         trayThinking = false;
         trayError = (params as { finishReason?: string }).finishReason === 'error';
         tray?.setState({ thinking: trayThinking, error: trayError });
+      } else if (
+        channel === 'app.prefs.changed' &&
+        typeof (params as { key?: string }).key === 'string' &&
+        (params as { key: string }).key.startsWith('hotkeys.')
+      ) {
+        // J2：热键 pref 改动即重注册（录制器保存后立即生效）。
+        hotkeys?.apply(prefsStore.getAll());
       }
     },
   });
