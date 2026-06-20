@@ -119,6 +119,11 @@ export const Methods = {
     }),
     result: z.null(),
   },
+  // --- notification: Main → character（A4 全屏检测态，best-effort）---
+  'app.desktopState': {
+    params: z.object({ fullscreen: z.boolean() }),
+    result: z.null(),
+  },
 
   // --- request/response: Renderer → Main（角色包 / 窗口缩放 / 主动行为，M4）---
   'character.current': {
