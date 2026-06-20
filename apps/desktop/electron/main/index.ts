@@ -16,6 +16,7 @@ import { createAppService } from './app-service.js';
 import { decideStartup } from './startup.js';
 import { createFullscreenWatch, type FullscreenWatch } from './fullscreen-watch.js';
 import { createHotkeyService } from './hotkey-service.js';
+import { createTray, type TrayHandle } from './tray-service.js';
 import * as appActions from './app-actions.js';
 
 const require = createRequire(import.meta.url);
@@ -29,6 +30,9 @@ let router: { dispose: () => Promise<void> } | null = null;
 let cursorPublisher: { stop: () => void } | null = null;
 let fsWatch: FullscreenWatch | null = null;
 let hotkeys: ReturnType<typeof createHotkeyService> | null = null;
+let tray: TrayHandle | null = null;
+let trayThinking = false;
+let trayError = false;
 let isQuitting = false;
 
 app.whenReady().then(() => {
@@ -81,6 +85,20 @@ app.whenReady().then(() => {
     prefsStore,
     setLoginItem: (open) => app.setLoginItemSettings({ openAtLogin: open }),
     appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
+    // J1 托盘三态：thinking=streaming 中，error=最近一轮 error（仅状态变化时刷新图标）。
+    onBroadcast: (channel, params) => {
+      if (channel === 'chat.stream') {
+        if (!trayThinking) {
+          trayThinking = true;
+          trayError = false;
+          tray?.setState({ thinking: trayThinking, error: trayError });
+        }
+      } else if (channel === 'chat.done') {
+        trayThinking = false;
+        trayError = (params as { finishReason?: string }).finishReason === 'error';
+        tray?.setState({ thinking: trayThinking, error: trayError });
+      }
+    },
   });
 
   // M7b-2 首启：未完成引导 → 收起 overlay、弹引导窗（character 照常显示，"先看到角色"）。
@@ -126,6 +144,28 @@ app.whenReady().then(() => {
     },
   });
   hotkeys.apply(prefsStore.getAll());
+
+  // J1 系统托盘：三态图标 + 原生菜单（动作复用 app-actions，与右键菜单/热键同源）。
+  const trayIconsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'tray')
+    : path.join(__dirname, '../../resources/tray');
+  tray = createTray({
+    iconsDir: trayIconsDir,
+    version: app.getVersion(),
+    connected: () => !!prefsStore.getAll()['model.activeProvider'],
+    actions: {
+      chat: () => appActions.showChat(overlayWindow),
+      toggleVisible: () => appActions.toggleCharacter(characterWindow),
+      toggleClickThrough: () =>
+        appActions.toggleClickThroughPref({ prefsStore, characterWindow, broadcast }),
+      toggleDnd: () => appActions.toggleDndPref({ prefsStore, broadcast }),
+      openHub: () => appActions.openHub(settingsWindow),
+      quit: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  });
   // Hub 是持久窗口：关闭 = 收起（hide），非销毁；真正退出时（isQuitting）放行。
   wins.settings.on('close', (e) => {
     if (!isQuitting && wins && !wins.settings.isDestroyed()) {
@@ -142,6 +182,8 @@ app.on('before-quit', () => {
   cursorPublisher = null;
   fsWatch?.stop();
   fsWatch = null;
+  tray?.destroy();
+  tray = null;
   void router?.dispose();
   router = null;
 });

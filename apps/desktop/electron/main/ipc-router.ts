@@ -59,6 +59,8 @@ export interface IpcRouterDeps {
   setLoginItem?: (open: boolean) => void;
   /** app.* 杂项 handlers（openExternal）；index 注入 shell.openExternal。 */
   appService?: ReturnType<typeof createAppService>;
+  /** 每条出站通知的旁路观察者（J1 托盘据 chat.stream/done 切三态图标）。 */
+  onBroadcast?: (channel: string, params: unknown) => void;
 }
 
 export interface RpcContext {
@@ -70,6 +72,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     for (const wc of deps.targets()) {
       if (!wc.isDestroyed()) wc.send(`desksoul:notify:${channel}`, params);
     }
+    deps.onBroadcast?.(channel, params);
   };
   const sendToCharacter = (channel: string, params: unknown): void => {
     const win = deps.characterWindow();
