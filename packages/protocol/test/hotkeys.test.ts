@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateAccelerator, findConflict } from '../electron/main/hotkey-rules';
+import { validateAccelerator, findConflict } from '../src/hotkeys';
 
 describe('hotkey-rules（J2 限制 + 冲突）', () => {
   it('拒绝单键 / 纯修饰 / ESC；接受 修饰+键', () => {
