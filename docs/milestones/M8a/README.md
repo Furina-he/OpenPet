@@ -8,10 +8,12 @@
 
 | 阶段 | plan | 内容 | 状态 |
 | --- | --- | --- | --- |
-| P1 | [p1-logic-foundation](plans/p1-logic-foundation.md) | error-copy + bubble-view + chat-view errorKind（纯逻辑 TDD） | 📋 计划就绪 |
-| P2 | [p2-b1-shell](plans/p2-b1-shell.md) | overlay 重构 B1 玻璃壳 + Bubble/EmotionChip 骨架 + ?fixture harness | 📋 计划就绪 |
-| P3 | [p3-b2-states-j3](plans/p3-b2-states-j3.md) | B2 思考/折叠/错误态 + 情绪 chip 双轨 + 重试/换模型 + 角色歪头 | 📋 计划就绪 |
-| P4 | [p4-visual-results](plans/p4-visual-results.md) | 视觉保真对照 60ea4a18 + RESULTS 收尾 | 📋 计划就绪 |
+| P1 | [p1-logic-foundation](plans/p1-logic-foundation.md) | error-copy + bubble-view + chat-view errorKind（纯逻辑 TDD） | ✅ 完成 |
+| P2 | [p2-b1-shell](plans/p2-b1-shell.md) | overlay 重构 B1 玻璃壳 + Bubble/EmotionChip 骨架 + ?fixture harness | ✅ 完成 |
+| P3 | [p3-b2-states-j3](plans/p3-b2-states-j3.md) | B2 思考/折叠/错误态 + 情绪 chip 双轨 + 重试/换模型 + 角色歪头 | ✅ 完成 |
+| P4 | [p4-visual-results](plans/p4-visual-results.md) | 视觉保真对照 60ea4a18 + RESULTS 收尾 | ✅ 代码完成（真窗视觉=人工） |
+
+交付结果见 [`RESULTS.md`](RESULTS.md)：protocol 180 / sidecar 37 / desktop 297、typecheck 干净、build exit 0；真窗 GUI 冒烟 + 真 Key 端到端 = 人工硬门槛待跑。
 
 ## 视觉真源
 B1/B2 = `UI/60ea4a18-….png`（见 [`../../design/ui-design.md`](../../design/ui-design.md) §6.1/§6.2）。J3 文案 = §14.3。

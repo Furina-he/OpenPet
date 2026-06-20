@@ -1,7 +1,7 @@
 # DeskSoul · 项目当前状态 / 新对话对接入口
 
 > **任何新对话的第一份要读的文件**。读完即可零上下文接续。架构/PM 每阶段末更新。
-> 最后更新：2026-06-20（分支 `feat/m7b2-onboarding`，**M7b-2 C1–C4 代码完成**：protocol 180 / sidecar 37 / desktop 287、typecheck 干净、build exit 0；真窗 GUI 冒烟 + 真 Key + live 视觉逐屏对照待人工，PM 复核后打 tag。M7b-1 仍 `mvp/M7b1-code-done`，真窗/真 Key 待人工）。
+> 最后更新：2026-06-20（分支 `feat/m8a-chat`，**M8a 聊天体验代码完成**：B1 玻璃浮层 + B2 双轨气泡 + J3 错误分级；protocol 180 / sidecar 37 / desktop 297、typecheck 干净、build exit 0；真窗 GUI 冒烟 + 真 Key 端到端待人工，PM 复核后打 `mvp/M8a-code-done`。前序 M7b-2 `feat/m7b2-onboarding`（C1–C4 代码完成，desktop 287）、M7b-1 `mvp/M7b1-code-done` 真窗/真 Key 仍待人工）。
 
 ---
 
@@ -31,7 +31,7 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
 | **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；tag `mvp/M7b1-code-done` 已打；**真窗冒烟 + 真 Key + 收官 tag `mvp/M7b1-done` 待人工**（§6） |
 | M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | 🚧 代码完成 + PM 待复核（真窗/真 Key/live 视觉人工）；desktop 287 / protocol 180 / sidecar 37（[`milestones/M7b-2/RESULTS.md`](../milestones/M7b-2/RESULTS.md)） |
-| M8a | 聊天体验（B1 浮层 + B2 双轨气泡 + J3 错误分级） | 📋 spec + P1–P4 计划就绪（[`milestones/M8a/`](../milestones/M8a/)）；可开实现 |
+| M8a | 聊天体验（B1 浮层 + B2 双轨气泡 + J3 错误分级） | ✅ 代码完成（分支 `feat/m8a-chat`；desktop 297 / protocol 180 / sidecar 37 / build exit 0）；真窗 + 真 Key 人工冒烟待跑（[`milestones/M8a/RESULTS.md`](../milestones/M8a/RESULTS.md)） |
 | M8b / M8c | 桌面层（A1–A4）/ 系统集成（J1/J2/J5） | 📋 spec + P1–P4 计划就绪（[`milestones/M8b/`](../milestones/M8b/) · [`M8c/`](../milestones/M8c/)）；M8a 后顺序执行 |
 | M9 | 打包 + 体验打磨 + 文档 | ⏳ |
 
