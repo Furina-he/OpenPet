@@ -14,6 +14,7 @@ import { ipcMain, BrowserWindow, Menu, type WebContents } from 'electron';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { buildCharacterMenuTemplate } from './character-menu.js';
+import * as appActions from './app-actions.js';
 import { createCharacterService } from './character-service.js';
 import { createConversationStore } from './db/index.js';
 import { createIdleResponder } from './idle-responder.js';
@@ -122,16 +123,15 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   applyAllEffects(prefEffects, prefsStore.getAll());
   const prefsService = createPrefsService({ store: prefsStore, broadcast, effects: prefEffects });
 
-  // A3 穿透切换真源：翻转 display.clickThrough pref + 施加 + 广播（菜单/热键/托盘共用）。
-  // 仅依赖原语（prefsStore/characterWindow/broadcast）→ M8c 可整体抽到 app-actions.ts。
-  const toggleClickThroughPref = (): boolean => {
-    const next = !prefsStore.getAll()['display.clickThrough'];
-    prefsStore.set('display.clickThrough', next);
-    const c = deps.characterWindow();
-    if (c && !c.isDestroyed()) c.setIgnoreMouseEvents(next, { forward: true });
-    broadcast('app.prefs.changed', { key: 'display.clickThrough', value: next });
-    return next;
-  };
+  // A3 穿透切换真源：菜单/RPC 共用；逻辑在 app-actions（J1 托盘 / J2 热键同源，避免三份重复）。
+  const toggleClickThroughPref = (): boolean =>
+    appActions.toggleClickThroughPref({
+      prefsStore,
+      characterWindow: deps.characterWindow,
+      broadcast,
+    });
+  const overlayWindow = deps.overlayWindow ?? (() => null);
+  const settingsWindow = deps.settingsWindow ?? (() => null);
 
   const router = createRouter<RpcContext>({
     ...(deps.providerService ?? {}),
@@ -192,49 +192,22 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
       return { ok: true as const };
     },
     'app.window.openHub': () => {
-      const w = deps.settingsWindow?.();
-      if (w && !w.isDestroyed()) {
-        w.show();
-        w.focus();
-      }
+      appActions.openHub(settingsWindow);
       return { ok: true as const };
     },
     'app.window.showChat': () => {
-      const w = deps.overlayWindow?.();
-      if (w && !w.isDestroyed()) {
-        w.show();
-        w.focus();
-      }
+      appActions.showChat(overlayWindow);
       return { ok: true as const };
     },
     'app.window.popCharacterMenu': () => {
-      const showChat = (): void => {
-        const w = deps.overlayWindow?.();
-        if (w && !w.isDestroyed()) {
-          w.show();
-          w.focus();
-        }
-      };
       const menu = Menu.buildFromTemplate(
         buildCharacterMenuTemplate({
-          chat: showChat,
+          chat: () => appActions.showChat(overlayWindow),
           toggleClickThrough: () => {
             toggleClickThroughPref();
           },
-          toggleVisible: () => {
-            const c = deps.characterWindow();
-            if (c && !c.isDestroyed()) {
-              if (c.isVisible()) c.hide();
-              else c.show();
-            }
-          },
-          openHub: () => {
-            const w = deps.settingsWindow?.();
-            if (w && !w.isDestroyed()) {
-              w.show();
-              w.focus();
-            }
-          },
+          toggleVisible: () => appActions.toggleCharacter(deps.characterWindow),
+          openHub: () => appActions.openHub(settingsWindow),
         }),
       );
       const c = deps.characterWindow();

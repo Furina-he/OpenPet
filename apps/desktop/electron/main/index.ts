@@ -15,6 +15,8 @@ import { createPrefsStore } from './prefs/index.js';
 import { createAppService } from './app-service.js';
 import { decideStartup } from './startup.js';
 import { createFullscreenWatch, type FullscreenWatch } from './fullscreen-watch.js';
+import { createHotkeyService } from './hotkey-service.js';
+import * as appActions from './app-actions.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,6 +28,7 @@ let wins: AppWindows | null = null;
 let router: { dispose: () => Promise<void> } | null = null;
 let cursorPublisher: { stop: () => void } | null = null;
 let fsWatch: FullscreenWatch | null = null;
+let hotkeys: ReturnType<typeof createHotkeyService> | null = null;
 let isQuitting = false;
 
 app.whenReady().then(() => {
@@ -48,12 +51,23 @@ app.whenReady().then(() => {
   const dataDir = path.join(app.getPath('userData'), 'data');
   mkdirSync(dataDir, { recursive: true });
   const prefsStore = createPrefsStore({ prefsPath: path.join(dataDir, 'prefs.json') });
+  // 窗口定位器 + 广播：registerIpcRouter 与 J2 热键（app-actions）共用同一组，避免重复。
+  const targets = rendererTargets(wins);
+  const characterWindow = () =>
+    wins && !wins.character.isDestroyed() ? wins.character : null;
+  const overlayWindow = () => (wins && !wins.overlay.isDestroyed() ? wins.overlay : null);
+  const settingsWindow = () => (wins && !wins.settings.isDestroyed() ? wins.settings : null);
+  const onboardingWindow = () =>
+    wins && !wins.onboarding.isDestroyed() ? wins.onboarding : null;
+  const broadcast = (channel: string, params: unknown): void => {
+    for (const wc of targets()) if (!wc.isDestroyed()) wc.send(`desksoul:notify:${channel}`, params);
+  };
   router = registerIpcRouter({
-    targets: rendererTargets(wins),
-    characterWindow: () => (wins && !wins.character.isDestroyed() ? wins.character : null),
-    settingsWindow: () => (wins && !wins.settings.isDestroyed() ? wins.settings : null),
-    onboardingWindow: () => (wins && !wins.onboarding.isDestroyed() ? wins.onboarding : null),
-    overlayWindow: () => (wins && !wins.overlay.isDestroyed() ? wins.overlay : null),
+    targets,
+    characterWindow,
+    settingsWindow,
+    onboardingWindow,
+    overlayWindow,
     charactersRoot,
     providerEntryPath,
     sqlitePath: path.join(dataDir, 'sessions.db'),
@@ -100,13 +114,18 @@ app.whenReady().then(() => {
   wins.character.on('closed', maybeQuit);
   wins.overlay.on('closed', maybeQuit);
 
-  // 最小 Hub 入口（M8 接托盘/热键录制器）：Ctrl/Cmd+Shift+, 打开/聚焦 Hub。
-  globalShortcut.register('CommandOrControl+Shift+,', () => {
-    if (wins && !wins.settings.isDestroyed()) {
-      wins.settings.show();
-      wins.settings.focus();
-    }
+  // J2 全局热键（prefs 驱动，替换硬编码 Ctrl+Shift+,）。动作复用 app-actions（与右键菜单/托盘同源）。
+  hotkeys = createHotkeyService({
+    globalShortcut,
+    actions: {
+      chat: () => appActions.showChat(overlayWindow),
+      toggleHide: () => appActions.toggleCharacter(characterWindow),
+      clickThrough: () => appActions.toggleClickThroughPref({ prefsStore, characterWindow, broadcast }),
+      dnd: () => appActions.toggleDndPref({ prefsStore, broadcast }),
+      openHub: () => appActions.openHub(settingsWindow),
+    },
   });
+  hotkeys.apply(prefsStore.getAll());
   // Hub 是持久窗口：关闭 = 收起（hide），非销毁；真正退出时（isQuitting）放行。
   wins.settings.on('close', (e) => {
     if (!isQuitting && wins && !wins.settings.isDestroyed()) {
