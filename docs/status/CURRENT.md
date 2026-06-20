@@ -30,10 +30,10 @@ M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M
 | **M7b-1 P3** | D2 通用 + D6 隐私（ConfirmDialog 高风险二次确认 + nav `system.general` + nav图标/Slider翼标 polish） | ✅ 完成 + PM 复核（desktop 262 / protocol 178；视觉对照 1d7669e3 通过） |
 | **M7b-1 P4** | D3 模型 API（双栏）+ chat 集成（active provider/model→chat.send） | ✅ 完成 + PM 复核（desktop 273 / protocol 178；2 视觉 polish 转 P5） |
 | **M7b-1 P5** | D8 关于 + D3 两 polish + 真 Electron GUI 冒烟 + 真 Key 端到端 + tag | ✅ 代码完成 + PM 复核（273/178/build exit 0）；tag `mvp/M7b1-code-done` 已打；**真窗冒烟 + 真 Key + 收官 tag `mvp/M7b1-done` 待人工**（§6） |
-| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | 🚧 代码完成 + PM 待复核（真窗/真 Key/live 视觉人工）；desktop 287 / protocol 180 / sidecar 37（[`milestones/M7b-2/RESULTS.md`](../milestones/M7b-2/RESULTS.md)） |
-| M8a | 聊天体验（B1 浮层 + B2 双轨气泡 + J3 错误分级） | ✅ 代码完成（分支 `feat/m8a-chat`；desktop 297 / protocol 180 / sidecar 37 / build exit 0）；真窗 + 真 Key 人工冒烟待跑（[`milestones/M8a/RESULTS.md`](../milestones/M8a/RESULTS.md)） |
-| M8b | 桌面层（A1 交互 + A2 气泡 + A3 穿透 + A4 徽标/全屏） | ✅ 代码完成（分支 `feat/m8a-chat`；desktop 305 / protocol 182 / build exit 0）；真窗冒烟待人工（[`milestones/M8b/RESULTS.md`](../milestones/M8b/RESULTS.md)） |
-| M8c | 系统集成（J1 托盘 / J2 热键 / J5 崩溃上报） | ✅ 代码完成（分支 `feat/m8a-chat`；desktop 314 / protocol 185 / build exit 0）；真窗冒烟待人工（[`milestones/M8c/RESULTS.md`](../milestones/M8c/RESULTS.md)）。**收尾即 M8 整体收口** |
+| M7b-2 | C1–C4 首启引导（复用 D3 provider-config 积木） | ✅ 代码完成 + PM 复核（`mvp/M7b2-code-done` 已打）；真窗/真 Key/live 视觉人工待跑；desktop 287 / protocol 180 / sidecar 37（[`milestones/M7b-2/RESULTS.md`](../milestones/M7b-2/RESULTS.md)） |
+| M8a | 聊天体验（B1 浮层 + B2 双轨气泡 + J3 错误分级） | ✅ 代码完成 + PM 复核（`mvp/M8a-code-done` 已打）；真窗 + 真 Key 人工冒烟待跑（[`milestones/M8a/RESULTS.md`](../milestones/M8a/RESULTS.md)） |
+| M8b | 桌面层（A1 交互 + A2 气泡 + A3 穿透 + A4 徽标/全屏） | ✅ 代码完成 + PM 复核（`mvp/M8b-code-done` 已打）；真窗冒烟待人工（全屏检测 best-effort 待校准）（[`milestones/M8b/RESULTS.md`](../milestones/M8b/RESULTS.md)） |
+| M8c | 系统集成（J1 托盘 / J2 热键 / J5 崩溃上报） | ✅ 代码完成 + PM 复核（`mvp/M8c-code-done` 已打）；真窗冒烟待人工（[`milestones/M8c/RESULTS.md`](../milestones/M8c/RESULTS.md)）。**收尾即 M8 整体收口** |
 | M9 | 打包 + 体验打磨 + 文档 | ⏳ |
 
 > 原 spec 把 D2/D4/D6 并一阶段；PM 据工作量细分 P2(D4)/P3(D2+D6)，并因可达性发现插入 P2.5。spec 是 WHAT 真源，phase 计划是 HOW/顺序。
