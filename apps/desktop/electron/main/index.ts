@@ -14,6 +14,7 @@ import { createProviderService } from './provider-service.js';
 import { createPrefsStore } from './prefs/index.js';
 import { createAppService } from './app-service.js';
 import { decideStartup } from './startup.js';
+import { createFullscreenWatch, type FullscreenWatch } from './fullscreen-watch.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +25,7 @@ protocol.registerSchemesAsPrivileged(assetSchemePrivileges());
 let wins: AppWindows | null = null;
 let router: { dispose: () => Promise<void> } | null = null;
 let cursorPublisher: { stop: () => void } | null = null;
+let fsWatch: FullscreenWatch | null = null;
 let isQuitting = false;
 
 app.whenReady().then(() => {
@@ -80,6 +82,17 @@ app.whenReady().then(() => {
     },
   });
 
+  // A4 全屏检测（best-effort）：probe 默认恒 false（真机校准前退化为仅手动隐藏）。
+  // 状态变化沿广播 app.desktopState，character 据此切隐藏/淡出。
+  fsWatch = createFullscreenWatch({
+    probe: () => false, // TODO(真机)：接 Win 前台窗矩形检测；不可靠则保持 false
+    onChange: (fullscreen) => {
+      const c = wins && !wins.character.isDestroyed() ? wins.character : null;
+      c?.webContents.send('desksoul:notify:app.desktopState', { fullscreen });
+    },
+    intervalMs: 1500,
+  });
+
   // settings 常驻 hidden，不算"还开着"；两个可见窗口都关 = 退出。
   const maybeQuit = (): void => {
     if (wins && wins.character.isDestroyed() && wins.overlay.isDestroyed()) app.quit();
@@ -108,6 +121,8 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   cursorPublisher?.stop();
   cursorPublisher = null;
+  fsWatch?.stop();
+  fsWatch = null;
   void router?.dispose();
   router = null;
 });

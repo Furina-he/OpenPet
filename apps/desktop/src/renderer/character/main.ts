@@ -5,6 +5,7 @@ import { createVrmRuntime, type CharacterRuntime } from './runtime';
 import { mountFallbackFace, type FallbackFace } from './fallback-face';
 import { setupInteraction } from './interaction';
 import { mountBubble } from './bubble';
+import { resolveMode } from './desktop-state';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
 import type { Prefs } from '@desksoul/protocol';
 import '../theme/tokens.css';
@@ -116,18 +117,47 @@ async function boot(): Promise<void> {
     markActivity();
     bubble.appendStream(text);
   });
+
+  // ---- A4 存在感模式：全屏检测（Main best-effort）+ 手动 DND/专注 → 淡出 / 月牙徽标 ----
+  let fullscreenHidden = false;
+  let dnd = false;
+  let focus = false;
+  const applyMode = (): void => {
+    const mode = resolveMode({ fullscreenHidden, focus, dnd });
+    const opacity = mode === 'hidden' ? '0' : mode === 'focus' ? '0.3' : '1';
+    stageEl.style.opacity = opacity;
+    fallbackEl.style.opacity = opacity;
+    document.getElementById('badge')?.classList.toggle('badge-show', mode === 'dnd');
+  };
+  window.desksoul.on('app.desktopState', (p) => {
+    fullscreenHidden = (p as { fullscreen: boolean }).fullscreen;
+    applyMode();
+  });
+
   window.desksoul.on('app.prefs.changed', (p) => {
     const c = p as { key?: string; value?: unknown };
     if (c.key === 'display.bubbleDuration') {
       bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
     } else if (c.key === 'display.clickThrough') {
       showClickThroughFx(c.value === true); // A3：穿透切换涟漪 + toast
+    } else if (c.key === 'display.dndManual') {
+      dnd = c.value === true;
+      applyMode();
+    } else if (c.key === 'display.focusMode') {
+      focus = c.value === true;
+      applyMode();
     }
   });
-  // 非阻塞读初始时长（默认 '5' 已在 mountBubble 内置，await 慢也不漏早到的 stream）。
+  // 非阻塞读初值（默认 '5' 已在 mountBubble 内置，await 慢也不漏早到的 stream）。
   void window.desksoul
     .rpc('app.prefs.getAll', {})
-    .then((prefs) => bubble.setDuration((prefs as Prefs)['display.bubbleDuration']))
+    .then((prefs) => {
+      const pf = prefs as Prefs;
+      bubble.setDuration(pf['display.bubbleDuration']);
+      dnd = pf['display.dndManual'];
+      focus = pf['display.focusMode'];
+      applyMode();
+    })
     .catch(() => {});
 
   // 回合结束 1.2s 后复位 neutral（S4 行为；neutral 不在情绪表 → 全零权重 = 复位）

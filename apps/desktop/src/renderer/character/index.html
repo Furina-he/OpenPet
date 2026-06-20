@@ -156,6 +156,27 @@
       #toast.toast-show {
         opacity: 1;
       }
+      #stage,
+      #fallback {
+        transition: opacity 0.3s ease;
+      }
+      #badge {
+        position: absolute;
+        right: 18%;
+        top: 22%;
+        font-size: 22px;
+        pointer-events: none;
+        opacity: 0;
+        transform: scale(0.6);
+        transition:
+          opacity 0.25s ease,
+          transform 0.25s ease;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+      }
+      #badge.badge-show {
+        opacity: 1;
+        transform: scale(1);
+      }
     </style>
   </head>
   <body>
@@ -165,6 +186,7 @@
     <div id="bubble" class="bubble-hidden"></div>
     <div id="ripple"></div>
     <div id="toast" class="toast-hidden"></div>
+    <div id="badge">🌙</div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
