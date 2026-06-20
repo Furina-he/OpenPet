@@ -57,3 +57,10 @@ describe('PrefsSchema bubbleDuration (M8b)', () => {
     expect(PrefsSchema.shape['display.bubbleDuration'].safeParse('10').success).toBe(false);
   });
 });
+
+describe('PrefsSchema dnd/focus (M8b A4)', () => {
+  it('dndManual/focusMode 默认 false', () => {
+    expect(DEFAULT_PREFS['display.dndManual']).toBe(false);
+    expect(DEFAULT_PREFS['display.focusMode']).toBe(false);
+  });
+});
