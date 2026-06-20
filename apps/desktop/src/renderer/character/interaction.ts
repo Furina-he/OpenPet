@@ -9,6 +9,7 @@
  */
 import type * as THREE from 'three';
 import { nextIgnore } from './hysteresis';
+import { tapZone, classifyPress } from './interaction-zones';
 
 const ENTER = 26; // ~0.10 * 255
 const EXIT = 13; // ~0.05 * 255
@@ -19,6 +20,7 @@ export function setupInteraction(renderer: THREE.WebGLRenderer | null): void {
   const shared = { dragging: false };
   if (renderer) setupClickThrough(renderer, shared);
   setupDrag(renderer?.domElement ?? document.body, shared);
+  setupClicks(renderer?.domElement ?? document.body);
 }
 
 function setupClickThrough(renderer: THREE.WebGLRenderer, shared: { dragging: boolean }): void {
@@ -88,4 +90,56 @@ function setupDrag(target: HTMLElement, shared: { dragging: boolean }): void {
     }
     shared.dragging = false;
   });
+}
+
+/** A1 点击交互：轻点（头/身）上报 character.tap、双击开聊天、右键弹菜单、hover>800ms 提示。 */
+function setupClicks(target: HTMLElement): void {
+  let downT = 0;
+  let downX = 0;
+  let downY = 0;
+  let moved = false;
+  let hoverTimer: number | null = null;
+
+  target.addEventListener('mousedown', (e: MouseEvent) => {
+    downT = performance.now();
+    downX = e.screenX;
+    downY = e.screenY;
+    moved = false;
+  });
+  window.addEventListener('mousemove', (e: MouseEvent) => {
+    if (Math.abs(e.screenX - downX) > 3 || Math.abs(e.screenY - downY) > 3) moved = true;
+  });
+  target.addEventListener('mouseup', (e: MouseEvent) => {
+    if (classifyPress({ downT, upT: performance.now(), moved }, LONG_PRESS_MS) !== 'tap') return;
+    const zone = tapZone(e.clientY, window.innerHeight);
+    // 只上报 Main，由其广播 behavior（character 保持哑播放器，不自行决策动作）。
+    void window.desksoul.rpc('character.tap', { zone });
+  });
+  target.addEventListener('dblclick', () => {
+    void window.desksoul.rpc('app.window.showChat', {});
+  });
+  target.addEventListener('contextmenu', (e: MouseEvent) => {
+    e.preventDefault();
+    void window.desksoul.rpc('app.window.popCharacterMenu', {});
+  });
+
+  // hover>800ms 悬浮提示（character 窗内 DOM #tooltip）。
+  target.addEventListener('mousemove', () => {
+    if (hoverTimer !== null) clearTimeout(hoverTimer);
+    hoverTimer = window.setTimeout(showTooltip, 800);
+  });
+  target.addEventListener('mouseleave', () => {
+    if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    hideTooltip();
+  });
+}
+
+function showTooltip(): void {
+  document.getElementById('tooltip')?.classList.add('tooltip-show');
+}
+function hideTooltip(): void {
+  document.getElementById('tooltip')?.classList.remove('tooltip-show');
 }

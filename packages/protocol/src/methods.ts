@@ -126,6 +126,11 @@ export const Methods = {
     params: z.object({}),
     result: z.object({ characterId: z.string(), manifest: CharacterManifestSchema }),
   },
+  'character.tap': {
+    // A1 角色轻点：head→撒娇 / body→普通互动。Main 收到后广播 behavior（保持哑播放器）。
+    params: z.object({ zone: z.enum(['head', 'body']) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'character.setScale': {
     // D4 角色缩放 50%–200%；Main 按底边中点锚定改 character 窗口 bounds。
     params: z.object({ scale: z.number().min(0.5).max(2) }),

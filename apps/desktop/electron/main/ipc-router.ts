@@ -138,6 +138,18 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     'app.storageUsage': () => chat.storageUsage(),
     'app.exportData': (p) => chat.exportData(p.outPath),
     'character.current': () => characters.current(),
+    'character.tap': (p) => {
+      // A1：把轻点转成 behavior 广播（character 哑播放器消费）。head→撒娇、body→点头。
+      broadcast('behavior.applyEmotion', {
+        name: p.zone === 'head' ? 'happy' : 'neutral',
+        weight: 1,
+      });
+      broadcast('behavior.playAction', {
+        name: p.zone === 'head' ? 'nuzzle' : 'nod',
+        durationMs: null,
+      });
+      return { ok: true as const };
+    },
     'character.setScale': (p) => {
       const win = deps.characterWindow();
       if (win && !win.isDestroyed()) {
