@@ -79,12 +79,43 @@
       #tooltip.tooltip-show {
         opacity: 1;
       }
+      #bubble {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 280px;
+        min-height: 40px;
+        padding: 12px 16px;
+        border-radius: 18px;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #171821;
+        background: rgba(255, 255, 255, 0.82);
+        border-left: 3px solid #ff8fab;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        backdrop-filter: blur(20px) saturate(180%);
+        word-break: break-word;
+        transition: opacity 0.25s ease;
+      }
+      #bubble.bubble-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #bubble.bubble-above {
+        top: 12px;
+      }
+      #bubble.bubble-below {
+        bottom: 12px;
+      }
     </style>
   </head>
   <body>
     <div id="stage"></div>
     <div id="fallback"></div>
     <div id="tooltip">双击聊天 · 右键菜单</div>
+    <div id="bubble" class="bubble-hidden"></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

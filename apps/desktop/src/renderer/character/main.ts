@@ -4,7 +4,9 @@
 import { createVrmRuntime, type CharacterRuntime } from './runtime';
 import { mountFallbackFace, type FallbackFace } from './fallback-face';
 import { setupInteraction } from './interaction';
+import { mountBubble } from './bubble';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
+import type { Prefs } from '@desksoul/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
 
@@ -92,9 +94,28 @@ async function boot(): Promise<void> {
     runtime?.setLookAt(x, y); // 不算 activity：光标常动，算了 90s 永不触发
   });
 
+  // ---- A2 桌面气泡：流式文本逐字 + 按 pref 自动消失（character 仍只反映 chat，无业务）----
+  const bubble = mountBubble(document.getElementById('bubble')!);
+  window.desksoul.on('chat.stream', ({ text }) => {
+    markActivity();
+    bubble.appendStream(text);
+  });
+  window.desksoul.on('app.prefs.changed', (p) => {
+    const c = p as { key?: string; value?: unknown };
+    if (c.key === 'display.bubbleDuration') {
+      bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
+    }
+  });
+  // 非阻塞读初始时长（默认 '5' 已在 mountBubble 内置，await 慢也不漏早到的 stream）。
+  void window.desksoul
+    .rpc('app.prefs.getAll', {})
+    .then((prefs) => bubble.setDuration((prefs as Prefs)['display.bubbleDuration']))
+    .catch(() => {});
+
   // 回合结束 1.2s 后复位 neutral（S4 行为；neutral 不在情绪表 → 全零权重 = 复位）
   window.desksoul.on('chat.done', () => {
     markActivity();
+    bubble.endStream();
     setTimeout(() => {
       if (runtime) runtime.applyEmotion('neutral', 0);
       else face?.reset();
