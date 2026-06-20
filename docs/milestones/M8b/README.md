@@ -6,10 +6,12 @@
 
 | 阶段 | plan | 内容 | 状态 |
 | --- | --- | --- | --- |
-| P1 | [p1-a1-interaction](plans/p1-a1-interaction.md) | A1：tap 分区 + 双击→聊天 + 右键原生菜单 + hover 提示 | 📋 计划就绪 |
-| P2 | [p2-a2-bubble](plans/p2-a2-bubble.md) | A2 桌面气泡（character 窗 DOM 层 + 流式 + 自动消失 + 方向） | 📋 计划就绪 |
-| P3 | [p3-a3-a4](plans/p3-a3-a4.md) | A3 穿透切换反馈 + A4 DND/专注/隐藏徽标 + 全屏检测（best-effort） | 📋 计划就绪 |
-| P4 | [p4-visual-results](plans/p4-visual-results.md) | 真窗行为/视觉保真（4ba6005f/8cb478c0）+ RESULTS | 📋 计划就绪 |
+| P1 | [p1-a1-interaction](plans/p1-a1-interaction.md) | A1：tap 分区 + 双击→聊天 + 右键原生菜单 + hover 提示 | ✅ 完成 |
+| P2 | [p2-a2-bubble](plans/p2-a2-bubble.md) | A2 桌面气泡（character 窗 DOM 层 + 流式 + 自动消失 + 方向） | ✅ 完成 |
+| P3 | [p3-a3-a4](plans/p3-a3-a4.md) | A3 穿透切换反馈 + A4 DND/专注/隐藏徽标 + 全屏检测（best-effort） | ✅ 完成 |
+| P4 | [p4-visual-results](plans/p4-visual-results.md) | 真窗行为/视觉保真（4ba6005f/8cb478c0）+ RESULTS | ✅ 代码完成（真窗视觉=人工） |
+
+交付结果见 [`RESULTS.md`](RESULTS.md)：protocol 182 / sidecar 37 / desktop 305、typecheck 干净、build exit 0；真窗行为/视觉冒烟 = 人工硬门槛待跑。
 
 ## 视觉真源
 A1/A2/A3 = `UI/4ba6005f-….png`；A4 = `UI/8cb478c0-….png`。
