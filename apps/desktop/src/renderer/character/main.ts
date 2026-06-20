@@ -35,6 +35,22 @@ async function bootRuntime(stageEl: HTMLElement): Promise<CharacterRuntime> {
   return createVrmRuntime(stageEl, modelUrl, cur.manifest);
 }
 
+/** A3 穿透切换反馈：扩散涟漪（穿透=青/恢复=暖）+ 顶部 toast 文案（character 窗内 DOM）。 */
+function showClickThroughFx(ignore: boolean): void {
+  const ripple = document.getElementById('ripple');
+  if (ripple) {
+    ripple.style.background = ignore ? 'rgba(111, 168, 255, 0.5)' : 'rgba(255, 143, 171, 0.5)';
+    ripple.classList.remove('ripple-play');
+    requestAnimationFrame(() => ripple.classList.add('ripple-play')); // 下一帧重启动画
+  }
+  const toast = document.getElementById('toast');
+  if (toast) {
+    toast.textContent = ignore ? '🔇 鼠标穿透已开启' : '✋ 已恢复互动';
+    toast.classList.add('toast-show');
+    setTimeout(() => toast.classList.remove('toast-show'), 1600);
+  }
+}
+
 async function boot(): Promise<void> {
   const stageEl = document.getElementById('stage')!;
   const fallbackEl = document.getElementById('fallback')!;
@@ -104,6 +120,8 @@ async function boot(): Promise<void> {
     const c = p as { key?: string; value?: unknown };
     if (c.key === 'display.bubbleDuration') {
       bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
+    } else if (c.key === 'display.clickThrough') {
+      showClickThroughFx(c.value === true); // A3：穿透切换涟漪 + toast
     }
   });
   // 非阻塞读初始时长（默认 '5' 已在 mountBubble 内置，await 慢也不漏早到的 stream）。

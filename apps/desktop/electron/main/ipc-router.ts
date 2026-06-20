@@ -122,6 +122,17 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
   applyAllEffects(prefEffects, prefsStore.getAll());
   const prefsService = createPrefsService({ store: prefsStore, broadcast, effects: prefEffects });
 
+  // A3 穿透切换真源：翻转 display.clickThrough pref + 施加 + 广播（菜单/热键/托盘共用）。
+  // 仅依赖原语（prefsStore/characterWindow/broadcast）→ M8c 可整体抽到 app-actions.ts。
+  const toggleClickThroughPref = (): boolean => {
+    const next = !prefsStore.getAll()['display.clickThrough'];
+    prefsStore.set('display.clickThrough', next);
+    const c = deps.characterWindow();
+    if (c && !c.isDestroyed()) c.setIgnoreMouseEvents(next, { forward: true });
+    broadcast('app.prefs.changed', { key: 'display.clickThrough', value: next });
+    return next;
+  };
+
   const router = createRouter<RpcContext>({
     ...(deps.providerService ?? {}),
     ...prefsService,
@@ -208,7 +219,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
         buildCharacterMenuTemplate({
           chat: showChat,
           toggleClickThrough: () => {
-            // TODO(P3): 读 display.clickThrough 真源取反并施加；本期占位（A3 落地后接真源）。
+            toggleClickThroughPref();
           },
           toggleVisible: () => {
             const c = deps.characterWindow();
@@ -230,6 +241,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
       if (c && !c.isDestroyed()) menu.popup({ window: c });
       return { ok: true as const };
     },
+    'app.window.toggleClickThrough': () => ({
+      ok: true as const,
+      ignore: toggleClickThroughPref(),
+    }),
   });
 
   ipcMain.handle('desksoul:rpc', (e, payload: { method?: unknown; params?: unknown }) => {

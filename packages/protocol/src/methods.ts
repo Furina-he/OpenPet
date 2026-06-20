@@ -71,6 +71,11 @@ export const Methods = {
     params: z.object({}),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.window.toggleClickThrough': {
+    // A3 穿透切换：翻转 display.clickThrough pref 真源并施加，返回新态（菜单/热键/托盘复用）。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true), ignore: z.boolean() }),
+  },
   'app.window.finishOnboarding': {
     // 首启引导完成/跳过完成：置 onboarding.completed + 收起引导窗 + 唤起 overlay。
     params: z.object({}),
