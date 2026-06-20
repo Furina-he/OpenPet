@@ -49,3 +49,11 @@ describe('PrefsSchema onboarding flag (M7b-2)', () => {
     expect(PrefsSchema.shape['onboarding.completed'].safeParse('yes').success).toBe(false);
   });
 });
+
+describe('PrefsSchema bubbleDuration (M8b)', () => {
+  it('默认 5s，枚举 3/5/8/always', () => {
+    expect(DEFAULT_PREFS['display.bubbleDuration']).toBe('5');
+    expect(PrefsSchema.shape['display.bubbleDuration'].safeParse('always').success).toBe(true);
+    expect(PrefsSchema.shape['display.bubbleDuration'].safeParse('10').success).toBe(false);
+  });
+});

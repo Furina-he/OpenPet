@@ -19,6 +19,7 @@ export const PrefsSchema = z.object({
   'display.lookAt': z.boolean().default(true),
   'display.footGlow': z.boolean().default(false),
   'display.characterScale': z.number().min(0.5).max(2).default(1),
+  'display.bubbleDuration': z.enum(['3', '5', '8', 'always']).default('5'),
   'privacy.longTermMemory': z.boolean().default(true),
   'privacy.anonymousStats': z.boolean().default(false),
   'privacy.crashReport': z.boolean().default(true),
