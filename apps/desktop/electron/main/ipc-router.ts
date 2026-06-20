@@ -10,9 +10,10 @@
  *       sendToCharacter 直发，不进背压队列（见 cursor-publisher.ts 头注释）。
  * 业务编排全部下沉到纯模块——本文件只做 Electron 缝。
  */
-import { ipcMain, BrowserWindow, type WebContents } from 'electron';
+import { ipcMain, BrowserWindow, Menu, type WebContents } from 'electron';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
+import { buildCharacterMenuTemplate } from './character-menu.js';
 import { createCharacterService } from './character-service.js';
 import { createConversationStore } from './db/index.js';
 import { createIdleResponder } from './idle-responder.js';
@@ -173,6 +174,48 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
         w.show();
         w.focus();
       }
+      return { ok: true as const };
+    },
+    'app.window.showChat': () => {
+      const w = deps.overlayWindow?.();
+      if (w && !w.isDestroyed()) {
+        w.show();
+        w.focus();
+      }
+      return { ok: true as const };
+    },
+    'app.window.popCharacterMenu': () => {
+      const showChat = (): void => {
+        const w = deps.overlayWindow?.();
+        if (w && !w.isDestroyed()) {
+          w.show();
+          w.focus();
+        }
+      };
+      const menu = Menu.buildFromTemplate(
+        buildCharacterMenuTemplate({
+          chat: showChat,
+          toggleClickThrough: () => {
+            // TODO(P3): 读 display.clickThrough 真源取反并施加；本期占位（A3 落地后接真源）。
+          },
+          toggleVisible: () => {
+            const c = deps.characterWindow();
+            if (c && !c.isDestroyed()) {
+              if (c.isVisible()) c.hide();
+              else c.show();
+            }
+          },
+          openHub: () => {
+            const w = deps.settingsWindow?.();
+            if (w && !w.isDestroyed()) {
+              w.show();
+              w.focus();
+            }
+          },
+        }),
+      );
+      const c = deps.characterWindow();
+      if (c && !c.isDestroyed()) menu.popup({ window: c });
       return { ok: true as const };
     },
   });
