@@ -100,6 +100,11 @@ export const Methods = {
     params: z.object({ url: z.string().url() }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.generateDiag': {
+    // J5：生成本地脱敏 .dsdiag（D8 入口 / 崩溃钩子）。真实上报端点留 M9。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true), path: z.string() }),
+  },
 
   // --- request/response: Renderer → Main（应用偏好，M7a；UI 在 D 系列）---
   'app.prefs.getAll': {

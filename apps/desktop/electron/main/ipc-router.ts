@@ -11,10 +11,12 @@
  * 业务编排全部下沉到纯模块——本文件只做 Electron 缝。
  */
 import { ipcMain, BrowserWindow, Menu, type WebContents } from 'electron';
+import { writeFileSync } from 'node:fs';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { buildCharacterMenuTemplate } from './character-menu.js';
 import * as appActions from './app-actions.js';
+import { assembleDiag } from './crash-payload.js';
 import { createCharacterService } from './character-service.js';
 import { createConversationStore } from './db/index.js';
 import { createIdleResponder } from './idle-responder.js';
@@ -61,6 +63,9 @@ export interface IpcRouterDeps {
   appService?: ReturnType<typeof createAppService>;
   /** 每条出站通知的旁路观察者（J1 托盘据 chat.stream/done 切三态图标）。 */
   onBroadcast?: (channel: string, params: unknown) => void;
+  /** J5 诊断：app 版本 + .dsdiag 落盘路径（index 注入 app.getVersion() + userData 路径）。 */
+  appVersion?: string;
+  diagPath?: string;
 }
 
 export interface RpcContext {
@@ -151,6 +156,18 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     'chat.snapshot': (p) => chat.snapshot(p.sessionId, p.limit),
     'app.storageUsage': () => chat.storageUsage(),
     'app.exportData': (p) => chat.exportData(p.outPath),
+    'app.generateDiag': () => {
+      // J5：组装脱敏诊断 → 落本地 .dsdiag（JSON）。真实上报端点留 M9；logs 暂空（M9 接日志缓冲）。
+      const diag = assembleDiag({
+        version: deps.appVersion ?? '0.0.0',
+        platform: process.platform,
+        prefs: prefsStore.getAll() as Record<string, unknown>,
+        logs: [],
+      });
+      const out = deps.diagPath ?? 'desksoul.dsdiag';
+      writeFileSync(out, JSON.stringify(diag, null, 2), 'utf8');
+      return { ok: true as const, path: out };
+    },
     'character.current': () => characters.current(),
     'character.tap': (p) => {
       // A1：把轻点转成 behavior 广播（character 哑播放器消费）。head→撒娇、body→点头。

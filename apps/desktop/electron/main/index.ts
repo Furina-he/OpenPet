@@ -85,6 +85,8 @@ app.whenReady().then(() => {
     prefsStore,
     setLoginItem: (open) => app.setLoginItemSettings({ openAtLogin: open }),
     appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
+    appVersion: app.getVersion(),
+    diagPath: path.join(dataDir, 'desksoul.dsdiag'),
     // J1 托盘三态：thinking=streaming 中，error=最近一轮 error（仅状态变化时刷新图标）。
     onBroadcast: (channel, params) => {
       if (channel === 'chat.stream') {

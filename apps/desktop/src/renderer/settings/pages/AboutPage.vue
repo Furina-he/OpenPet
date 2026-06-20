@@ -3,6 +3,7 @@
      存而不接：[检查更新]（无 updater）/[生成 .dsdiag]（无诊断聚合后端）。
      §7.8 逐区：版本卡/法律=按钮行；帮助/诊断=SettingCard 标签+动作行。URL/邮箱为占位，上线前替换。 -->
 <script setup lang="ts">
+import { ref } from 'vue';
 import SettingSection from '../../components/SettingSection.vue';
 import SettingCard from '../../components/SettingCard.vue';
 
@@ -26,6 +27,13 @@ const BTN = 'rounded-btn border border-glass-border px-3 py-1.5 text-sm';
 
 function open(url: string): void {
   void window.desksoul.rpc('app.openExternal', { url });
+}
+
+// J5：生成本地脱敏 .dsdiag（真实上报端点留 M9）。
+const diagPath = ref('');
+async function genDiag(): Promise<void> {
+  const r = (await window.desksoul.rpc('app.generateDiag', {})) as { path: string };
+  diagPath.value = r.path;
 }
 </script>
 
@@ -72,15 +80,16 @@ function open(url: string): void {
       </SettingCard>
     </SettingSection>
 
-    <!-- 诊断：§7.8 标签+动作行（生成包存而不接） -->
+    <!-- 诊断：§7.8 标签+动作行（J5 本地生成脱敏 .dsdiag；真实上报端点留 M9） -->
     <SettingSection title="诊断">
       <SettingCard
         label="一键收集诊断包"
-        description="含：脱敏日志 + 系统信息 + 配置摘要（API Key、对话内容自动剔除）—— 留后续"
+        description="含：脱敏日志 + 系统信息 + 配置摘要（API Key、对话内容自动剔除）"
       >
-        <button :class="`${BTN} text-text-sub`" disabled title="诊断包生成留后续">
-          生成 .dsdiag
-        </button>
+        <div class="flex items-center gap-2">
+          <span v-if="diagPath" class="text-sm text-text-sub">已生成：{{ diagPath }}</span>
+          <button :class="`${BTN} text-text-main`" @click="genDiag">生成 .dsdiag</button>
+        </div>
       </SettingCard>
     </SettingSection>
 

@@ -37,6 +37,7 @@ function attachCrashRecovery(win: BrowserWindow, name: string): void {
   win.webContents.on('render-process-gone', (_e, details) => {
     if (details.reason === 'clean-exit') return;
     console.warn(`[windows] ${name} renderer gone (${details.reason}); reloading`);
+    // TODO(M9 J5)：崩溃时自动生成 .dsdiag + 排队上报（本期仅 reload + console；D8 提供手动生成）。
     if (!win.isDestroyed()) win.webContents.reload();
   });
 }
