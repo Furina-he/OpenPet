@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { BUILTIN_PROVIDERS, normalizeProviderBaseUrl } from './provider-config.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemePref = z.infer<typeof ThemeSchema>;
+const BaseUrlSchema = z.string().trim().url().transform(normalizeProviderBaseUrl);
 
 /**
  * 全量 prefs 单一真源（ui-design §14.1）。扁平 dotted key 便于 set(key,value) 单点校验：
@@ -62,6 +64,12 @@ export const PrefsSchema = z.object({
   // model（D3 模型 API）
   'model.activeProvider': z.string().default(''),
   'model.activeModel': z.string().default(''),
+  'model.openaiBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.openai!.baseUrl),
+  'model.deepseekBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.deepseek!.baseUrl),
+  'model.qwenBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.qwen!.baseUrl),
+  'model.claudeBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.claude!.baseUrl),
+  'model.geminiBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.gemini!.baseUrl),
+  'model.ollamaBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.ollama!.baseUrl),
   // budget（D3 预算告警；本期仅持久化）
   'budget.enabled': z.boolean().default(false),
   'budget.monthlyCap': z.number().min(0).default(0),

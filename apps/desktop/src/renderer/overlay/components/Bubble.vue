@@ -32,7 +32,7 @@ const ACTION_LABEL: Record<ErrorAction, string> = {
   <!-- 错误态：玻璃 + 红左条 + 分级台词 + 操作 -->
   <div
     v-if="isError"
-    class="ds-glass max-w-[86%] self-start rounded-card px-3.5 py-2.5 text-base text-text-main"
+    class="ds-glass max-w-[86%] self-start rounded-bubble px-3.5 py-2.5 text-base text-text-main"
     style="border-left: 3px solid var(--ds-danger)"
   >
     <div>{{ copy.line }}</div>
@@ -51,7 +51,8 @@ const ACTION_LABEL: Record<ErrorAction, string> = {
   <!-- 思考态：三点呼吸 -->
   <div
     v-else-if="thinking"
-    class="ds-glass max-w-[86%] self-start rounded-card px-3.5 py-3 text-text-sub"
+    class="ds-glass max-w-[86%] self-start rounded-bubble px-3.5 py-3 text-text-sub"
+    style="border-left: 3px solid var(--ds-brand-from)"
   >
     <span class="inline-flex gap-1">
       <span class="h-1.5 w-1.5 animate-pulse rounded-full" style="background: var(--ds-text-sub)" />
@@ -69,12 +70,12 @@ const ACTION_LABEL: Record<ErrorAction, string> = {
   <!-- 常态气泡 -->
   <div
     v-else
-    class="max-w-[86%] whitespace-pre-wrap break-words rounded-card px-3.5 py-2.5 text-base leading-relaxed"
+    class="max-w-[86%] whitespace-pre-wrap break-words rounded-bubble px-3.5 py-2.5 text-base leading-relaxed"
     :class="message.role === 'user' ? 'self-end text-white' : 'ds-glass self-start text-text-main'"
     :style="
       message.role === 'user'
         ? 'background: linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))'
-        : ''
+        : 'border-left: 3px solid var(--ds-brand-from)'
     "
   >
     <EmotionChip v-if="emotion" :label="emotion" class="mb-1 mr-1" />

@@ -29,6 +29,7 @@ describe('PrefsSchema D-series expansion', () => {
     expect(DEFAULT_PREFS['privacy.contextWindow']).toBe(20);
     expect(DEFAULT_PREFS['privacy.clipboard']).toBe(false);
     expect(DEFAULT_PREFS['model.activeProvider']).toBe('');
+    expect(DEFAULT_PREFS['model.openaiBaseUrl']).toBe('https://api.openai.com/v1');
     expect(DEFAULT_PREFS['offline.fallbackMode']).toBe('ollama');
     expect(DEFAULT_PREFS['budget.warnAt']).toBe(80);
   });
@@ -37,6 +38,9 @@ describe('PrefsSchema D-series expansion', () => {
     expect(PrefsSchema.shape['general.updateChannel'].safeParse('nightly').success).toBe(false);
     expect(PrefsSchema.shape['privacy.contextWindow'].safeParse(0).success).toBe(false);
     expect(PrefsSchema.shape['budget.warnAt'].safeParse(150).success).toBe(false);
+    expect(PrefsSchema.shape['model.openaiBaseUrl'].parse('https://relay.example.com/v1/')).toBe(
+      'https://relay.example.com/v1',
+    );
   });
 });
 

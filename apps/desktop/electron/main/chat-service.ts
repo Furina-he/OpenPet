@@ -65,7 +65,7 @@ export interface ChatServiceOptions {
   /** 降级链 [primary, ...fallbacks]；优先于 defaultProviderId。首 delta 前失败顺位重试一次。 */
   providerChain?: string[];
   /** 动态解析当前 provider/model（无显式 providerId 时用）；ipc-router 从 prefs 注入。 */
-  resolveModel?: () => { providerId?: string; model?: string };
+  resolveModel?: () => { providerId?: string; model?: string; baseUrl?: string };
 }
 
 const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };
@@ -82,6 +82,10 @@ interface TurnState {
   sawDelta: boolean;
   /** 本轮是否已做过工具回灌（单轮，防无限循环）。 */
   toolRound: boolean;
+  /** 当前 provider 的自定义 Base URL（通常是 OpenAI 兼容中转站）。 */
+  baseUrl?: string;
+  /** baseUrl 归属 provider，降级到其它 provider 时不能误用。 */
+  baseProviderId?: string;
   /** 累积本轮 provider 产出的 tool_call，done(stop) 时统一执行 + 回灌。 */
   pendingTools: Array<{ id: string; name: string; args: unknown }>;
 }
@@ -99,7 +103,9 @@ export class ChatService {
   readonly plugins: PluginGateway;
   private readonly providerChain: string[];
   /** 无显式 providerId 时，从 prefs 取当前 provider/model（ipc-router 注入）。 */
-  private readonly resolveModel: (() => { providerId?: string; model?: string }) | undefined;
+  private readonly resolveModel:
+    | (() => { providerId?: string; model?: string; baseUrl?: string })
+    | undefined;
   /**
    * 在途轮的 provider 编排态（降级/首delta/工具回灌）。生命周期绑定「provider
    * 事件流」：done 时随 onProviderEvent 清理。一轮一个对象，取代原先 4 张并行 Map。
@@ -152,6 +158,7 @@ export class ChatService {
     }
     const resolved = providerId ? undefined : this.resolveModel?.();
     const { chain, model } = resolveSendTarget(providerId, this.providerChain, resolved);
+    const baseProviderId = resolved?.providerId;
     // ContextAssembler：system prompt(人设+persona+行为标签规约) + 最近 20 轮 + 当前 user。
     const request = assembleContext({
       store: this.conv,
@@ -166,11 +173,23 @@ export class ChatService {
       request,
       sawDelta: false,
       toolRound: false,
+      ...(resolved?.baseUrl ? { baseUrl: resolved.baseUrl, baseProviderId } : {}),
       pendingTools: [],
     });
     try {
       // chain 空 = mock 路径（无 provider 配置）：不带 providerId/request。
-      this.host.send(sessionId, chain.length > 0 ? { providerId: chain[0]!, request } : {});
+      this.host.send(
+        sessionId,
+        chain.length > 0
+          ? {
+              providerId: chain[0]!,
+              request,
+              ...(resolved?.baseUrl && chain[0] === baseProviderId
+                ? { baseUrl: resolved.baseUrl }
+                : {}),
+            }
+          : {},
+      );
     } catch {
       this.turns.delete(sessionId); // 失败的发送不留在途态
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
@@ -222,7 +241,14 @@ export class ChatService {
       if (turn.idx + 1 < turn.chain.length) {
         turn.idx += 1;
         try {
-          this.host.send(sessionId, { providerId: turn.chain[turn.idx]!, request: turn.request });
+          const providerId = turn.chain[turn.idx]!;
+          this.host.send(sessionId, {
+            providerId,
+            request: turn.request,
+            ...(turn.baseUrl && providerId === turn.baseProviderId
+              ? { baseUrl: turn.baseUrl }
+              : {}),
+          });
           return; // 吞掉本次 error done，等下一个 provider 接管
         } catch {
           // worker 不可用（如刚崩溃、onDeath 正在清算在途流）：无法顺位重试。
@@ -280,7 +306,12 @@ export class ChatService {
       });
     }
     turn.request = { ...turn.request, messages: [...turn.request.messages, ...toolMessages] };
-    this.host.send(sessionId, { providerId: turn.chain[turn.idx]!, request: turn.request });
+    const providerId = turn.chain[turn.idx]!;
+    this.host.send(sessionId, {
+      providerId,
+      request: turn.request,
+      ...(turn.baseUrl && providerId === turn.baseProviderId ? { baseUrl: turn.baseUrl } : {}),
+    });
   }
 
   private onNotification(n: Notification): void {

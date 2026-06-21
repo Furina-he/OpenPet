@@ -84,8 +84,38 @@ export const BUILTIN_PROVIDERS: Record<string, ProviderDialect> = {
   },
 };
 
+export const PROVIDER_BASE_URL_PREF_KEYS = {
+  openai: 'model.openaiBaseUrl',
+  deepseek: 'model.deepseekBaseUrl',
+  qwen: 'model.qwenBaseUrl',
+  claude: 'model.claudeBaseUrl',
+  gemini: 'model.geminiBaseUrl',
+  ollama: 'model.ollamaBaseUrl',
+} as const;
+
 export function getDialect(id: string): ProviderDialect | undefined {
   return BUILTIN_PROVIDERS[id];
+}
+
+export function normalizeProviderBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
+
+export function providerBaseUrlPrefKey(
+  providerId: string,
+): (typeof PROVIDER_BASE_URL_PREF_KEYS)[keyof typeof PROVIDER_BASE_URL_PREF_KEYS] | undefined {
+  return PROVIDER_BASE_URL_PREF_KEYS[providerId as keyof typeof PROVIDER_BASE_URL_PREF_KEYS];
+}
+
+export function getProviderBaseUrl(
+  providerId: string,
+  prefs?: Record<string, unknown>,
+): string | undefined {
+  const dialect = getDialect(providerId);
+  if (!dialect) return undefined;
+  const key = providerBaseUrlPrefKey(providerId);
+  const configured = key && typeof prefs?.[key] === 'string' ? prefs[key] : '';
+  return normalizeProviderBaseUrl(configured || dialect.baseUrl);
 }
 
 /** 用户对某 provider 的配置覆盖（存 prefs.json；密钥另存 Keychain）。 */

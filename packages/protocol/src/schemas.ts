@@ -63,6 +63,8 @@ export const ChatStartFrame = z.object({
   sessionId: z.string(),
   providerId: z.string().optional(),
   request: ChatRequestSchema.optional(),
+  /** provider base URL override（D3 自定义中转站）；Main 从 prefs 注入，Worker 不持久化。 */
+  baseUrl: z.string().optional(),
   /** mock provider 的出块间隔（测试用 0/小值）。 */
   intervalMs: z.number().int().nonnegative().optional(),
 });

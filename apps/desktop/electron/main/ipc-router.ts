@@ -12,6 +12,7 @@
  */
 import { ipcMain, BrowserWindow, Menu, type WebContents } from 'electron';
 import { writeFileSync } from 'node:fs';
+import { getProviderBaseUrl } from '@desksoul/protocol';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { buildCharacterMenuTemplate } from './character-menu.js';
@@ -107,9 +108,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     // §7.1：chat.send 未带 providerId 时，动态读 prefs 的当前 provider/model（D3 选择即生效）。
     resolveModel: () => {
       const p = prefsStore.getAll();
+      const providerId = p['model.activeProvider'];
       return {
-        ...(p['model.activeProvider'] ? { providerId: p['model.activeProvider'] } : {}),
+        ...(providerId ? { providerId } : {}),
         ...(p['model.activeModel'] ? { model: p['model.activeModel'] } : {}),
+        ...(providerId ? { baseUrl: getProviderBaseUrl(providerId, p) } : {}),
       };
     },
   });

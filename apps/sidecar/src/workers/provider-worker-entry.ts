@@ -64,7 +64,7 @@ async function runStream(
   try {
     const stream =
       start.providerId && start.providerId !== 'mock' && start.request
-        ? resolveProviderStream(start.providerId, start.request, ac.signal)
+        ? resolveProviderStream(start.providerId, start.request, ac.signal, start.baseUrl)
         : mockProviderChat(ac.signal, {
             script: pickDemoScript(demoTurn++),
             ...(start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {}),
@@ -88,8 +88,9 @@ function resolveProviderStream(
   providerId: string,
   request: ChatRequest,
   signal: AbortSignal,
+  baseUrlOverride?: string,
 ): AsyncIterable<ChatEvent> {
-  const fn = resolveProvider(providerId);
+  const fn = resolveProvider(providerId, baseUrlOverride);
   if (!fn) {
     return (async function* (): AsyncGenerator<ChatEvent> {
       yield {

@@ -23,7 +23,7 @@ const LINKS = {
 const CONTACT_EMAIL = 'hello@desksoul.app';
 const ACK = ['three-vrm', 'pixi-live2d-display', 'XState', 'better-sqlite3', 'Lucide', 'Vue'];
 
-const BTN = 'rounded-btn border border-glass-border px-3 py-1.5 text-sm';
+const BTN = 'ds-control rounded-btn px-3 py-1.5 text-sm';
 
 function open(url: string): void {
   void window.desksoul.rpc('app.openExternal', { url });
@@ -66,16 +66,16 @@ async function genDiag(): Promise<void> {
 
     <!-- 反馈与帮助：§7.8 标签+动作行 -->
     <SettingSection title="反馈与帮助">
-      <SettingCard label="📖 用户手册">
+      <SettingCard label="用户手册">
         <button :class="`${BTN} text-text-main`" @click="open(LINKS.manual)">打开</button>
       </SettingCard>
-      <SettingCard label="🐛 报告问题">
+      <SettingCard label="报告问题">
         <button :class="`${BTN} text-text-main`" @click="open(LINKS.issues)">GitHub Issues</button>
       </SettingCard>
-      <SettingCard label="💬 社区交流">
+      <SettingCard label="社区交流">
         <button :class="`${BTN} text-text-main`" @click="open(LINKS.community)">Discord</button>
       </SettingCard>
-      <SettingCard label="📨 给作者写信">
+      <SettingCard label="给作者写信">
         <span class="text-base text-text-sub">{{ CONTACT_EMAIL }}</span>
       </SettingCard>
     </SettingSection>

@@ -50,11 +50,15 @@ app.whenReady().then(() => {
   registerAssetProtocol(charactersRoot);
   wins = createAppWindows();
   const keychain = new Keychain(path.join(app.getPath('userData'), 'secrets.kc'));
-  const providerConfig = createProviderConfig({ keychain });
-  const providerService = createProviderService({ keychain, httpGetJson: electronHttpGetJson });
   const dataDir = path.join(app.getPath('userData'), 'data');
   mkdirSync(dataDir, { recursive: true });
   const prefsStore = createPrefsStore({ prefsPath: path.join(dataDir, 'prefs.json') });
+  const providerConfig = createProviderConfig({ keychain, getPrefs: () => prefsStore.getAll() });
+  const providerService = createProviderService({
+    keychain,
+    httpGetJson: electronHttpGetJson,
+    getPrefs: () => prefsStore.getAll(),
+  });
   // 窗口定位器 + 广播：registerIpcRouter 与 J2 热键（app-actions）共用同一组，避免重复。
   const targets = rendererTargets(wins);
   const characterWindow = () =>

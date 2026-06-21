@@ -4,9 +4,9 @@ defineProps<{ modelValue: string; options: ReadonlyArray<{ value: string; label:
 const emit = defineEmits<{ 'update:modelValue': [string] }>();
 </script>
 <template>
-  <div class="relative inline-block">
+  <div class="relative inline-block min-w-[160px]">
     <select
-      class="appearance-none rounded-input border border-glass-border bg-glass-bg py-2 pl-3 pr-8 text-base text-text-main"
+      class="ds-control w-full appearance-none rounded-input py-2 pl-3 pr-9 text-base text-text-main"
       :value="modelValue"
       @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
     >

@@ -1,8 +1,9 @@
 <!-- apps/desktop/src/renderer/overlay/App.vue — B1 聊天浮层（ui-design §6.1；视觉 UI/60ea4a18 B1 区）
-     复用 chat-view 会话模型；玻璃 + 顶栏（角色名/模型/连接态/⚙）+ 头像气泡列表 + 输入行。
+     复用 chat-view 会话模型；玻璃 + 顶栏（角色名/模型/连接态/工具组）+ 头像气泡列表 + 输入行。
      ?fixture=chat：注入假快照做视觉 harness（不连 Main）。 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
+import { Bookmark, Mic, Paperclip, Send, Settings, Square, X } from 'lucide-vue-next';
 import { ChatView } from './chat-view';
 import type { ChatMessage } from './chat-view';
 import { groupMessages } from './bubble-view';
@@ -108,6 +109,9 @@ function cancel(): void {
 function openHub(): void {
   void window.desksoul.rpc('app.window.openHub', {});
 }
+function closeOverlay(): void {
+  window.close();
+}
 function lastUserText(): string {
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const m = messages.value[i]!;
@@ -134,31 +138,46 @@ function emotionFor(m: ChatMessage): string {
   const last = messages.value[messages.value.length - 1];
   return streaming.value && m === last && m.role === 'assistant' ? emotion.value : '';
 }
-function avatar(role: ChatMessage['role']): string {
-  return role === 'assistant' ? '🐧' : '🙂';
-}
 </script>
 
 <template>
-  <div class="ds-glass flex h-screen flex-col text-base text-text-main">
-    <!-- 顶栏：角色名 + 模型 + 连接态 + 设置 -->
+  <div
+    class="ds-glass flex h-screen flex-col overflow-hidden rounded-panel text-base text-text-main"
+  >
+    <!-- 顶栏：角色名 + 模型 + 连接态 + 工具 -->
     <header class="flex items-center justify-between border-b border-glass-border px-4 py-3">
-      <div class="flex items-center gap-2">
-        <span class="text-md">{{ charName }}</span>
-        <span class="text-sm text-text-sub">{{ modelLabel }}</span>
-        <span
-          class="h-2 w-2 rounded-full"
-          :style="`background: ${connected ? 'var(--ds-success)' : 'var(--ds-danger)'}`"
-          :title="connected ? '已连接' : '模型未连接'"
-        />
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="ds-avatar h-9 w-9 shrink-0 text-sm">小</span>
+        <div class="min-w-0">
+          <div class="truncate text-md font-semibold">{{ charName }}</div>
+          <div class="flex items-center gap-2 text-sm text-text-sub">
+            <span class="truncate">{{ modelLabel }}</span>
+            <span
+              class="h-2 w-2 shrink-0 rounded-full"
+              :style="`background: ${connected ? 'var(--ds-success)' : 'var(--ds-danger)'}`"
+              :title="connected ? '已连接' : '模型未连接'"
+            />
+          </div>
+        </div>
       </div>
-      <button
-        class="rounded-btn px-2 py-1 text-text-sub hover:text-text-main"
-        title="设置"
-        @click="openHub"
-      >
-        ⚙
-      </button>
+      <div class="flex items-center gap-2">
+        <button class="ds-icon-button border border-glass-border" title="记忆" disabled>
+          <Bookmark :size="17" :stroke-width="1.5" />
+        </button>
+        <button class="ds-icon-button border border-glass-border" title="语音" disabled>
+          <Mic :size="17" :stroke-width="1.5" />
+        </button>
+        <button class="ds-icon-button border border-glass-border" title="设置" @click="openHub">
+          <Settings :size="17" :stroke-width="1.5" />
+        </button>
+        <button
+          class="ds-icon-button border border-glass-border"
+          title="关闭"
+          @click="closeOverlay"
+        >
+          <X :size="17" :stroke-width="1.5" />
+        </button>
+      </div>
     </header>
 
     <!-- 消息列表：按 role 分组，组内共享头像 -->
@@ -169,11 +188,18 @@ function avatar(role: ChatMessage['role']): string {
         class="flex items-start gap-2"
         :class="g.role === 'user' ? 'flex-row-reverse' : ''"
       >
-        <div
-          class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-lg"
-          style="background: var(--ds-glass-border)"
-        >
-          {{ avatar(g.role) }}
+        <div class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+          <span
+            class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold"
+            :class="g.role === 'assistant' ? 'ds-avatar' : ''"
+            :style="
+              g.role === 'user'
+                ? 'background: var(--ds-cool-soft); color: var(--ds-text-main); border: 1px solid var(--ds-glass-border)'
+                : ''
+            "
+          >
+            {{ g.role === 'assistant' ? '小' : '你' }}
+          </span>
         </div>
         <div
           class="flex min-w-0 flex-1 flex-col gap-1"
@@ -192,30 +218,41 @@ function avatar(role: ChatMessage['role']): string {
     </main>
 
     <!-- 输入行 -->
-    <footer class="flex items-center gap-2 border-t border-glass-border p-3">
-      <input
-        v-model="draft"
-        class="flex-1 rounded-input border border-glass-border bg-transparent px-3 py-2 text-base outline-none"
-        placeholder="和小灵说点什么…"
-        :disabled="!ready"
-        @keydown.enter="send"
-      />
-      <button
-        v-if="!streaming"
-        class="rounded-btn px-4 py-2 text-base text-white disabled:opacity-50"
-        style="background: linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))"
-        :disabled="!ready || !draft.trim()"
-        @click="send"
-      >
-        发送
-      </button>
-      <button
-        v-else
-        class="rounded-btn border border-glass-border px-4 py-2 text-base text-text-sub"
-        @click="cancel"
-      >
-        取消
-      </button>
+    <footer class="border-t border-glass-border p-3">
+      <div class="ds-control flex items-center gap-2 rounded-panel px-3 py-2">
+        <button class="ds-icon-button min-h-8 min-w-8" title="添加附件" disabled>
+          <Paperclip :size="17" :stroke-width="1.5" />
+        </button>
+        <input
+          v-model="draft"
+          class="min-w-0 flex-1 bg-transparent px-1 text-base outline-none"
+          placeholder="跟我说点什么吧..."
+          :disabled="!ready"
+          @keydown.enter="send"
+        />
+        <span class="shrink-0 font-mono text-xs text-text-sub">120 t</span>
+        <button class="ds-icon-button min-h-8 min-w-8" title="语音输入" disabled>
+          <Mic :size="17" :stroke-width="1.5" />
+        </button>
+        <button
+          v-if="!streaming"
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition ease-ds active:scale-[0.97] disabled:opacity-50"
+          style="background: linear-gradient(135deg, var(--ds-brand-from), var(--ds-brand-to))"
+          :disabled="!ready || !draft.trim()"
+          title="发送"
+          @click="send"
+        >
+          <Send :size="17" :stroke-width="1.5" />
+        </button>
+        <button
+          v-else
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-glass-border text-text-sub"
+          title="取消"
+          @click="cancel"
+        >
+          <Square :size="15" :stroke-width="1.5" />
+        </button>
+      </div>
     </footer>
   </div>
 </template>

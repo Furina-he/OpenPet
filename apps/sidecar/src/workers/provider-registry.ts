@@ -8,18 +8,18 @@ import { geminiChat } from './providers/gemini.js';
 export type ProviderChatFn = (req: ChatRequest, signal: AbortSignal) => AsyncIterable<ChatEvent>;
 
 /** providerId → chat 生成器。未知 id / 未接入的 format 返回 undefined。 */
-export function resolveProvider(providerId: string): ProviderChatFn | undefined {
+export function resolveProvider(providerId: string, baseUrlOverride?: string): ProviderChatFn | undefined {
   const dialect = getDialect(providerId);
   if (!dialect) return undefined;
   switch (dialect.format) {
     case 'openai':
-      return (req, signal) => openaiCompatChat(dialect, req, signal);
+      return (req, signal) => openaiCompatChat(dialect, req, signal, baseUrlOverride);
     case 'ollama':
-      return (req, signal) => ollamaChat(dialect, req, signal);
+      return (req, signal) => ollamaChat(dialect, req, signal, baseUrlOverride);
     case 'anthropic':
-      return (req, signal) => anthropicChat(dialect, req, signal);
+      return (req, signal) => anthropicChat(dialect, req, signal, baseUrlOverride);
     case 'gemini':
-      return (req, signal) => geminiChat(dialect, req, signal);
+      return (req, signal) => geminiChat(dialect, req, signal, baseUrlOverride);
     default:
       return undefined;
   }

@@ -5,7 +5,7 @@
  * injectAuth：按 dialect.authStyle 从 Keychain 取密钥注入头（Bearer / x-api-key）。
  *   query-key（Gemini）需改写 url，FetchGateway 当前只注入 header —— 留 Phase 6 扩展。
  */
-import { BUILTIN_PROVIDERS, getDialect } from '@desksoul/protocol';
+import { BUILTIN_PROVIDERS, getDialect, getProviderBaseUrl } from '@desksoul/protocol';
 
 export interface KeychainLike {
   get(providerId: string, keyName: string): Promise<string | null>;
@@ -13,6 +13,7 @@ export interface KeychainLike {
 
 export interface ProviderConfigDeps {
   keychain: KeychainLike;
+  getPrefs?: () => Record<string, unknown>;
 }
 
 export interface ProviderConfigService {
@@ -29,6 +30,8 @@ export function createProviderConfig(deps: ProviderConfigDeps): ProviderConfigSe
     resolveHost(url) {
       for (const d of Object.values(BUILTIN_PROVIDERS)) {
         if (url.startsWith(d.host)) return { providerId: d.id };
+        const configuredBaseUrl = getProviderBaseUrl(d.id, deps.getPrefs?.());
+        if (configuredBaseUrl && url.startsWith(configuredBaseUrl)) return { providerId: d.id };
       }
       return null;
     },

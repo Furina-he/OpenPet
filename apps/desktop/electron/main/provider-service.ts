@@ -3,7 +3,12 @@
  * listModels/ollamaDetect/testConnection）。纯函数集合，注入 keychain + httpGetJson；
  * 由 ipc-router spread 进 createRouter。M5 headless 验证用；UI 在 M7 接 D3。
  */
-import { BUILTIN_PROVIDERS, getDialect, type ErrorKind } from '@desksoul/protocol';
+import {
+  BUILTIN_PROVIDERS,
+  getDialect,
+  getProviderBaseUrl,
+  type ErrorKind,
+} from '@desksoul/protocol';
 import type { KeychainLike } from './provider-config.js';
 
 /** GET 一个 URL（可带头）返回解析后 JSON；非 2xx 抛带 `status` 的 Error。 */
@@ -17,6 +22,7 @@ export interface KeychainRW extends KeychainLike {
 export interface ProviderServiceDeps {
   keychain: KeychainRW;
   httpGetJson: HttpGetJson;
+  getPrefs?: () => Record<string, unknown>;
 }
 
 function classify(e: unknown): ErrorKind {
@@ -29,7 +35,27 @@ function classify(e: unknown): ErrorKind {
   return 'network';
 }
 
+function parseModelIds(payload: unknown): string[] {
+  const data = (payload as { data?: unknown; models?: unknown }).data;
+  const models = (payload as { data?: unknown; models?: unknown }).models;
+  const source = Array.isArray(data) ? data : Array.isArray(models) ? models : [];
+  return source
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const record = item as { id?: unknown; name?: unknown };
+        if (typeof record.id === 'string') return record.id;
+        if (typeof record.name === 'string') return record.name;
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
 export function createProviderService(deps: ProviderServiceDeps) {
+  const baseUrlFor = (providerId: string): string | undefined =>
+    getProviderBaseUrl(providerId, deps.getPrefs?.());
+
   return {
     'provider.saveKey': async (p: { providerId: string; key: string }) => {
       await deps.keychain.set(p.providerId, 'apiKey', p.key);
@@ -54,12 +80,31 @@ export function createProviderService(deps: ProviderServiceDeps) {
       return { providers };
     },
     'provider.listModels': async (p: { providerId: string }) => {
-      return { models: getDialect(p.providerId)?.defaultModels ?? [] };
+      const d = getDialect(p.providerId);
+      if (!d) return { models: [] as string[] };
+      const baseUrl = baseUrlFor(p.providerId) ?? d.baseUrl;
+      if (d.format === 'ollama') {
+        const tags = (await deps.httpGetJson(`${baseUrl}/api/tags`)) as {
+          models?: Array<{ name: string }>;
+        };
+        return { models: (tags.models ?? []).map((m) => m.name) };
+      }
+      if (d.format === 'openai') {
+        const key = await deps.keychain.get(p.providerId, 'apiKey');
+        if (!key) return { models: d.defaultModels };
+        const payload = await deps.httpGetJson(`${baseUrl}/models`, {
+          authorization: `Bearer ${key}`,
+        });
+        const models = parseModelIds(payload);
+        return { models: models.length ? models : d.defaultModels };
+      }
+      return { models: d.defaultModels };
     },
     'provider.ollamaDetect': async (_p: Record<string, never>) => {
       const ollama = getDialect('ollama')!;
+      const baseUrl = baseUrlFor('ollama') ?? ollama.baseUrl;
       try {
-        const tags = (await deps.httpGetJson(`${ollama.baseUrl}/api/tags`)) as {
+        const tags = (await deps.httpGetJson(`${baseUrl}/api/tags`)) as {
           models?: Array<{ name: string }>;
         };
         return { available: true, models: (tags.models ?? []).map((m) => m.name) };
@@ -70,9 +115,10 @@ export function createProviderService(deps: ProviderServiceDeps) {
     'provider.testConnection': async (p: { providerId: string }) => {
       const d = getDialect(p.providerId);
       if (!d) return { ok: false, errorKind: 'unknown' as ErrorKind, detail: 'unknown provider' };
+      const baseUrl = baseUrlFor(p.providerId) ?? d.baseUrl;
       if (d.format === 'ollama') {
         try {
-          await deps.httpGetJson(`${d.baseUrl}/api/tags`);
+          await deps.httpGetJson(`${baseUrl}/api/tags`);
           return { ok: true };
         } catch (e) {
           return { ok: false, errorKind: classify(e) };
@@ -83,7 +129,7 @@ export function createProviderService(deps: ProviderServiceDeps) {
       // openai 格式有 /models 可探活；其余 MVP 仅凭有 key 视为可达（真实 ping 留 V1+）
       if (d.format !== 'openai') return { ok: true };
       try {
-        await deps.httpGetJson(`${d.baseUrl}/models`, { authorization: `Bearer ${key}` });
+        await deps.httpGetJson(`${baseUrl}/models`, { authorization: `Bearer ${key}` });
         return { ok: true };
       } catch (e) {
         return { ok: false, errorKind: classify(e) };

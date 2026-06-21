@@ -177,7 +177,10 @@ export class ProviderHost {
   }
 
   /** 开始一个流，返回驱动它的 requestId。无 providerId 时走 mock（intervalMs）路径。 */
-  send(sessionId: string, opts?: { providerId?: string; request?: ChatRequest }): string {
+  send(
+    sessionId: string,
+    opts?: { providerId?: string; request?: ChatRequest; baseUrl?: string },
+  ): string {
     if (this.disposed) throw new Error('ProviderHost disposed');
     if (!this.worker) throw new Error('provider worker not ready');
     const requestId = `r${this.nextRequestId++}`;
@@ -188,6 +191,7 @@ export class ProviderHost {
       sessionId,
       ...(opts?.providerId !== undefined ? { providerId: opts.providerId } : {}),
       ...(opts?.request !== undefined ? { request: opts.request } : {}),
+      ...(opts?.baseUrl !== undefined ? { baseUrl: opts.baseUrl } : {}),
       ...(opts?.providerId === undefined && this.intervalMs !== undefined
         ? { intervalMs: this.intervalMs }
         : {}),

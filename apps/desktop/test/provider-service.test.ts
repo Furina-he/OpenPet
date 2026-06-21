@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createProviderService, type ProviderServiceDeps } from '../electron/main/provider-service';
 
-function makeDeps(httpGetJson?: ProviderServiceDeps['httpGetJson']): ProviderServiceDeps {
+function makeDeps(
+  httpGetJson?: ProviderServiceDeps['httpGetJson'],
+  prefs?: Record<string, unknown>,
+): ProviderServiceDeps {
   const store: Record<string, string> = {};
   return {
     keychain: {
@@ -14,6 +17,7 @@ function makeDeps(httpGetJson?: ProviderServiceDeps['httpGetJson']): ProviderSer
       },
     },
     httpGetJson: httpGetJson ?? (async () => ({ models: [{ name: 'llama3' }] })),
+    ...(prefs ? { getPrefs: () => prefs } : {}),
   };
 }
 
@@ -72,6 +76,36 @@ describe('provider-service', () => {
     expect(await svc['provider.testConnection']({ providerId: 'openai' })).toMatchObject({
       ok: false,
       errorKind: 'auth',
+    });
+  });
+
+  it('listModels queries OpenAI-compatible upstream from overridden base URL', async () => {
+    const http = vi.fn(async () => ({ data: [{ id: 'relay-gpt' }, { id: 'relay-coder' }] }));
+    const svc = createProviderService(
+      makeDeps(http, { 'model.openaiBaseUrl': 'https://relay.example.com/v1' }),
+    );
+    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-relay' });
+
+    await expect(svc['provider.listModels']({ providerId: 'openai' })).resolves.toEqual({
+      models: ['relay-gpt', 'relay-coder'],
+    });
+    expect(http).toHaveBeenCalledWith('https://relay.example.com/v1/models', {
+      authorization: 'Bearer sk-relay',
+    });
+  });
+
+  it('testConnection uses overridden OpenAI-compatible base URL', async () => {
+    const http = vi.fn(async () => ({ data: [] }));
+    const svc = createProviderService(
+      makeDeps(http, { 'model.openaiBaseUrl': 'https://relay.example.com/v1' }),
+    );
+    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-relay' });
+
+    await expect(svc['provider.testConnection']({ providerId: 'openai' })).resolves.toEqual({
+      ok: true,
+    });
+    expect(http).toHaveBeenCalledWith('https://relay.example.com/v1/models', {
+      authorization: 'Bearer sk-relay',
     });
   });
 });

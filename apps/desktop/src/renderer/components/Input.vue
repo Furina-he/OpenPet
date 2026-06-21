@@ -5,7 +5,7 @@ const emit = defineEmits<{ 'update:modelValue': [string] }>();
 </script>
 <template>
   <input
-    class="rounded-input border border-glass-border bg-glass-bg px-3 py-2 text-base text-text-main"
+    class="ds-control rounded-input px-3 py-2 text-base text-text-main"
     :value="modelValue"
     :placeholder="placeholder"
     @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"

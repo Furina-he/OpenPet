@@ -779,7 +779,8 @@
       .astr-provider {
         display: grid;
         grid-template-rows: auto 1fr;
-        min-height: min(620px, calc(100vh - 200px));
+        height: min(720px, calc(100vh - 190px));
+        min-height: 560px;
         overflow: hidden;
         padding: 0;
       }
@@ -836,6 +837,87 @@
 
       .source-menu.open {
         display: grid;
+      }
+
+      .provider-template-menu {
+        left: auto;
+        right: 0;
+        width: min(330px, 42vw);
+        max-height: min(640px, calc(100vh - 160px));
+        overflow: hidden;
+      }
+
+      .provider-template-list {
+        display: grid;
+        gap: 2px;
+        min-height: 0;
+        max-height: min(560px, calc(100vh - 230px));
+        overflow: auto;
+      }
+
+      .provider-template-option {
+        display: grid;
+        grid-template-columns: 32px 1fr;
+        align-items: center;
+        gap: 12px;
+        min-height: 50px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        text-align: left;
+        font-size: 15px;
+      }
+
+      .provider-template-option:hover {
+        background: rgba(23, 24, 33, 0.05);
+      }
+
+      .provider-template-icon {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        font-weight: 760;
+      }
+
+      .provider-template-pager {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 6px 2px;
+        border-top: 1px solid var(--line);
+      }
+
+      .provider-template-pager button {
+        min-height: 32px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.75);
+      }
+
+      .provider-template-pager button:disabled {
+        opacity: 0.38;
+        cursor: default;
+      }
+
+      .provider-template-dots {
+        display: flex;
+        gap: 6px;
+      }
+
+      .provider-template-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: rgba(23, 24, 33, 0.18);
+      }
+
+      .provider-template-dot.active {
+        background: #1677c8;
       }
 
       .source-option {
@@ -915,7 +997,9 @@
 
       .provider-config {
         display: none;
+        min-height: 0;
         overflow: auto;
+        overscroll-behavior: contain;
       }
 
       .provider-config.show {
@@ -1686,7 +1770,17 @@
                         </div>
                       </div>
                       <button class="source-trash" id="deleteProviderSource">⌫</button>
-                      <button class="astr-add" id="addProviderSource">＋ 新增</button>
+                      <div class="provider-source-select">
+                        <button class="astr-add" id="addProviderSource">＋ 新增</button>
+                        <div class="source-menu provider-template-menu" id="providerTemplateMenu">
+                          <div class="provider-template-list" id="providerTemplatePage"></div>
+                          <div class="provider-template-pager">
+                            <button id="providerTemplatePrev">上一页</button>
+                            <div class="provider-template-dots" id="providerTemplateDots"></div>
+                            <button id="providerTemplateNext">下一页</button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div class="provider-empty" id="providerEmpty">
                       <div>
@@ -2049,6 +2143,7 @@
       }
 
       $("#providerSourceButton").addEventListener("click", () => {
+        $("#providerTemplateMenu").classList.remove("open");
         $("#providerSourceMenu").classList.toggle("open");
       });
       $$(".source-option").forEach((button) => {
@@ -2056,12 +2151,78 @@
           showProviderConfig(button.dataset.providerName || button.dataset.source, button.dataset.baseUrl),
         );
       });
+
+      const providerTemplates = [
+        { icon: "◎", name: "OpenAI Compatible", id: "openai_2", url: "https://api.openai.com/v1" },
+        { icon: "◆", name: "Google Gemini", id: "gemini_1", url: "https://generativelanguage.googleapis.com/v1beta" },
+        { icon: "AI", name: "Anthropic", id: "anthropic_1", url: "https://api.anthropic.com/v1" },
+        { icon: "K", name: "Kimi Coding Plan", id: "kimi_coding_1", url: "https://api.moonshot.cn/v1" },
+        { icon: "K", name: "Moonshot", id: "moonshot_1", url: "https://api.moonshot.cn/v1" },
+        { icon: "〽", name: "MiniMax", id: "minimax_1", url: "https://api.minimax.chat/v1" },
+        { icon: "〽", name: "MiniMax Token Plan", id: "minimax_token_1", url: "https://api.minimax.chat/v1" },
+        { icon: "mi", name: "Xiaomi", id: "xiaomi_1", url: "https://api.xiaomi.com/v1" },
+        { icon: "mi", name: "Xiaomi Token Plan", id: "xiaomi_token_1", url: "https://api.xiaomi.com/v1" },
+        { icon: "x", name: "xAI", id: "xai_1", url: "https://api.x.ai/v1" },
+        { icon: "◒", name: "DeepSeek", id: "deepseek_1", url: "https://api.deepseek.com/v1" },
+        { icon: "✣", name: "Zhipu", id: "zhipu_1", url: "https://open.bigmodel.cn/api/paas/v4" },
+        { icon: "M", name: "LongCat", id: "longcat_1", url: "https://api.longcat.chat/openai/v1" },
+        { icon: "●", name: "AIHubMix", id: "aihubmix_1", url: "https://aihubmix.com/v1" },
+        { icon: "↔", name: "OpenRouter", id: "openrouter_1", url: "https://openrouter.ai/api/v1" },
+        { icon: "▰", name: "NVIDIA", id: "nvidia_1", url: "https://integrate.api.nvidia.com/v1" },
+        { icon: "A", name: "Azure OpenAI", id: "azure_openai_1", url: "https://example.openai.azure.com/openai" },
+        { icon: "O", name: "Ollama", id: "ollama_1", url: "http://127.0.0.1:11434/v1" },
+      ];
+      const providerTemplatePageSize = 11;
+      let providerTemplatePage = 0;
+
+      function providerTemplatePageCount() {
+        return Math.ceil(providerTemplates.length / providerTemplatePageSize);
+      }
+
+      function renderProviderTemplatePage() {
+        const start = providerTemplatePage * providerTemplatePageSize;
+        const pageItems = providerTemplates.slice(start, start + providerTemplatePageSize);
+        $("#providerTemplatePage").innerHTML = pageItems
+          .map(
+            (item, index) => `
+              <button class="provider-template-option" data-template-index="${start + index}">
+                <span class="provider-template-icon">${item.icon}</span>
+                <span>${item.name}</span>
+              </button>
+            `,
+          )
+          .join("");
+        $("#providerTemplateDots").innerHTML = Array.from({ length: providerTemplatePageCount() }, (_, index) =>
+          `<span class="provider-template-dot${index === providerTemplatePage ? " active" : ""}"></span>`,
+        ).join("");
+        $("#providerTemplatePrev").disabled = providerTemplatePage === 0;
+        $("#providerTemplateNext").disabled = providerTemplatePage >= providerTemplatePageCount() - 1;
+        $$(".provider-template-option").forEach((button) => {
+          button.addEventListener("click", () => {
+            const template = providerTemplates[Number(button.dataset.templateIndex)];
+            $("#providerTemplateMenu").classList.remove("open");
+            showProviderConfig(template.id, template.url);
+            showToast(`已新增 ${template.name}`);
+          });
+        });
+      }
+
       $("#addProviderSource").addEventListener("click", () => {
-        showProviderConfig("openai_3", "https://api.openai.com/v1");
-        $("#providerTitle").textContent = "新提供商源";
-        showToast("已创建新的提供商源草稿");
+        $("#providerSourceMenu").classList.remove("open");
+        $("#providerTemplateMenu").classList.toggle("open");
+        renderProviderTemplatePage();
+      });
+      $("#providerTemplatePrev").addEventListener("click", () => {
+        providerTemplatePage = Math.max(0, providerTemplatePage - 1);
+        renderProviderTemplatePage();
+      });
+      $("#providerTemplateNext").addEventListener("click", () => {
+        providerTemplatePage = Math.min(providerTemplatePageCount() - 1, providerTemplatePage + 1);
+        renderProviderTemplatePage();
       });
       $("#deleteProviderSource").addEventListener("click", () => {
+        $("#providerTemplateMenu").classList.remove("open");
+        $("#providerSourceMenu").classList.remove("open");
         $("#providerSourceLabel").textContent = "请选择一个提供商源";
         $("#providerSourceButton").classList.remove("selected");
         $("#providerEmpty").style.display = "grid";

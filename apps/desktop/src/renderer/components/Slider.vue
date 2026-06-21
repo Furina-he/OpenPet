@@ -21,7 +21,7 @@ const pct = computed(() => {
 });
 </script>
 <template>
-  <div class="flex items-center gap-2">
+  <div class="flex min-w-[220px] items-center gap-2">
     <span v-if="minLabel" class="text-xs text-text-sub">{{ minLabel }}</span>
     <input
       type="range"
@@ -41,7 +41,7 @@ const pct = computed(() => {
 .ds-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 11rem;
+  width: 100%;
   height: 6px;
   border-radius: 9999px;
   /* 左侧品牌暖色渐变填充至 --ds-pct，右侧轨道用玻璃描边色。 */
