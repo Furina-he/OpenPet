@@ -5,6 +5,18 @@
 
 ---
 
+## 0. ⭐ 进行中（新分支，待执行）：Provider 工作台（AstrBot 对齐）
+
+> 分支 `feat/provider-workbench`（自 main 切出；含两文档提交，工作树另有 33 个无关改动未动）。**计划就绪，等新开会话 inline 执行**。
+>
+> - **设计 spec**：[`docs/superpowers/specs/2026-06-21-provider-workbench-design.md`](../superpowers/specs/2026-06-21-provider-workbench-design.md)
+> - **实现计划**（一份，A→D 约 16 task，TDD 红→绿→提交）：[`docs/superpowers/plans/2026-06-21-provider-workbench.md`](../superpowers/plans/2026-06-21-provider-workbench.md)
+> - **做什么**：把单 provider/单 model 重构为 AstrBot 两层「Source + Model」工作台——可多建 source（同 adapter 并存）、每 source 挂多 model（能力标签 + 逐模型测试）、6 能力 tab、按能力选默认（**无降级链**）、**key 明文随 source 存（用户裁定，放弃 keychain）**。
+> - **怎么接续**：`git checkout feat/provider-workbench` → 读 plan → 用 `superpowers:executing-plans` inline 逐 task（**改 protocol 先 `pnpm --filter @desksoul/protocol build` 再跑 desktop；跑全量 desktop 前 build sidecar**）。
+> - **背景/可行性**：`docs/research/astrbot-fusion-notes.md` + 记忆 [[astrbot-fusion-feasibility]]。**注意**：这是 Provider 体验线，与"MVP 真窗冒烟从未跑"那笔债（§6）**并行、不互替**。
+
+---
+
 ## 1. 一句话现状
 
 M1–M6 + B/C 重构 + **M7a 地基** 在 `main`；M7b 拆 M7b-1（D 面板）/M7b-2（引导）。M7b-1 **P1/P2/P2.5/P3/P4 完成**；**视觉保真 harness + Hub/D4 首轮保真审计 完成、PM 已复核**（desktop 260 绿；Playwright MCP 截图↔PNG 闭环已跑通）。**P3（D2/D6）+ P4（D3 双栏 + chat 集成）+ P5（D8 + D3 polish + ABI 收口）代码完成、PM 已复核**（desktop 273 / protocol 178 / build exit 0）。**当前待办 = P5 人工硬门槛**：真 Electron GUI 冒烟（D8 按 `7075fa1f`）+ 真 Key 端到端 + 裁定 tag。✅ **ui-design 已 v0.2 重写**（2026-06-19）：视觉真源=`UI/` 高保真图，**43 屏全有专属图**，文件→屏映射经作者逐张核准（D1/D2=`774644b7`、D3/D4=`36b542fb`、D5/D7=`1d7669e3`、D6/D8=`7075fa1f`、E1/F1=`60ea4a18`…完整见 ui-design §4）；已删全部 ASCII 线稿，§2 token + §15.1 默认表 + 各屏契约保留。
