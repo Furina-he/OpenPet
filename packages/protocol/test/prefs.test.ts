@@ -75,3 +75,28 @@ describe('PrefsSchema hotkeys (M8c J2)', () => {
     expect(DEFAULT_PREFS['hotkeys.openHub']).toBe('CommandOrControl+Shift+,');
   });
 });
+
+describe('PrefsSchema provider workbench (AstrBot 对齐)', () => {
+  it('defaults sources/models=[] 与 default*ModelId=""', () => {
+    expect(DEFAULT_PREFS['model.providerSources']).toEqual([]);
+    expect(DEFAULT_PREFS['model.models']).toEqual([]);
+    expect(DEFAULT_PREFS['model.defaultChatModelId']).toBe('');
+    expect(DEFAULT_PREFS['model.defaultEmbeddingModelId']).toBe('');
+    expect(DEFAULT_PREFS['model.defaultSttModelId']).toBe('');
+    expect(DEFAULT_PREFS['model.defaultTtsModelId']).toBe('');
+    expect(DEFAULT_PREFS['model.defaultRerankModelId']).toBe('');
+    expect(DEFAULT_PREFS['model.defaultAgentModelId']).toBe('');
+  });
+  it('validates a source array via .shape', () => {
+    expect(
+      PrefsSchema.shape['model.providerSources'].safeParse([
+        { id: 'openai-main', adapter: 'openai', capability: 'chat', apiBase: 'https://api.openai.com/v1' },
+      ]).success,
+    ).toBe(true);
+    expect(
+      PrefsSchema.shape['model.providerSources'].safeParse([
+        { id: 'x', adapter: 'nope', capability: 'chat', apiBase: '' },
+      ]).success,
+    ).toBe(false);
+  });
+});

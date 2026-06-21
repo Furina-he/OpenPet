@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { BUILTIN_PROVIDERS, normalizeProviderBaseUrl } from './provider-config.js';
+import {
+  BUILTIN_PROVIDERS,
+  normalizeProviderBaseUrl,
+  ProviderSourceSchema,
+  ModelEntrySchema,
+} from './provider-config.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
@@ -70,6 +75,15 @@ export const PrefsSchema = z.object({
   'model.claudeBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.claude!.baseUrl),
   'model.geminiBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.gemini!.baseUrl),
   'model.ollamaBaseUrl': BaseUrlSchema.default(BUILTIN_PROVIDERS.ollama!.baseUrl),
+  // model · Provider 工作台（AstrBot 对齐）—— 两层 Source+Model（旧键并存，迁移后弃用）
+  'model.providerSources': z.array(ProviderSourceSchema).default([]),
+  'model.models': z.array(ModelEntrySchema).default([]),
+  'model.defaultChatModelId': z.string().default(''),
+  'model.defaultEmbeddingModelId': z.string().default(''),
+  'model.defaultSttModelId': z.string().default(''),
+  'model.defaultTtsModelId': z.string().default(''),
+  'model.defaultRerankModelId': z.string().default(''),
+  'model.defaultAgentModelId': z.string().default(''),
   // budget（D3 预算告警；本期仅持久化）
   'budget.enabled': z.boolean().default(false),
   'budget.monthlyCap': z.number().min(0).default(0),
