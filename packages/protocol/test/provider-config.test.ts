@@ -8,7 +8,9 @@ import {
   generateUniqueSourceId,
   modelEntryId,
   getModelsUrlForAdapter,
+  resolveChatTarget,
 } from '../src/provider-config.js';
+import type { ProviderSource, ModelEntry } from '../src/provider-config.js';
 
 describe('BUILTIN_PROVIDERS', () => {
   it('includes openai/deepseek/qwen/claude/gemini/ollama', () => {
@@ -104,5 +106,41 @@ describe('helpers + templates', () => {
       'https://g/v1beta/models?key=sk',
     );
     expect(getModelsUrlForAdapter('gemini', 'https://g/v1beta', '')).toBe('https://g/v1beta/models');
+  });
+});
+
+describe('resolveChatTarget', () => {
+  const sources: ProviderSource[] = [
+    {
+      id: 'openai-main',
+      adapter: 'openai',
+      capability: 'chat',
+      apiBase: 'https://api.openai.com/v1',
+      key: 'k',
+      enabled: true,
+    },
+  ];
+  const models: ModelEntry[] = [
+    { id: 'openai-main/gpt-4o', sourceId: 'openai-main', model: 'gpt-4o', enabled: true, caps: {} },
+  ];
+
+  it('resolves a valid target', () => {
+    expect(resolveChatTarget(sources, models, 'openai-main/gpt-4o')).toEqual({
+      sourceId: 'openai-main',
+      adapter: 'openai',
+      apiBase: 'https://api.openai.com/v1',
+      model: 'gpt-4o',
+    });
+  });
+
+  it('returns null on empty / missing / disabled model / disabled source', () => {
+    expect(resolveChatTarget(sources, models, '')).toBeNull();
+    expect(resolveChatTarget(sources, models, 'x/y')).toBeNull();
+    expect(
+      resolveChatTarget(sources, [{ ...models[0]!, enabled: false }], 'openai-main/gpt-4o'),
+    ).toBeNull();
+    expect(
+      resolveChatTarget([{ ...sources[0]!, enabled: false }], models, 'openai-main/gpt-4o'),
+    ).toBeNull();
   });
 });

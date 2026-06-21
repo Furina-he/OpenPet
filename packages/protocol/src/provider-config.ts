@@ -246,3 +246,32 @@ export function getModelsUrlForAdapter(adapter: Adapter, apiBase: string, key: s
   if (adapter === 'gemini') return `${base}/models${key ? `?key=${encodeURIComponent(key)}` : ''}`;
   return `${base}/models`;
 }
+
+export interface ChatTarget {
+  sourceId: string;
+  adapter: Adapter;
+  apiBase: string;
+  model: string;
+}
+
+/**
+ * defaultChatModelId → ModelEntry → ProviderSource；任一缺失/disabled 返回 null（走离线兜底）。
+ * 纯函数，无降级链（对齐 AstrBot）。
+ */
+export function resolveChatTarget(
+  sources: ProviderSource[],
+  models: ModelEntry[],
+  defaultChatModelId: string,
+): ChatTarget | null {
+  if (!defaultChatModelId) return null;
+  const entry = models.find((m) => m.id === defaultChatModelId);
+  if (!entry || !entry.enabled) return null;
+  const source = sources.find((s) => s.id === entry.sourceId);
+  if (!source || !source.enabled) return null;
+  return {
+    sourceId: source.id,
+    adapter: source.adapter,
+    apiBase: source.apiBase,
+    model: entry.model,
+  };
+}
