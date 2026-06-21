@@ -1,10 +1,22 @@
-/** 决定一轮 send 的 provider 降级链首项与 model（纯函数，便于单测，不碰 host）。 */
+import type { Adapter, ChatTarget } from '@desksoul/protocol';
+
+/**
+ * 决定一轮 send 的链首项 + model/adapter/baseUrl（纯函数，不碰 host）。
+ * 无降级链：resolved 命中即单项 [sourceId]（带 adapter/baseUrl）；否则回退静态 chain。
+ */
 export function resolveSendTarget(
   explicitProviderId: string | undefined,
   staticChain: string[],
-  resolved: { providerId?: string; model?: string } | undefined,
-): { chain: string[]; model?: string } {
+  resolved: ChatTarget | null | undefined,
+): { chain: string[]; model?: string; adapter?: Adapter; baseUrl?: string } {
   if (explicitProviderId) return { chain: [explicitProviderId] };
-  const chain = resolved?.providerId ? [resolved.providerId] : staticChain;
-  return { chain, ...(resolved?.model ? { model: resolved.model } : {}) };
+  if (resolved) {
+    return {
+      chain: [resolved.sourceId],
+      model: resolved.model,
+      adapter: resolved.adapter,
+      baseUrl: resolved.apiBase,
+    };
+  }
+  return { chain: staticChain };
 }

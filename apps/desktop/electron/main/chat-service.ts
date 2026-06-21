@@ -19,8 +19,10 @@ import { statSync } from 'node:fs';
 import {
   DEFAULT_PERSONA_STATE,
   updatePersonaState,
+  type Adapter,
   type ChatEvent,
   type ChatRequest,
+  type ChatTarget,
   type StorageUsage,
 } from '@desksoul/protocol';
 import { ConversationCore, type Notification } from './conversation-core.js';
@@ -64,8 +66,8 @@ export interface ChatServiceOptions {
   defaultProviderId?: string;
   /** 降级链 [primary, ...fallbacks]；优先于 defaultProviderId。首 delta 前失败顺位重试一次。 */
   providerChain?: string[];
-  /** 动态解析当前 provider/model（无显式 providerId 时用）；ipc-router 从 prefs 注入。 */
-  resolveModel?: () => { providerId?: string; model?: string; baseUrl?: string };
+  /** 动态解析当前 chat 目标（无显式 providerId 时用）；ipc-router 从 prefs 注入（两层 resolveChatTarget）。 */
+  resolveModel?: () => ChatTarget | null;
 }
 
 const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };
@@ -82,9 +84,11 @@ interface TurnState {
   sawDelta: boolean;
   /** 本轮是否已做过工具回灌（单轮，防无限循环）。 */
   toolRound: boolean;
-  /** 当前 provider 的自定义 Base URL（通常是 OpenAI 兼容中转站）。 */
+  /** 当前 provider 的自定义 Base URL（通常是 OpenAI 兼容中转站 / source.apiBase）。 */
   baseUrl?: string;
-  /** baseUrl 归属 provider，降级到其它 provider 时不能误用。 */
+  /** 当前 source 的 adapter（worker 据此选 provider fn）；与 baseUrl 同属 baseProviderId。 */
+  adapter?: Adapter;
+  /** baseUrl/adapter 归属 provider，降级到其它 provider 时不能误用。 */
   baseProviderId?: string;
   /** 累积本轮 provider 产出的 tool_call，done(stop) 时统一执行 + 回灌。 */
   pendingTools: Array<{ id: string; name: string; args: unknown }>;
@@ -102,10 +106,8 @@ export class ChatService {
   private readonly host: ProviderHost;
   readonly plugins: PluginGateway;
   private readonly providerChain: string[];
-  /** 无显式 providerId 时，从 prefs 取当前 provider/model（ipc-router 注入）。 */
-  private readonly resolveModel:
-    | (() => { providerId?: string; model?: string; baseUrl?: string })
-    | undefined;
+  /** 无显式 providerId 时，从 prefs 取当前 chat 目标（ipc-router 注入两层 resolveChatTarget）。 */
+  private readonly resolveModel: (() => ChatTarget | null) | undefined;
   /**
    * 在途轮的 provider 编排态（降级/首delta/工具回灌）。生命周期绑定「provider
    * 事件流」：done 时随 onProviderEvent 清理。一轮一个对象，取代原先 4 张并行 Map。
@@ -157,8 +159,12 @@ export class ChatService {
       throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
     }
     const resolved = providerId ? undefined : this.resolveModel?.();
-    const { chain, model } = resolveSendTarget(providerId, this.providerChain, resolved);
-    const baseProviderId = resolved?.providerId;
+    const { chain, model, adapter, baseUrl } = resolveSendTarget(
+      providerId,
+      this.providerChain,
+      resolved,
+    );
+    const baseProviderId = resolved?.sourceId;
     // ContextAssembler：system prompt(人设+persona+行为标签规约) + 最近 20 轮 + 当前 user。
     const request = assembleContext({
       store: this.conv,
@@ -173,7 +179,8 @@ export class ChatService {
       request,
       sawDelta: false,
       toolRound: false,
-      ...(resolved?.baseUrl ? { baseUrl: resolved.baseUrl, baseProviderId } : {}),
+      ...(baseUrl ? { baseUrl, baseProviderId } : {}),
+      ...(adapter ? { adapter } : {}),
       pendingTools: [],
     });
     try {
@@ -184,9 +191,8 @@ export class ChatService {
           ? {
               providerId: chain[0]!,
               request,
-              ...(resolved?.baseUrl && chain[0] === baseProviderId
-                ? { baseUrl: resolved.baseUrl }
-                : {}),
+              ...(baseUrl && chain[0] === baseProviderId ? { baseUrl } : {}),
+              ...(adapter && chain[0] === baseProviderId ? { adapter } : {}),
             }
           : {},
       );
@@ -247,6 +253,9 @@ export class ChatService {
             request: turn.request,
             ...(turn.baseUrl && providerId === turn.baseProviderId
               ? { baseUrl: turn.baseUrl }
+              : {}),
+            ...(turn.adapter && providerId === turn.baseProviderId
+              ? { adapter: turn.adapter }
               : {}),
           });
           return; // 吞掉本次 error done，等下一个 provider 接管
@@ -311,6 +320,7 @@ export class ChatService {
       providerId,
       request: turn.request,
       ...(turn.baseUrl && providerId === turn.baseProviderId ? { baseUrl: turn.baseUrl } : {}),
+      ...(turn.adapter && providerId === turn.baseProviderId ? { adapter: turn.adapter } : {}),
     });
   }
 

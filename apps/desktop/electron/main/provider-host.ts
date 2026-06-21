@@ -17,6 +17,7 @@
  */
 import { Worker } from 'node:worker_threads';
 import type {
+  Adapter,
   ChatEvent,
   ChatStartFrame,
   ChatRequest,
@@ -179,7 +180,7 @@ export class ProviderHost {
   /** 开始一个流，返回驱动它的 requestId。无 providerId 时走 mock（intervalMs）路径。 */
   send(
     sessionId: string,
-    opts?: { providerId?: string; request?: ChatRequest; baseUrl?: string },
+    opts?: { providerId?: string; request?: ChatRequest; baseUrl?: string; adapter?: Adapter },
   ): string {
     if (this.disposed) throw new Error('ProviderHost disposed');
     if (!this.worker) throw new Error('provider worker not ready');
@@ -192,6 +193,7 @@ export class ProviderHost {
       ...(opts?.providerId !== undefined ? { providerId: opts.providerId } : {}),
       ...(opts?.request !== undefined ? { request: opts.request } : {}),
       ...(opts?.baseUrl !== undefined ? { baseUrl: opts.baseUrl } : {}),
+      ...(opts?.adapter !== undefined ? { adapter: opts.adapter } : {}),
       ...(opts?.providerId === undefined && this.intervalMs !== undefined
         ? { intervalMs: this.intervalMs }
         : {}),

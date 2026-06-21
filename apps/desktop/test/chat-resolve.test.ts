@@ -1,25 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import { resolveSendTarget } from '../electron/main/chat-resolve';
+import type { ChatTarget } from '@desksoul/protocol';
 
-describe('resolveSendTarget', () => {
-  it('显式 providerId 优先，忽略 resolved', () => {
-    expect(resolveSendTarget('openai', ['claude'], { providerId: 'gemini', model: 'g' })).toEqual({
-      chain: ['openai'],
+describe('resolveSendTarget (两层)', () => {
+  it('显式 providerId 优先（单项 chain，无 model/adapter/baseUrl）', () => {
+    expect(resolveSendTarget('openai-main', [], undefined)).toEqual({ chain: ['openai-main'] });
+  });
+
+  it('resolved 命中 → chain=[sourceId] + model/adapter/baseUrl', () => {
+    const resolved: ChatTarget = {
+      sourceId: 'openai-main',
+      adapter: 'openai',
+      apiBase: 'https://api.openai.com/v1',
+      model: 'gpt-4o',
+    };
+    expect(resolveSendTarget(undefined, ['fallback'], resolved)).toEqual({
+      chain: ['openai-main'],
+      model: 'gpt-4o',
+      adapter: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
     });
   });
-  it('无显式时用 resolved.providerId 作 chain 首项 + 透传 model', () => {
-    expect(
-      resolveSendTarget(undefined, ['claude'], { providerId: 'gemini', model: 'g-1.5' }),
-    ).toEqual({
-      chain: ['gemini'],
-      model: 'g-1.5',
-    });
-  });
-  it('resolved 无 providerId → 回退静态 chain；无 model 则不带键', () => {
-    expect(resolveSendTarget(undefined, ['claude'], { model: 'x' })).toEqual({
-      chain: ['claude'],
-      model: 'x',
-    });
+
+  it('无 resolved（null/undefined）→ 回退静态 chain', () => {
+    expect(resolveSendTarget(undefined, ['openai-main'], null)).toEqual({ chain: ['openai-main'] });
     expect(resolveSendTarget(undefined, [], undefined)).toEqual({ chain: [] });
   });
 });
