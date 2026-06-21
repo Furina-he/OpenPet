@@ -1,52 +1,53 @@
 /**
- * ProviderConfig（Main 侧）—— dialect 驱动的 host 白名单 + 密钥注入，供 FetchGateway。
- *
- * resolveHost：遍历内置 dialect 的 host 前缀匹配 url → providerId（白名单）。
- * injectAuth：按 dialect.authStyle 从 Keychain 取密钥注入头（Bearer / x-api-key）。
- *   query-key（Gemini）需改写 url，FetchGateway 当前只注入 header —— 留 Phase 6 扩展。
+ * ProviderConfig（Main 侧）—— 源感知 host 白名单 + 密钥注入，供 FetchGateway。
+ * resolveHost：匹配已配置 source 的 apiBase（最长前缀）→ sourceId。
+ * injectAuth：按 source.adapter 的 authStyle 用 source.key 注入（明文随 source 存）。
  */
-import { BUILTIN_PROVIDERS, getDialect, getProviderBaseUrl } from '@desksoul/protocol';
-
-export interface KeychainLike {
-  get(providerId: string, keyName: string): Promise<string | null>;
-}
+import {
+  ADAPTER_TEMPLATES,
+  normalizeProviderBaseUrl,
+  type Prefs,
+  type ProviderSource,
+} from '@desksoul/protocol';
 
 export interface ProviderConfigDeps {
-  keychain: KeychainLike;
-  getPrefs?: () => Record<string, unknown>;
+  getPrefs: () => Prefs;
 }
 
 export interface ProviderConfigService {
   resolveHost(url: string): { providerId: string } | null;
   injectAuth(
-    providerId: string,
+    sourceId: string,
     url: string,
     headers: Record<string, string>,
   ): Promise<{ url?: string; headers: Record<string, string> }>;
 }
 
 export function createProviderConfig(deps: ProviderConfigDeps): ProviderConfigService {
+  const sources = (): ProviderSource[] => deps.getPrefs()['model.providerSources'];
   return {
     resolveHost(url) {
-      for (const d of Object.values(BUILTIN_PROVIDERS)) {
-        if (url.startsWith(d.host)) return { providerId: d.id };
-        const configuredBaseUrl = getProviderBaseUrl(d.id, deps.getPrefs?.());
-        if (configuredBaseUrl && url.startsWith(configuredBaseUrl)) return { providerId: d.id };
+      // 最长 apiBase 前缀匹配，减少同前缀歧义。
+      let best: { providerId: string; len: number } | null = null;
+      for (const s of sources()) {
+        const base = normalizeProviderBaseUrl(s.apiBase);
+        if (base && url.startsWith(base) && (!best || base.length > best.len)) {
+          best = { providerId: s.id, len: base.length };
+        }
       }
-      return null;
+      return best ? { providerId: best.providerId } : null;
     },
-    async injectAuth(providerId, url, headers) {
-      const dialect = getDialect(providerId);
-      if (!dialect || dialect.authStyle === 'none') return { headers };
-      const key = await deps.keychain.get(providerId, 'apiKey');
-      if (!key) return { headers };
-      if (dialect.authStyle === 'bearer')
-        return { headers: { ...headers, authorization: `Bearer ${key}` } };
-      if (dialect.authStyle === 'x-api-key')
-        return { headers: { ...headers, 'x-api-key': key, 'anthropic-version': '2023-06-01' } };
-      if (dialect.authStyle === 'query-key') {
+    async injectAuth(sourceId, url, headers) {
+      const s = sources().find((x) => x.id === sourceId);
+      if (!s || !s.key) return { headers };
+      const t = ADAPTER_TEMPLATES.find((x) => x.adapter === s.adapter);
+      if (!t || t.authStyle === 'none') return { headers };
+      if (t.authStyle === 'bearer') return { headers: { ...headers, authorization: `Bearer ${s.key}` } };
+      if (t.authStyle === 'x-api-key')
+        return { headers: { ...headers, 'x-api-key': s.key, 'anthropic-version': '2023-06-01' } };
+      if (t.authStyle === 'query-key') {
         const sep = url.includes('?') ? '&' : '?';
-        return { url: `${url}${sep}key=${encodeURIComponent(key)}`, headers };
+        return { url: `${url}${sep}key=${encodeURIComponent(s.key)}`, headers };
       }
       return { headers };
     },
