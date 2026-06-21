@@ -1,111 +1,164 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createProviderService, type ProviderServiceDeps } from '../electron/main/provider-service';
+import {
+  DEFAULT_PREFS,
+  type Prefs,
+  type ProviderSource,
+  type ModelEntry,
+} from '@desksoul/protocol';
 
-function makeDeps(
-  httpGetJson?: ProviderServiceDeps['httpGetJson'],
-  prefs?: Record<string, unknown>,
-): ProviderServiceDeps {
-  const store: Record<string, string> = {};
-  return {
-    keychain: {
-      get: async (id: string) => store[id] ?? null,
-      set: async (id: string, _k: string, v: string) => {
-        store[id] = v;
-      },
-      delete: async (id: string) => {
-        delete store[id];
-      },
+function makeDeps(over?: { http?: ProviderServiceDeps['httpGetJson']; prefs?: Partial<Prefs> }): {
+  deps: ProviderServiceDeps;
+  state: Prefs;
+} {
+  const state: Prefs = { ...DEFAULT_PREFS, ...over?.prefs };
+  const deps: ProviderServiceDeps = {
+    httpGetJson: over?.http ?? (async () => ({ data: [{ id: 'gpt-4o' }] })),
+    getPrefs: () => state,
+    setPref: (k, v) => {
+      (state as Record<string, unknown>)[k] = v;
     },
-    httpGetJson: httpGetJson ?? (async () => ({ models: [{ name: 'llama3' }] })),
-    ...(prefs ? { getPrefs: () => prefs } : {}),
   };
+  return { deps, state };
 }
 
-describe('provider-service', () => {
-  it('saveKey then listProviders reports hasKey', async () => {
-    const svc = createProviderService(makeDeps());
-    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-1' });
-    const { providers } = await svc['provider.listProviders']({});
-    expect(providers.find((p) => p.id === 'openai')!.hasKey).toBe(true);
+const openaiSource: ProviderSource = {
+  id: 'openai-main',
+  adapter: 'openai',
+  capability: 'chat',
+  apiBase: 'https://api.openai.com/v1',
+  key: '',
+  enabled: true,
+};
+
+describe('provider-service · sources', () => {
+  it('upsertSource adds, then getConfig returns it + templates', async () => {
+    const { deps, state } = makeDeps();
+    const svc = createProviderService(deps);
+    const r = await svc['provider.upsertSource']({ source: openaiSource });
+    expect(r).toEqual({ ok: true, id: 'openai-main' });
+    expect((state['model.providerSources'] as ProviderSource[])[0]?.id).toBe('openai-main');
+    const cfg = await svc['provider.getConfig']({});
+    expect(cfg.sources[0]?.id).toBe('openai-main');
+    expect(cfg.templates.length).toBeGreaterThan(0);
   });
 
-  it('deleteKey clears hasKey', async () => {
-    const svc = createProviderService(makeDeps());
-    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-1' });
-    await svc['provider.deleteKey']({ providerId: 'openai' });
-    const { providers } = await svc['provider.listProviders']({});
-    expect(providers.find((p) => p.id === 'openai')!.hasKey).toBe(false);
+  it('upsertSource updates in place by id (no duplicate)', async () => {
+    const { deps, state } = makeDeps({ prefs: { 'model.providerSources': [openaiSource] } });
+    const svc = createProviderService(deps);
+    await svc['provider.upsertSource']({ source: { ...openaiSource, key: 'sk-new' } });
+    const list = state['model.providerSources'] as ProviderSource[];
+    expect(list).toHaveLength(1);
+    expect(list[0]?.key).toBe('sk-new');
   });
 
-  it('ollama reports hasKey=true (no auth required)', async () => {
-    const svc = createProviderService(makeDeps());
-    const { providers } = await svc['provider.listProviders']({});
-    expect(providers.find((p) => p.id === 'ollama')!.hasKey).toBe(true);
+  it('deleteSource removes its models and clears a default pointing to them', async () => {
+    const { deps, state } = makeDeps({
+      prefs: {
+        'model.providerSources': [openaiSource],
+        'model.models': [
+          { id: 'openai-main/gpt-4o', sourceId: 'openai-main', model: 'gpt-4o', enabled: true, caps: {} },
+        ],
+        'model.defaultChatModelId': 'openai-main/gpt-4o',
+      },
+    });
+    const svc = createProviderService(deps);
+    await svc['provider.deleteSource']({ id: 'openai-main' });
+    expect(state['model.providerSources']).toEqual([]);
+    expect(state['model.models']).toEqual([]);
+    expect(state['model.defaultChatModelId']).toBe('');
+  });
+});
+
+describe('provider-service · models', () => {
+  it('fetchModels queries upstream from source.apiBase with source.key', async () => {
+    const http = vi.fn(async () => ({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }));
+    const { deps } = makeDeps({
+      http,
+      prefs: {
+        'model.providerSources': [
+          { ...openaiSource, apiBase: 'https://relay.example.com/v1', key: 'sk-r' },
+        ],
+      },
+    });
+    const svc = createProviderService(deps);
+    await expect(svc['provider.fetchModels']({ sourceId: 'openai-main' })).resolves.toEqual({
+      models: ['gpt-4o', 'gpt-4o-mini'],
+    });
+    expect(http).toHaveBeenCalledWith('https://relay.example.com/v1/models', {
+      authorization: 'Bearer sk-r',
+    });
   });
 
-  it('ollamaDetect returns available + models from /api/tags', async () => {
-    const svc = createProviderService(
-      makeDeps(vi.fn(async () => ({ models: [{ name: 'llama3' }, { name: 'qwen2' }] }))),
-    );
-    const r = await svc['provider.ollamaDetect']({});
-    expect(r.available).toBe(true);
-    expect(r.models).toEqual(['llama3', 'qwen2']);
+  it('addModel + updateModelCaps + setModelEnabled + deleteModel', async () => {
+    const { deps, state } = makeDeps({ prefs: { 'model.providerSources': [openaiSource] } });
+    const svc = createProviderService(deps);
+    const entry: ModelEntry = {
+      id: 'openai-main/gpt-4o',
+      sourceId: 'openai-main',
+      model: 'gpt-4o',
+      enabled: true,
+      caps: {},
+    };
+    await svc['provider.addModel']({ entry });
+    await svc['provider.updateModelCaps']({ id: entry.id, caps: { vision: true, tool: true } });
+    await svc['provider.setModelEnabled']({ id: entry.id, enabled: false });
+    expect((state['model.models'] as ModelEntry[])[0]).toMatchObject({
+      caps: { vision: true, tool: true },
+      enabled: false,
+    });
+    await svc['provider.deleteModel']({ id: entry.id });
+    expect(state['model.models']).toEqual([]);
   });
 
-  it('ollamaDetect returns unavailable when tags errors', async () => {
-    const svc = createProviderService(
-      makeDeps(
-        vi.fn(async () => {
-          throw new Error('ECONNREFUSED');
-        }),
-      ),
-    );
-    expect((await svc['provider.ollamaDetect']({})).available).toBe(false);
+  it('setDefault writes the capability-specific pref key', async () => {
+    const { deps, state } = makeDeps();
+    const svc = createProviderService(deps);
+    await svc['provider.setDefault']({ capability: 'chat', modelId: 'openai-main/gpt-4o' });
+    expect(state['model.defaultChatModelId']).toBe('openai-main/gpt-4o');
+    await svc['provider.setDefault']({ capability: 'embedding', modelId: 'oai/te-3' });
+    expect(state['model.defaultEmbeddingModelId']).toBe('oai/te-3');
   });
 
-  it('testConnection classifies a 401 as auth', async () => {
-    const svc = createProviderService(
-      makeDeps(
-        vi.fn(async () => {
-          const e = Object.assign(new Error('401'), { status: 401 });
-          throw e;
-        }),
-      ),
-    );
-    await svc['provider.saveKey']({ providerId: 'openai', key: 'bad' });
-    expect(await svc['provider.testConnection']({ providerId: 'openai' })).toMatchObject({
+  it('testModel classifies a 401 as auth', async () => {
+    const http = vi.fn(async () => {
+      throw Object.assign(new Error('401'), { status: 401 });
+    });
+    const { deps } = makeDeps({
+      http,
+      prefs: {
+        'model.providerSources': [{ ...openaiSource, key: 'bad' }],
+        'model.models': [
+          { id: 'openai-main/gpt-4o', sourceId: 'openai-main', model: 'gpt-4o', enabled: true, caps: {} },
+        ],
+      },
+    });
+    const svc = createProviderService(deps);
+    expect(await svc['provider.testModel']({ id: 'openai-main/gpt-4o' })).toMatchObject({
       ok: false,
       errorKind: 'auth',
     });
   });
 
-  it('listModels queries OpenAI-compatible upstream from overridden base URL', async () => {
-    const http = vi.fn(async () => ({ data: [{ id: 'relay-gpt' }, { id: 'relay-coder' }] }));
-    const svc = createProviderService(
-      makeDeps(http, { 'model.openaiBaseUrl': 'https://relay.example.com/v1' }),
-    );
-    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-relay' });
-
-    await expect(svc['provider.listModels']({ providerId: 'openai' })).resolves.toEqual({
-      models: ['relay-gpt', 'relay-coder'],
+  it('ollamaDetect uses the first ollama source apiBase', async () => {
+    const http = vi.fn(async () => ({ models: [{ name: 'llama3' }] }));
+    const { deps } = makeDeps({
+      http,
+      prefs: {
+        'model.providerSources': [
+          {
+            id: 'local',
+            adapter: 'ollama',
+            capability: 'chat',
+            apiBase: 'http://127.0.0.1:9999',
+            key: '',
+            enabled: true,
+          },
+        ],
+      },
     });
-    expect(http).toHaveBeenCalledWith('https://relay.example.com/v1/models', {
-      authorization: 'Bearer sk-relay',
-    });
-  });
-
-  it('testConnection uses overridden OpenAI-compatible base URL', async () => {
-    const http = vi.fn(async () => ({ data: [] }));
-    const svc = createProviderService(
-      makeDeps(http, { 'model.openaiBaseUrl': 'https://relay.example.com/v1' }),
-    );
-    await svc['provider.saveKey']({ providerId: 'openai', key: 'sk-relay' });
-
-    await expect(svc['provider.testConnection']({ providerId: 'openai' })).resolves.toEqual({
-      ok: true,
-    });
-    expect(http).toHaveBeenCalledWith('https://relay.example.com/v1/models', {
-      authorization: 'Bearer sk-relay',
-    });
+    const svc = createProviderService(deps);
+    expect(await svc['provider.ollamaDetect']({})).toEqual({ available: true, models: ['llama3'] });
+    expect(http).toHaveBeenCalledWith('http://127.0.0.1:9999/api/tags');
   });
 });

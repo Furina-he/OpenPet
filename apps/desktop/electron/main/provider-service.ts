@@ -1,29 +1,37 @@
 /**
- * ProviderService —— provider.* RPC handlers（saveKey/deleteKey/listProviders/
- * listModels/ollamaDetect/testConnection）。纯函数集合，注入 keychain + httpGetJson；
- * 由 ipc-router spread 进 createRouter。M5 headless 验证用；UI 在 M7 接 D3。
+ * ProviderService —— provider.* RPC（AstrBot 对齐两层 Source+Model）。
+ * 纯函数集合，注入 getPrefs/setPref + httpGetJson；由 ipc-router spread 进 router。
+ * key 明文随 source 存（prefs）；HTTP 取模型/测试在此读 source.key 注入。
  */
 import {
-  BUILTIN_PROVIDERS,
-  getDialect,
-  getProviderBaseUrl,
+  ADAPTER_TEMPLATES,
+  getModelsUrlForAdapter,
+  type Adapter,
   type ErrorKind,
+  type ModelCaps,
+  type ModelEntry,
+  type PrefKey,
+  type Prefs,
+  type ProviderSource,
 } from '@desksoul/protocol';
-import type { KeychainLike } from './provider-config.js';
 
 /** GET 一个 URL（可带头）返回解析后 JSON；非 2xx 抛带 `status` 的 Error。 */
 export type HttpGetJson = (url: string, headers?: Record<string, string>) => Promise<unknown>;
 
-export interface KeychainRW extends KeychainLike {
-  set(providerId: string, keyName: string, value: string): Promise<void>;
-  delete(providerId: string, keyName: string): Promise<void>;
+export interface ProviderServiceDeps {
+  httpGetJson: HttpGetJson;
+  getPrefs: () => Prefs;
+  setPref: <K extends PrefKey>(key: K, value: Prefs[K]) => void;
 }
 
-export interface ProviderServiceDeps {
-  keychain: KeychainRW;
-  httpGetJson: HttpGetJson;
-  getPrefs?: () => Record<string, unknown>;
-}
+const DEFAULT_KEY_BY_CAP: Record<string, PrefKey> = {
+  chat: 'model.defaultChatModelId',
+  embedding: 'model.defaultEmbeddingModelId',
+  stt: 'model.defaultSttModelId',
+  tts: 'model.defaultTtsModelId',
+  rerank: 'model.defaultRerankModelId',
+  agent_runner: 'model.defaultAgentModelId',
+};
 
 function classify(e: unknown): ErrorKind {
   const status = (e as { status?: number }).status;
@@ -52,87 +60,127 @@ function parseModelIds(payload: unknown): string[] {
     .filter(Boolean);
 }
 
+/** adapter → auth header（query-key 改 url 在 getModelsUrlForAdapter 处理；此处取模型/测试用 header/无）。 */
+function authHeaders(adapter: Adapter, key: string): Record<string, string> {
+  const t = ADAPTER_TEMPLATES.find((x) => x.adapter === adapter);
+  if (!t || t.authStyle === 'none' || !key) return {};
+  if (t.authStyle === 'bearer') return { authorization: `Bearer ${key}` };
+  if (t.authStyle === 'x-api-key') return { 'x-api-key': key, 'anthropic-version': '2023-06-01' };
+  return {}; // query-key：modelsUrl 已带 ?key=
+}
+
 export function createProviderService(deps: ProviderServiceDeps) {
-  const baseUrlFor = (providerId: string): string | undefined =>
-    getProviderBaseUrl(providerId, deps.getPrefs?.());
+  const sources = (): ProviderSource[] => deps.getPrefs()['model.providerSources'];
+  const models = (): ModelEntry[] => deps.getPrefs()['model.models'];
+  const findSource = (id: string): ProviderSource | undefined => sources().find((s) => s.id === id);
+  const sourceOfModel = (modelId: string): ProviderSource | undefined => {
+    const m = models().find((x) => x.id === modelId);
+    return m ? findSource(m.sourceId) : undefined;
+  };
 
   return {
-    'provider.saveKey': async (p: { providerId: string; key: string }) => {
-      await deps.keychain.set(p.providerId, 'apiKey', p.key);
-      return { ok: true as const };
+    'provider.getConfig': async (_p: Record<string, never>) => ({
+      sources: sources(),
+      models: models(),
+      templates: ADAPTER_TEMPLATES,
+    }),
+
+    'provider.upsertSource': async (p: { source: ProviderSource }) => {
+      const list = [...sources()];
+      const idx = list.findIndex((s) => s.id === p.source.id);
+      if (idx >= 0) list[idx] = p.source;
+      else list.push(p.source);
+      deps.setPref('model.providerSources', list);
+      return { ok: true as const, id: p.source.id };
     },
-    'provider.deleteKey': async (p: { providerId: string }) => {
-      await deps.keychain.delete(p.providerId, 'apiKey');
-      return { ok: true as const };
-    },
-    'provider.listProviders': async (_p: Record<string, never>) => {
-      const providers = await Promise.all(
-        Object.values(BUILTIN_PROVIDERS).map(async (d) => ({
-          id: d.id,
-          name: d.name,
-          kind: d.kind,
-          hasKey:
-            d.authStyle === 'none' ? true : (await deps.keychain.get(d.id, 'apiKey')) !== null,
-          enabled: true,
-          models: d.defaultModels,
-        })),
+
+    'provider.deleteSource': async (p: { id: string }) => {
+      deps.setPref(
+        'model.providerSources',
+        sources().filter((s) => s.id !== p.id),
       );
-      return { providers };
-    },
-    'provider.listModels': async (p: { providerId: string }) => {
-      const d = getDialect(p.providerId);
-      if (!d) return { models: [] as string[] };
-      const baseUrl = baseUrlFor(p.providerId) ?? d.baseUrl;
-      if (d.format === 'ollama') {
-        const tags = (await deps.httpGetJson(`${baseUrl}/api/tags`)) as {
-          models?: Array<{ name: string }>;
-        };
-        return { models: (tags.models ?? []).map((m) => m.name) };
+      const keptModels = models().filter((m) => m.sourceId !== p.id);
+      deps.setPref('model.models', keptModels);
+      // 清空指向被删 model 的默认指针
+      const prefs = deps.getPrefs();
+      for (const key of Object.values(DEFAULT_KEY_BY_CAP)) {
+        const cur = prefs[key] as string;
+        if (cur && !keptModels.some((m) => m.id === cur)) deps.setPref(key, '' as never);
       }
-      if (d.format === 'openai') {
-        const key = await deps.keychain.get(p.providerId, 'apiKey');
-        if (!key) return { models: d.defaultModels };
-        const payload = await deps.httpGetJson(`${baseUrl}/models`, {
-          authorization: `Bearer ${key}`,
-        });
-        const models = parseModelIds(payload);
-        return { models: models.length ? models : d.defaultModels };
-      }
-      return { models: d.defaultModels };
+      return { ok: true as const };
     },
-    'provider.ollamaDetect': async (_p: Record<string, never>) => {
-      const ollama = getDialect('ollama')!;
-      const baseUrl = baseUrlFor('ollama') ?? ollama.baseUrl;
+
+    'provider.fetchModels': async (p: { sourceId: string }) => {
+      const src = findSource(p.sourceId);
+      if (!src) return { models: [] as string[] };
+      const url = getModelsUrlForAdapter(src.adapter, src.apiBase, src.key);
+      const payload = await deps.httpGetJson(url, authHeaders(src.adapter, src.key));
+      const ids = parseModelIds(payload);
+      const t = ADAPTER_TEMPLATES.find((x) => x.adapter === src.adapter);
+      return { models: ids.length ? ids : (t?.defaultModels ?? []) };
+    },
+
+    'provider.addModel': async (p: { entry: ModelEntry }) => {
+      const list = [...models()];
+      if (!list.some((m) => m.id === p.entry.id)) list.push(p.entry);
+      deps.setPref('model.models', list);
+      return { ok: true as const };
+    },
+
+    'provider.deleteModel': async (p: { id: string }) => {
+      deps.setPref(
+        'model.models',
+        models().filter((m) => m.id !== p.id),
+      );
+      return { ok: true as const };
+    },
+
+    'provider.setModelEnabled': async (p: { id: string; enabled: boolean }) => {
+      deps.setPref(
+        'model.models',
+        models().map((m) => (m.id === p.id ? { ...m, enabled: p.enabled } : m)),
+      );
+      return { ok: true as const };
+    },
+
+    'provider.updateModelCaps': async (p: { id: string; caps: ModelCaps }) => {
+      deps.setPref(
+        'model.models',
+        models().map((m) => (m.id === p.id ? { ...m, caps: p.caps } : m)),
+      );
+      return { ok: true as const };
+    },
+
+    'provider.testModel': async (p: { id: string }) => {
+      const src = sourceOfModel(p.id);
+      if (!src) return { ok: false, errorKind: 'unknown' as ErrorKind };
+      const url = getModelsUrlForAdapter(src.adapter, src.apiBase, src.key);
+      const t0 = Date.now();
       try {
-        const tags = (await deps.httpGetJson(`${baseUrl}/api/tags`)) as {
+        await deps.httpGetJson(url, authHeaders(src.adapter, src.key));
+        return { ok: true, latencyMs: Math.max(0, Date.now() - t0) };
+      } catch (e) {
+        return { ok: false, errorKind: classify(e) };
+      }
+    },
+
+    'provider.setDefault': async (p: { capability: string; modelId: string }) => {
+      const key = DEFAULT_KEY_BY_CAP[p.capability];
+      if (key) deps.setPref(key, p.modelId as never);
+      return { ok: true as const };
+    },
+
+    'provider.ollamaDetect': async (_p: Record<string, never>) => {
+      // Ollama 本地探测：用第一个 ollama source 的 apiBase，否则模板默认。
+      const src = sources().find((s) => s.adapter === 'ollama');
+      const base = src?.apiBase ?? ADAPTER_TEMPLATES.find((t) => t.adapter === 'ollama')!.defaultApiBase;
+      try {
+        const tags = (await deps.httpGetJson(`${base}/api/tags`)) as {
           models?: Array<{ name: string }>;
         };
         return { available: true, models: (tags.models ?? []).map((m) => m.name) };
       } catch {
         return { available: false, models: [] as string[] };
-      }
-    },
-    'provider.testConnection': async (p: { providerId: string }) => {
-      const d = getDialect(p.providerId);
-      if (!d) return { ok: false, errorKind: 'unknown' as ErrorKind, detail: 'unknown provider' };
-      const baseUrl = baseUrlFor(p.providerId) ?? d.baseUrl;
-      if (d.format === 'ollama') {
-        try {
-          await deps.httpGetJson(`${baseUrl}/api/tags`);
-          return { ok: true };
-        } catch (e) {
-          return { ok: false, errorKind: classify(e) };
-        }
-      }
-      const key = await deps.keychain.get(p.providerId, 'apiKey');
-      if (!key) return { ok: false, errorKind: 'auth' as ErrorKind, detail: 'no key' };
-      // openai 格式有 /models 可探活；其余 MVP 仅凭有 key 视为可达（真实 ping 留 V1+）
-      if (d.format !== 'openai') return { ok: true };
-      try {
-        await deps.httpGetJson(`${baseUrl}/models`, { authorization: `Bearer ${key}` });
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, errorKind: classify(e) };
       }
     },
   };
