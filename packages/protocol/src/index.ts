@@ -8,5 +8,6 @@ export * from './state.js';
 export * from './schemas.js';
 export * from './character-manifest.js';
 export * from './provider-config.js';
+export * from './provider-migrate.js';
 export * from './prefs.js';
 export * from './hotkeys.js';
