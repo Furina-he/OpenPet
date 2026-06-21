@@ -2,6 +2,13 @@ import { z } from 'zod';
 import { CharacterManifestSchema } from './character-manifest.js';
 import { ErrorKindSchema } from './schemas.js';
 import { PrefsSchema } from './prefs.js';
+import {
+  ProviderSourceSchema,
+  ModelEntrySchema,
+  ModelCapsSchema,
+  AdapterTemplateSchema,
+  CapabilitySchema,
+} from './provider-config.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -214,41 +221,54 @@ export const Methods = {
     result: z.object({ value: z.unknown() }),
   },
 
-  // --- request/response: Renderer → Main（provider 配置，M5；UI 在 M7 接 D3）---
-  'provider.saveKey': {
-    params: z.object({ providerId: z.string().min(1), key: z.string().min(1) }),
-    result: z.object({ ok: z.literal(true) }),
-  },
-  'provider.deleteKey': {
-    params: z.object({ providerId: z.string().min(1) }),
-    result: z.object({ ok: z.literal(true) }),
-  },
-  'provider.listProviders': {
+  // --- request/response: Renderer → Main（Provider 工作台，AstrBot 对齐两层 Source+Model）---
+  'provider.getConfig': {
     params: z.object({}),
     result: z.object({
-      providers: z.array(
-        z.object({
-          id: z.string(),
-          name: z.string(),
-          kind: z.enum(['chat', 'embedding']),
-          hasKey: z.boolean(),
-          enabled: z.boolean(),
-          models: z.array(z.string()),
-        }),
-      ),
+      sources: z.array(ProviderSourceSchema),
+      models: z.array(ModelEntrySchema),
+      templates: z.array(AdapterTemplateSchema),
     }),
   },
-  'provider.testConnection': {
-    params: z.object({ providerId: z.string().min(1) }),
+  'provider.upsertSource': {
+    params: z.object({ source: ProviderSourceSchema }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
+  'provider.deleteSource': {
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.fetchModels': {
+    params: z.object({ sourceId: z.string().min(1) }),
+    result: z.object({ models: z.array(z.string()) }),
+  },
+  'provider.addModel': {
+    params: z.object({ entry: ModelEntrySchema }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.deleteModel': {
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.setModelEnabled': {
+    params: z.object({ id: z.string().min(1), enabled: z.boolean() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.updateModelCaps': {
+    params: z.object({ id: z.string().min(1), caps: ModelCapsSchema }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.testModel': {
+    params: z.object({ id: z.string().min(1) }),
     result: z.object({
       ok: z.boolean(),
+      latencyMs: z.number().int().nonnegative().optional(),
       errorKind: ErrorKindSchema.optional(),
-      detail: z.string().optional(),
     }),
   },
-  'provider.listModels': {
-    params: z.object({ providerId: z.string().min(1) }),
-    result: z.object({ models: z.array(z.string()) }),
+  'provider.setDefault': {
+    params: z.object({ capability: CapabilitySchema, modelId: z.string() }),
+    result: z.object({ ok: z.literal(true) }),
   },
   'provider.ollamaDetect': {
     params: z.object({}),

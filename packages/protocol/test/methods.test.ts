@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Methods } from '../src/methods';
+import { ChatStartFrame } from '../src/schemas.js';
 
 describe('method registry', () => {
   it('defines sys.ping params and result schemas', () => {
@@ -180,32 +181,22 @@ describe('character.* + behavior.lookAt (M4)', () => {
   });
 });
 
-describe('provider.* methods (M5)', () => {
-  it('registers the provider namespace', () => {
-    for (const m of [
-      'provider.saveKey',
-      'provider.deleteKey',
-      'provider.listProviders',
-      'provider.testConnection',
-      'provider.listModels',
-      'provider.ollamaDetect',
-    ]) {
-      expect(Methods).toHaveProperty(m);
-    }
+describe('provider.* method registry (AstrBot 对齐)', () => {
+  it('registers new two-layer methods, drops legacy key/list methods', () => {
+    expect('provider.getConfig' in Methods).toBe(true);
+    expect('provider.upsertSource' in Methods).toBe(true);
+    expect('provider.testModel' in Methods).toBe(true);
+    expect('provider.setDefault' in Methods).toBe(true);
+    expect('provider.saveKey' in Methods).toBe(false);
+    expect('provider.listProviders' in Methods).toBe(false);
   });
-  it('provider.saveKey params accept providerId + key', () => {
+  it('provider.setDefault params validate capability + modelId', () => {
     expect(
-      Methods['provider.saveKey'].params.safeParse({ providerId: 'openai', key: 'sk-x' }).success,
+      Methods['provider.setDefault'].params.safeParse({ capability: 'chat', modelId: 'a/b' }).success,
     ).toBe(true);
-    expect(Methods['provider.saveKey'].params.safeParse({ providerId: 'openai' }).success).toBe(
-      false,
-    );
-  });
-  it('provider.testConnection result carries ok + optional errorKind', () => {
     expect(
-      Methods['provider.testConnection'].result.safeParse({ ok: false, errorKind: 'auth' }).success,
-    ).toBe(true);
-    expect(Methods['provider.testConnection'].result.safeParse({ ok: true }).success).toBe(true);
+      Methods['provider.setDefault'].params.safeParse({ capability: 'nope', modelId: 'a/b' }).success,
+    ).toBe(false);
   });
   it('provider.ollamaDetect result lists available + models', () => {
     expect(
@@ -218,6 +209,28 @@ describe('provider.* methods (M5)', () => {
       Methods['chat.send'].params.safeParse({ sessionId: 's', text: 't', providerId: 'openai' })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('ChatStartFrame adapter (Provider 工作台)', () => {
+  it('accepts optional adapter', () => {
+    const f = ChatStartFrame.parse({
+      kind: 'chat.start',
+      requestId: 'r',
+      sessionId: 's',
+      adapter: 'openai',
+    });
+    expect(f.adapter).toBe('openai');
+  });
+  it('rejects an unknown adapter', () => {
+    expect(
+      ChatStartFrame.safeParse({
+        kind: 'chat.start',
+        requestId: 'r',
+        sessionId: 's',
+        adapter: 'cohere',
+      }).success,
+    ).toBe(false);
   });
 });
 

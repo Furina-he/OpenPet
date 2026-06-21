@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { JsonRpcRequest, JsonRpcResponse } from './jsonrpc.js';
+import { AdapterSchema } from './provider-config.js';
 
 /**
  * Worker MessagePort 帧协议 — Main ⇄ Provider Worker 的单一真源。
@@ -65,6 +66,8 @@ export const ChatStartFrame = z.object({
   request: ChatRequestSchema.optional(),
   /** provider base URL override（D3 自定义中转站）；Main 从 prefs 注入，Worker 不持久化。 */
   baseUrl: z.string().optional(),
+  /** provider adapter（format）；新两层路由用它在 worker 选 provider fn。 */
+  adapter: AdapterSchema.optional(),
   /** mock provider 的出块间隔（测试用 0/小值）。 */
   intervalMs: z.number().int().nonnegative().optional(),
 });
