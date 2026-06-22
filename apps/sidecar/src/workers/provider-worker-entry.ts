@@ -22,7 +22,7 @@ import type {
 } from '@desksoul/protocol';
 import { installFetchProxy } from '@desksoul/plugin-sdk';
 import { mockProviderChat, pickDemoScript } from './mock-provider.js';
-import { resolveProvider } from './provider-registry.js';
+import { resolveProvider, resolveProviderByAdapter } from './provider-registry.js';
 
 // 兼容别名：帧定义已收口到 @desksoul/protocol（单一真源）。
 export type StartMessage = ChatStartFrame;
@@ -62,13 +62,22 @@ async function runStream(
   cleanup: () => void,
 ): Promise<void> {
   try {
-    const stream =
-      start.providerId && start.providerId !== 'mock' && start.request
-        ? resolveProviderStream(start.providerId, start.request, ac.signal, start.baseUrl)
-        : mockProviderChat(ac.signal, {
-            script: pickDemoScript(demoTurn++),
-            ...(start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {}),
-          });
+    // 两层路由优先：start.adapter 在则用 adapter+baseUrl 选 provider fn（sourceId 不是内置 dialect）。
+    // 否则回退旧 providerId 路径（内置 dialect / 显式），再否则 mock。
+    let stream: AsyncIterable<ChatEvent>;
+    if (start.adapter && start.request) {
+      const fn = resolveProviderByAdapter(start.adapter, start.baseUrl ?? '');
+      stream = fn
+        ? fn(start.request, ac.signal)
+        : errorStream(`unknown adapter: ${start.adapter}`);
+    } else if (start.providerId && start.providerId !== 'mock' && start.request) {
+      stream = resolveProviderStream(start.providerId, start.request, ac.signal, start.baseUrl);
+    } else {
+      stream = mockProviderChat(ac.signal, {
+        script: pickDemoScript(demoTurn++),
+        ...(start.intervalMs !== undefined ? { intervalMs: start.intervalMs } : {}),
+      });
+    }
     for await (const event of stream) {
       const out: EventMessage = {
         kind: 'chat.event',
@@ -83,6 +92,13 @@ async function runStream(
   }
 }
 
+/** 合成单个 error done 的流（worker 不崩）；未知 provider/adapter 共用。 */
+function errorStream(message: string): AsyncIterable<ChatEvent> {
+  return (async function* (): AsyncGenerator<ChatEvent> {
+    yield { type: 'done', finishReason: 'error', error: message, errorKind: 'unknown' };
+  })();
+}
+
 /** providerId → 真实 provider 流；未知 provider 合成一个 error done（worker 不崩）。 */
 function resolveProviderStream(
   providerId: string,
@@ -91,16 +107,7 @@ function resolveProviderStream(
   baseUrlOverride?: string,
 ): AsyncIterable<ChatEvent> {
   const fn = resolveProvider(providerId, baseUrlOverride);
-  if (!fn) {
-    return (async function* (): AsyncGenerator<ChatEvent> {
-      yield {
-        type: 'done',
-        finishReason: 'error',
-        error: `unknown provider: ${providerId}`,
-        errorKind: 'unknown',
-      };
-    })();
-  }
+  if (!fn) return errorStream(`unknown provider: ${providerId}`);
   return fn(request, signal);
 }
 

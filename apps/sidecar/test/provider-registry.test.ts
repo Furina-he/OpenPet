@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveProvider } from '../src/workers/provider-registry.js';
+import { resolveProvider, resolveProviderByAdapter } from '../src/workers/provider-registry.js';
 
 describe('resolveProvider', () => {
   it('returns an openai-format chat fn for openai/deepseek/qwen', () => {
@@ -19,5 +19,17 @@ describe('resolveProvider', () => {
 
   it('wires ollama (Phase 5)', () => {
     expect(typeof resolveProvider('ollama')).toBe('function');
+  });
+});
+
+describe('resolveProviderByAdapter (Provider 工作台两层路由)', () => {
+  it('returns a fn for each known adapter', () => {
+    for (const a of ['openai', 'anthropic', 'gemini', 'ollama'] as const) {
+      expect(typeof resolveProviderByAdapter(a, 'https://x/v1')).toBe('function');
+    }
+  });
+
+  it('returns undefined for unknown adapter', () => {
+    expect(resolveProviderByAdapter('cohere' as never, 'https://x')).toBeUndefined();
   });
 });
