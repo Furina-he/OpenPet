@@ -1,19 +1,19 @@
 # DeskSoul · 项目当前状态 / 新对话对接入口
 
 > **任何新对话的第一份要读的文件**。读完即可零上下文接续。架构/PM 每阶段末更新。
-> 最后更新：2026-06-20（分支 `feat/m8a-chat`，**M8 整体代码完成（M8a+M8b+M8c）**：B1 玻璃聊天浮层 + B2 双轨气泡 + J3 错误分级（M8a）/ A1 交互 + A2 桌面气泡 + A3 穿透反馈 + A4 徽标/全屏（M8b）/ J1 托盘 + J2 热键注册+录制器 + J5 崩溃诊断（M8c）；protocol 185 / sidecar 37 / desktop 314、typecheck 干净、build exit 0；三子里程碑真窗冒烟（聊天/真 Key、桌面交互、托盘/热键/诊断）= 人工硬门槛待跑，PM 复核后打 `mvp/M8{a,b,c}-code-done`。前序 M7b-1 `mvp/M7b1-code-done`、M7b-2 真窗/真 Key 仍待人工）。**2026-06-22 追加**：Provider 工作台（`feat/provider-workbench`）A→D 15 task 代码完成（§0），protocol 200 / sidecar 39 / desktop 322 全绿，待 PM 复核 + 真窗/真Key。
+> 最后更新：2026-06-20（分支 `feat/m8a-chat`，**M8 整体代码完成（M8a+M8b+M8c）**：B1 玻璃聊天浮层 + B2 双轨气泡 + J3 错误分级（M8a）/ A1 交互 + A2 桌面气泡 + A3 穿透反馈 + A4 徽标/全屏（M8b）/ J1 托盘 + J2 热键注册+录制器 + J5 崩溃诊断（M8c）；protocol 185 / sidecar 37 / desktop 314、typecheck 干净、build exit 0；三子里程碑真窗冒烟（聊天/真 Key、桌面交互、托盘/热键/诊断）= 人工硬门槛待跑，PM 复核后打 `mvp/M8{a,b,c}-code-done`。前序 M7b-1 `mvp/M7b1-code-done`、M7b-2 真窗/真 Key 仍待人工）。**2026-06-22**：Provider 工作台（`feat/provider-workbench`）A→D 15 task 完成、protocol 200 / sidecar 39 / desktop 322 全绿；PM 复核 + 真窗/真 Key 已验证可用，**收官 tag `mvp/provider-workbench-done`**（详见 §0）。
 
 ---
 
-## 0. ⭐ 代码完成（待 PM 复核 + 真窗/真Key）：Provider 工作台（AstrBot 对齐）
+## 0. ✅ 完成收官：Provider 工作台（AstrBot 对齐）
 
 > 分支 `feat/provider-workbench`。**A→D 全 15 task inline TDD 完成并提交**（baseline 1 + task 15 = 16 提交，`6720d37..aa77204`）。**protocol 200 / sidecar 39 / desktop 322 全绿、desktop typecheck 0、protocol+sidecar+desktop build exit 0**（本会话实跑）。
 >
 > - **交付结果**：[`docs/superpowers/RESULTS-provider-workbench.md`](../superpowers/RESULTS-provider-workbench.md)（提交清单 / 实现点 / 待人工门槛 / follow-up）
 > - **设计 spec / 实现计划**：[`…-design.md`](../superpowers/specs/2026-06-21-provider-workbench-design.md) · [`…workbench.md`](../superpowers/plans/2026-06-21-provider-workbench.md)
 > - **做了什么**：单 provider/model → AstrBot 两层「Source + Model」工作台（多 source 并存 / 每 source 多 model + 能力标签 + 逐模型测试 / 6 能力 tab / 按能力选默认 **无降级链** / **key 明文随 source 存，放弃 keychain**）；启动一次性迁移旧配置；worker 按 adapter 路由。
-> - **待人工硬门槛**：① PM 复核执行结果；② 真 Electron GUI 冒烟（工作台 + onboarding C2，对照 hifi brief 布局 + §2 token——**注意 redesign 工作台 PNG 未生成，`UI/36b542fb` 仍旧单 provider，像素级终审待出图**）；③ 真 Key→听到回复 端到端；④ 通过后裁定 tag。
-> - **已知 follow-up（非阻塞）**：dev `mock-bridge.ts` 仍 mock 旧 provider.*（`?page=ModelApiPage` 视觉 harness 需补新 mock）；托盘 `connected` 仍读 `model.activeProvider`；旧 model 键并存（迁移后弃用）。详见 RESULTS。
+> - **完成状态（2026-06-22）**：PM 复核签收（信任已跑测试 protocol 200 / sidecar 39 / desktop 322 全绿）；**真 Electron GUI 冒烟 + 真 Key 端到端已人工验证可用**；收官 tag **`mvp/provider-workbench-done`** 已打。
+> - **残留（非阻塞，记录）**：redesign 工作台 hifi PNG 始终未生成（`UI/36b542fb` 仍旧单 provider 图），**像素级视觉终审未做**（[[ui-must-match-design-pngs]]）——已接受当前为可用；出图后可补一次对照。其余 follow-up（dev `mock-bridge.ts` 旧 mock、托盘 `connected` 读旧键、旧 model 键并存）见 RESULTS。
 > - **注意**：这是 Provider 体验线，与"MVP 真窗冒烟从未跑"那笔债（§6）**并行、不互替**。
 
 ---

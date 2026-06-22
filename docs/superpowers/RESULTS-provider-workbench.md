@@ -39,12 +39,12 @@
 
 A3 给 `Prefs[PrefKey]` 加入数组值类型后，`Display/General/Privacy/ModelApiPage.vue` 里 `set<K>(key, value: Prefs[K])` 转发到只收标量的 `app.prefs.set` 触发 TS2322。修法：保留签名、在 rpc 边界 cast `value as string|number|boolean`（渲染端只经 `app.prefs.set` 写标量，两层数组键走 `provider.*`）。
 
-## 待人工硬门槛（未跑，交 PM/人工）
+## 人工硬门槛（已通过，收官 2026-06-22）
 
-1. **PM 复核**本执行结果（信任已跑测试，[[pm-review-trust-reports]]）。
-2. **真 Electron GUI 冒烟**：`pnpm --filter @desksoul/desktop dev` 走工作台（建源/填 Key/拉模型/加模型/设默认/逐模型测试）+ onboarding C2，对照 hifi brief 布局 + §2 token。**注意**：[`docs/research/astrbot-fusion-hifi-redesign.md`](../research/astrbot-fusion-hifi-redesign.md) 的 redesign 工作台 PNG **从未生成**（原图 `UI/36b542fb` 仍是旧单 provider），像素级终审待出图（[[ui-must-match-design-pngs]] / [[design-png-verify-before-claims]]）。
-3. **真 Key 端到端**：配 OpenAI 兼容 source + key + 模型设默认 → 聊天发一句走该模型（90s）。
-4. 通过后裁定 tag（建议 `mvp/provider-workbench-code-done` → 收官 `…-done`）。
+1. **PM 复核** ✅ 签收（信任已跑测试 200/39/322 全绿，[[pm-review-trust-reports]]）。
+2. **真 Electron GUI 冒烟** ✅ 已人工验证可用（工作台建源/填 Key/拉模型/加模型/设默认/逐模型测试 + onboarding C2）。**残留**：[`docs/research/astrbot-fusion-hifi-redesign.md`](../research/astrbot-fusion-hifi-redesign.md) 的 redesign 工作台 PNG 始终未生成（`UI/36b542fb` 仍旧单 provider），**像素级视觉终审未做**（[[ui-must-match-design-pngs]] / [[design-png-verify-before-claims]]）——已接受当前为可用，出图后可补对照。
+3. **真 Key 端到端** ✅ 已人工验证（配 source + key + 设默认 → 聊天走该模型）。
+4. **收官 tag** ✅ `mvp/provider-workbench-done` 已打。
 
 ## 已知 follow-up（非阻塞，记录）
 
