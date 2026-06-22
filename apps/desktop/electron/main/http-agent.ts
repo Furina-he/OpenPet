@@ -39,12 +39,15 @@ export const electronHttpGetJson: HttpGetJson = (url, headers = {}) =>
       res.on('data', (c: Buffer) => chunks.push(c));
       res.on('end', () => {
         const status = res.statusCode ?? 0;
+        const text = Buffer.concat(chunks).toString('utf8');
         if (status < 200 || status >= 300) {
-          reject(Object.assign(new Error(`HTTP ${status}`), { status }));
+          // 把上游响应体片段带进 error message——4xx 的真因（无效 key / 地区受限 / 端点不对）在 body 里。
+          const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+          reject(Object.assign(new Error(`HTTP ${status}${snippet ? `: ${snippet}` : ''}`), { status }));
           return;
         }
         try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+          resolve(JSON.parse(text));
         } catch (err) {
           reject(err);
         }

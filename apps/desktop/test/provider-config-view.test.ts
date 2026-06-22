@@ -64,9 +64,19 @@ describe('provider-config-view（两层，纯）', () => {
     expect(
       fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 401 }) }),
     ).toContain('API Key');
-    expect(fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 500 }) })).toBe(
-      '拉取失败：HTTP 500',
+    expect(fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 500 }) })).toContain(
+      'HTTP 500',
     );
     expect(fetchOutcomeMessage({ error: new Error('ECONNREFUSED') })).toContain('ECONNREFUSED');
+  });
+
+  it('fetchOutcomeMessage recovers status from IPC-wrapped messages (status prop lost)', () => {
+    const ipc = new Error(
+      "Error invoking remote method 'desksoul:rpc': Error: HTTP 403: { error: region not supported }",
+    );
+    const msg = fetchOutcomeMessage({ error: ipc });
+    expect(msg).toContain('HTTP 403');
+    expect(msg).toContain('地区'); // 地区受限提示
+    expect(msg).not.toContain('invoking remote method'); // IPC 包装前缀已剥掉
   });
 });

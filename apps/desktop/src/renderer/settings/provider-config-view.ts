@@ -57,12 +57,22 @@ export function defaultPrefKeyFor(cap: Capability): PrefKey {
 /** 拉取模型结果 → 用户可见提示（成功计数 / 0 命中提示 / 错误分级）。纯函数，便于单测。 */
 export function fetchOutcomeMessage(outcome: { count: number } | { error: unknown }): string {
   if ('error' in outcome) {
-    const status = (outcome.error as { status?: number }).status;
+    const e = outcome.error;
+    const raw = e instanceof Error ? e.message : String(e);
+    // 跨 IPC（Main→renderer）后自定义 status 丢失、message 被包成
+    // "Error invoking remote method '...': Error: HTTP 403: <body>"——从 message 兜底解析状态码 + 剥包装。
+    const matched = /HTTP (\d{3})/.exec(raw)?.[1];
+    const status = (e as { status?: number }).status ?? (matched ? Number(matched) : undefined);
+    const detail = raw
+      .replace(/Error invoking remote method '[^']*':\s*/g, '')
+      .replace(/^Error:\s*/, '')
+      .trim()
+      .slice(0, 160);
     if (status === 401 || status === 403) {
-      return `拉取失败：HTTP ${status}（API Key 未保存或无效，请点 Key 输入框旁的「保存」）`;
+      return `拉取失败：HTTP ${status}（鉴权被拒 / 地区受限：确认 API Key 已点「保存」且有效；OpenAI 官方端点在中国大陆会 403，请改用可达的中转站 Base URL 或国内 provider）。${detail}`;
     }
-    if (status) return `拉取失败：HTTP ${status}`;
-    return `拉取失败：${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
+    if (status) return `拉取失败：HTTP ${status} — ${detail}`;
+    return `拉取失败：${detail}`;
   }
   return outcome.count
     ? `拉取到 ${outcome.count} 个模型`
