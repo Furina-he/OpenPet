@@ -23,3 +23,6 @@ coverage/
 # Visual-fidelity harness artifacts (screenshots are process output, not source)
 apps/desktop/artifacts/
 .playwright-mcp/
+
+# AstrBot 上游克隆（研究参考用，AGPL，体量大，勿入库）；docs/research/ 笔记仍提交
+/research/
