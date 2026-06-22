@@ -1,20 +1,149 @@
-<!-- settings/pages/ModelApiPage.vue — D3 模型 API（ui-design §7.3；参照 36b542fb + §2 token）
-     provider-config 主体抽到 ProviderConfigPanel（C2 复用）。
-     存而不接（渲染+持久，无 live 行为）：预算告警卡、离线兜底卡。 -->
+<!-- settings/pages/ModelApiPage.vue — D3 模型 API → Provider 工作台（AstrBot 对齐两层 Source+Model）
+     能力 tab + 左 source 列表 + 右 source 配置/models 表 + 新增弹窗；全部经 provider.* RPC。
+     存而不接（渲染+持久，无 live 行为）：预算告警卡、离线兜底卡。视觉对照 hifi brief + §2 token。 -->
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue';
-import type { Prefs, PrefKey } from '@desksoul/protocol';
-import { DEFAULT_PREFS } from '@desksoul/protocol';
+import { onMounted, ref, computed, watch } from 'vue';
+import type {
+  Prefs,
+  PrefKey,
+  Capability,
+  ProviderSource,
+  ModelEntry,
+  AdapterTemplate,
+  ModelCaps,
+} from '@desksoul/protocol';
+import { DEFAULT_PREFS, modelEntryId } from '@desksoul/protocol';
 import Switch from '../../components/Switch.vue';
 import Select from '../../components/Select.vue';
 import Slider from '../../components/Slider.vue';
 import Input from '../../components/Input.vue';
-import ProviderConfigPanel from '../../components/ProviderConfigPanel.vue';
+import ProviderSourcesPanel from '../../components/provider/ProviderSourcesPanel.vue';
+import ProviderModelsPanel from '../../components/provider/ProviderModelsPanel.vue';
+import AddSourceDialog from '../../components/provider/AddSourceDialog.vue';
+import {
+  CAPABILITY_TABS,
+  sourcesForTab,
+  modelsForSource,
+  defaultPrefKeyFor,
+} from '../provider-config-view';
 
 const emit = defineEmits<{ saved: [] }>();
 
 const prefs = ref<Prefs>({ ...DEFAULT_PREFS });
-const ollamaModels = ref<string[]>([]); // 由 ProviderConfigPanel 的 @ollama-detected 回传
+const sources = ref<ProviderSource[]>([]);
+const models = ref<ModelEntry[]>([]);
+const templates = ref<AdapterTemplate[]>([]);
+const activeTab = ref<Capability>('chat');
+const activeSourceId = ref('');
+const available = ref<string[]>([]);
+const testing = ref<Record<string, boolean | null>>({});
+const adding = ref(false);
+const ollamaModels = ref<string[]>([]);
+
+const tabSources = computed(() => sourcesForTab(sources.value, activeTab.value));
+const activeSource = computed(
+  () => tabSources.value.find((s) => s.id === activeSourceId.value) ?? tabSources.value[0],
+);
+const activeModels = computed(() =>
+  activeSource.value ? modelsForSource(models.value, activeSource.value.id) : [],
+);
+const defaultModelId = computed(() => prefs.value[defaultPrefKeyFor(activeTab.value)] as string);
+
+async function reloadConfig(): Promise<void> {
+  const cfg = await window.desksoul.rpc('provider.getConfig', {});
+  sources.value = cfg.sources;
+  models.value = cfg.models;
+  templates.value = cfg.templates;
+  if (!tabSources.value.some((s) => s.id === activeSourceId.value)) {
+    activeSourceId.value = tabSources.value[0]?.id ?? '';
+  }
+}
+async function reloadPrefs(): Promise<void> {
+  prefs.value = await window.desksoul.rpc('app.prefs.getAll', {});
+}
+
+onMounted(async () => {
+  await reloadPrefs();
+  await reloadConfig();
+  void detectOllama();
+});
+
+watch(activeTab, () => {
+  activeSourceId.value = tabSources.value[0]?.id ?? '';
+  available.value = [];
+});
+function selectSource(id: string): void {
+  activeSourceId.value = id;
+  available.value = [];
+}
+
+async function detectOllama(): Promise<void> {
+  const r = await window.desksoul.rpc('provider.ollamaDetect', {});
+  ollamaModels.value = r.models;
+}
+
+async function addSource(source: ProviderSource): Promise<void> {
+  await window.desksoul.rpc('provider.upsertSource', { source });
+  await reloadConfig();
+  activeSourceId.value = source.id;
+  emit('saved');
+}
+async function removeSource(id: string): Promise<void> {
+  await window.desksoul.rpc('provider.deleteSource', { id });
+  await reloadConfig();
+  emit('saved');
+}
+async function saveSource(source: ProviderSource): Promise<void> {
+  await window.desksoul.rpc('provider.upsertSource', { source });
+  await reloadConfig();
+  emit('saved');
+}
+async function fetchModels(): Promise<void> {
+  if (!activeSource.value) return;
+  const r = await window.desksoul.rpc('provider.fetchModels', { sourceId: activeSource.value.id });
+  available.value = r.models;
+}
+async function addModel(model: string): Promise<void> {
+  if (!activeSource.value) return;
+  const sid = activeSource.value.id;
+  await window.desksoul.rpc('provider.addModel', {
+    entry: { id: modelEntryId(sid, model), sourceId: sid, model, enabled: true, caps: {} },
+  });
+  await reloadConfig();
+  emit('saved');
+}
+async function deleteModel(id: string): Promise<void> {
+  await window.desksoul.rpc('provider.deleteModel', { id });
+  await reloadConfig();
+  emit('saved');
+}
+async function toggleModel(p: { id: string; enabled: boolean }): Promise<void> {
+  await window.desksoul.rpc('provider.setModelEnabled', p);
+  await reloadConfig();
+  emit('saved');
+}
+async function updateCaps(p: { id: string; caps: ModelCaps }): Promise<void> {
+  await window.desksoul.rpc('provider.updateModelCaps', p);
+  await reloadConfig();
+  emit('saved');
+}
+async function testModel(id: string): Promise<void> {
+  testing.value = { ...testing.value, [id]: null };
+  const r = await window.desksoul.rpc('provider.testModel', { id });
+  testing.value = { ...testing.value, [id]: r.ok };
+}
+async function setDefault(id: string): Promise<void> {
+  await window.desksoul.rpc('provider.setDefault', { capability: activeTab.value, modelId: id });
+  await reloadPrefs();
+  emit('saved');
+}
+
+// 标量 pref（预算 / 离线卡）；两层数组键走 provider.* RPC。
+async function set<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void> {
+  prefs.value = { ...prefs.value, [key]: value };
+  await window.desksoul.rpc('app.prefs.set', { key, value: value as string | number | boolean });
+  emit('saved');
+}
 
 const EXCEED = [
   { value: 'warn', label: '提醒' },
@@ -33,25 +162,80 @@ const ollamaOptions = computed(() => {
     ? arr.map((m) => ({ value: m, label: m }))
     : [{ value: '', label: '（未检测到本地模型）' }];
 });
-
-onMounted(async () => {
-  prefs.value = (await window.desksoul.rpc('app.prefs.getAll', {})) as Prefs;
-});
-
-async function set<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void> {
-  prefs.value = { ...prefs.value, [key]: value };
-  // app.prefs.set 仅收标量；两层数组键（providerSources/models）走 provider.* RPC。
-  await window.desksoul.rpc('app.prefs.set', { key, value: value as string | number | boolean });
-  emit('saved');
-}
-function onOllama(models: string[]): void {
-  ollamaModels.value = models;
-}
 </script>
 
 <template>
   <div class="w-full max-w-[1180px]">
-    <ProviderConfigPanel class="mb-4" @saved="emit('saved')" @ollama-detected="onOllama" />
+    <!-- Provider 工作台 -->
+    <section class="ds-glass rounded-panel mb-4 p-5">
+      <h2 class="text-md font-semibold text-text-main">模型 API · Provider 工作台</h2>
+      <p class="mt-1 text-base text-text-sub">
+        按能力建提供商源（同类型可并存），每个源挂多个模型，逐能力选默认。Key 明文随源保存。
+      </p>
+
+      <!-- 能力 tab -->
+      <div class="mt-4 flex flex-wrap gap-1 border-b border-glass-border pb-2">
+        <button
+          v-for="t in CAPABILITY_TABS"
+          :key="t.value"
+          class="rounded-btn px-3 py-1.5 text-base transition"
+          :class="
+            activeTab === t.value
+              ? 'ds-glass border border-brand-to text-text-main'
+              : 'text-text-sub hover:text-text-main'
+          "
+          @click="activeTab = t.value"
+        >
+          {{ t.label }}
+        </button>
+      </div>
+
+      <!-- 左 source 列表 + 右配置/models -->
+      <div class="mt-4 grid gap-4 lg:grid-cols-[260px_1fr]">
+        <div class="min-h-[320px] rounded-card border border-glass-border p-3">
+          <ProviderSourcesPanel
+            :sources="tabSources"
+            :active-source-id="activeSource?.id ?? ''"
+            @select="selectSource"
+            @add="adding = true"
+            @remove="removeSource"
+          />
+        </div>
+        <div class="min-h-[320px]">
+          <ProviderModelsPanel
+            v-if="activeSource"
+            :source="activeSource"
+            :models="activeModels"
+            :available="available"
+            :default-model-id="defaultModelId"
+            :testing="testing"
+            @save-source="saveSource"
+            @fetch-models="fetchModels"
+            @add-model="addModel"
+            @delete-model="deleteModel"
+            @toggle-model="toggleModel"
+            @test-model="testModel"
+            @set-default="setDefault"
+            @update-caps="updateCaps"
+          />
+          <div
+            v-else
+            class="flex h-full items-center justify-center rounded-card border border-dashed border-glass-border p-6 text-center text-sm text-text-sub"
+          >
+            该能力下还没有提供商源，点左侧「＋ 新增提供商源」开始
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <AddSourceDialog
+      v-if="adding"
+      :templates="templates"
+      :existing-ids="sources.map((s) => s.id)"
+      :capability="activeTab"
+      @create="addSource"
+      @close="adding = false"
+    />
 
     <div class="grid gap-4 xl:grid-cols-2">
       <section class="ds-glass rounded-panel p-5">
