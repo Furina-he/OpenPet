@@ -13,10 +13,7 @@ import type {
   ModelCaps,
 } from '@desksoul/protocol';
 import { DEFAULT_PREFS, modelEntryId } from '@desksoul/protocol';
-import Switch from '../../components/Switch.vue';
 import Select from '../../components/Select.vue';
-import Slider from '../../components/Slider.vue';
-import Input from '../../components/Input.vue';
 import ProviderSourcesPanel from '../../components/provider/ProviderSourcesPanel.vue';
 import ProviderModelsPanel from '../../components/provider/ProviderModelsPanel.vue';
 import AddSourceDialog from '../../components/provider/AddSourceDialog.vue';
@@ -25,6 +22,7 @@ import {
   sourcesForTab,
   modelsForSource,
   defaultPrefKeyFor,
+  fetchOutcomeMessage,
 } from '../provider-config-view';
 
 const emit = defineEmits<{ saved: [] }>();
@@ -37,6 +35,8 @@ const activeTab = ref<Capability>('chat');
 const activeSourceId = ref('');
 const available = ref<string[]>([]);
 const testing = ref<Record<string, boolean | null>>({});
+const fetching = ref(false);
+const fetchMsg = ref('');
 const adding = ref(false);
 const ollamaModels = ref<string[]>([]);
 
@@ -71,10 +71,12 @@ onMounted(async () => {
 watch(activeTab, () => {
   activeSourceId.value = tabSources.value[0]?.id ?? '';
   available.value = [];
+  fetchMsg.value = '';
 });
 function selectSource(id: string): void {
   activeSourceId.value = id;
   available.value = [];
+  fetchMsg.value = '';
 }
 
 async function detectOllama(): Promise<void> {
@@ -98,10 +100,23 @@ async function saveSource(source: ProviderSource): Promise<void> {
   await reloadConfig();
   emit('saved');
 }
-async function fetchModels(): Promise<void> {
-  if (!activeSource.value) return;
-  const r = await window.desksoul.rpc('provider.fetchModels', { sourceId: activeSource.value.id });
-  available.value = r.models;
+async function fetchModels(source: ProviderSource): Promise<void> {
+  // 先持久化当前编辑（apiBase + 已保存的 key），再按持久态拉取——否则拉的是旧/空配置。
+  await window.desksoul.rpc('provider.upsertSource', { source });
+  await reloadConfig();
+  fetching.value = true;
+  fetchMsg.value = '';
+  try {
+    const r = await window.desksoul.rpc('provider.fetchModels', { sourceId: source.id });
+    available.value = r.models;
+    fetchMsg.value = fetchOutcomeMessage({ count: r.models.length });
+  } catch (e) {
+    available.value = [];
+    fetchMsg.value = fetchOutcomeMessage({ error: e });
+  } finally {
+    fetching.value = false;
+  }
+  emit('saved');
 }
 async function addModel(model: string): Promise<void> {
   if (!activeSource.value) return;
@@ -145,10 +160,6 @@ async function set<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void> {
   emit('saved');
 }
 
-const EXCEED = [
-  { value: 'warn', label: '提醒' },
-  { value: 'pause', label: '提醒并暂停' },
-];
 const FALLBACK = [
   { value: 'ollama', label: '切换到本地模型 (Ollama)' },
   { value: 'demo', label: '使用预设台词（演示模式）' },
@@ -209,6 +220,8 @@ const ollamaOptions = computed(() => {
             :available="available"
             :default-model-id="defaultModelId"
             :testing="testing"
+            :fetching="fetching"
+            :fetch-msg="fetchMsg"
             @save-source="saveSource"
             @fetch-models="fetchModels"
             @add-model="addModel"
@@ -237,63 +250,7 @@ const ollamaOptions = computed(() => {
       @close="adding = false"
     />
 
-    <div class="grid gap-4 xl:grid-cols-2">
-      <section class="ds-glass rounded-panel p-5">
-        <h2 class="text-md font-semibold text-text-main">DeskSoul 预算提醒</h2>
-        <p class="mt-2 text-base text-text-sub">
-          本月已使用 <strong style="color: var(--ds-danger)">¥0.00 / —</strong>
-        </p>
-        <div class="mt-4 divide-y divide-glass-border rounded-card border border-glass-border">
-          <div class="grid min-h-[58px] grid-cols-[1fr_auto] items-center gap-4 px-4 py-3">
-            <div>
-              <div class="font-semibold text-text-main">启用预算告警</div>
-              <div class="mt-1 text-sm text-text-sub">接近阈值时在聊天输入区和状态条提示</div>
-            </div>
-            <Switch
-              :model-value="prefs['budget.enabled']"
-              @update:model-value="(v) => set('budget.enabled', v)"
-            />
-          </div>
-          <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <div class="font-semibold text-text-main">本月预算上限</div>
-              <div class="mt-1 text-sm text-text-sub">¥ / 月</div>
-            </div>
-            <Input
-              :model-value="String(prefs['budget.monthlyCap'])"
-              @update:model-value="(v) => set('budget.monthlyCap', Math.max(0, Number(v) || 0))"
-            />
-          </div>
-          <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <div class="font-semibold text-text-main">告警阈值</div>
-              <div class="mt-1 text-sm text-text-sub">
-                达到 {{ prefs['budget.warnAt'] }}% 时提醒
-              </div>
-            </div>
-            <Slider
-              :model-value="prefs['budget.warnAt']"
-              :min="0"
-              :max="100"
-              min-label="0%"
-              max-label="100%"
-              @update:model-value="(v) => set('budget.warnAt', v)"
-            />
-          </div>
-          <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <div class="font-semibold text-text-main">达到上限时</div>
-              <div class="mt-1 text-sm text-text-sub">选择提醒或暂停策略</div>
-            </div>
-            <Select
-              :model-value="prefs['budget.onExceed']"
-              :options="EXCEED"
-              @update:model-value="(v) => set('budget.onExceed', v as Prefs['budget.onExceed'])"
-            />
-          </div>
-        </div>
-      </section>
-
+    <div class="grid gap-4">
       <section class="ds-glass rounded-panel p-5">
         <h2 class="text-md font-semibold text-text-main">离线兜底</h2>
         <p class="mt-2 text-base text-text-sub">所有在线模型不可用时保持最小可回复体验。</p>

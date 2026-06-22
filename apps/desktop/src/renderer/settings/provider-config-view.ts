@@ -54,6 +54,21 @@ export function defaultPrefKeyFor(cap: Capability): PrefKey {
   return DEFAULT_KEYS[cap];
 }
 
+/** 拉取模型结果 → 用户可见提示（成功计数 / 0 命中提示 / 错误分级）。纯函数，便于单测。 */
+export function fetchOutcomeMessage(outcome: { count: number } | { error: unknown }): string {
+  if ('error' in outcome) {
+    const status = (outcome.error as { status?: number }).status;
+    if (status === 401 || status === 403) {
+      return `拉取失败：HTTP ${status}（API Key 未保存或无效，请点 Key 输入框旁的「保存」）`;
+    }
+    if (status) return `拉取失败：HTTP ${status}`;
+    return `拉取失败：${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
+  }
+  return outcome.count
+    ? `拉取到 ${outcome.count} 个模型`
+    : '未找到模型（确认 API Key 已点「保存」、Base URL 正确）';
+}
+
 export const CAPABILITY_TABS: { value: Capability; label: string }[] = [
   { value: 'chat', label: '对话模型' },
   { value: 'agent_runner', label: 'Agent' },

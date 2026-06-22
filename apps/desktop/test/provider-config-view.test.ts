@@ -6,6 +6,7 @@ import {
   capsBadges,
   formatContextLimit,
   defaultPrefKeyFor,
+  fetchOutcomeMessage,
 } from '../src/renderer/settings/provider-config-view';
 import type { ProviderSource, ModelEntry } from '@desksoul/protocol';
 
@@ -52,5 +53,20 @@ describe('provider-config-view（两层，纯）', () => {
   it('defaultPrefKeyFor maps capability → pref key', () => {
     expect(defaultPrefKeyFor('chat')).toBe('model.defaultChatModelId');
     expect(defaultPrefKeyFor('embedding')).toBe('model.defaultEmbeddingModelId');
+  });
+
+  it('fetchOutcomeMessage reports counts and classifies errors', () => {
+    expect(fetchOutcomeMessage({ count: 3 })).toBe('拉取到 3 个模型');
+    expect(fetchOutcomeMessage({ count: 0 })).toContain('未找到模型');
+    expect(fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 401 }) })).toContain(
+      'HTTP 401',
+    );
+    expect(
+      fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 401 }) }),
+    ).toContain('API Key');
+    expect(fetchOutcomeMessage({ error: Object.assign(new Error('x'), { status: 500 }) })).toBe(
+      '拉取失败：HTTP 500',
+    );
+    expect(fetchOutcomeMessage({ error: new Error('ECONNREFUSED') })).toContain('ECONNREFUSED');
   });
 });

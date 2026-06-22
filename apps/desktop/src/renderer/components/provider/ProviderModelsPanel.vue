@@ -14,10 +14,12 @@ const props = defineProps<{
   available: string[];
   defaultModelId: string;
   testing: Record<string, boolean | null>;
+  fetching: boolean;
+  fetchMsg: string;
 }>();
 const emit = defineEmits<{
   saveSource: [source: ProviderSource];
-  fetchModels: [];
+  fetchModels: [source: ProviderSource];
   addModel: [model: string];
   deleteModel: [id: string];
   toggleModel: [payload: { id: string; enabled: boolean }];
@@ -133,12 +135,14 @@ function testLabel(id: string): string {
       <div class="flex items-center justify-between">
         <h3 class="font-semibold text-text-main">Models</h3>
         <button
-          class="rounded-btn border border-glass-border px-3 py-1.5 text-sm text-text-main transition hover:border-brand-to"
-          @click="emit('fetchModels')"
+          class="rounded-btn border border-glass-border px-3 py-1.5 text-sm text-text-main transition hover:border-brand-to disabled:opacity-50"
+          :disabled="fetching"
+          @click="emit('fetchModels', buildSource())"
         >
-          拉取模型列表
+          {{ fetching ? '拉取中…' : '拉取模型列表' }}
         </button>
       </div>
+      <p v-if="fetchMsg" class="mt-1 text-sm text-text-sub">{{ fetchMsg }}</p>
 
       <div class="mt-3 flex-1 space-y-1 overflow-auto">
         <div
