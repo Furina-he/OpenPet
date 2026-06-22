@@ -193,6 +193,14 @@ app.whenReady().then(async () => {
       wins.settings.hide();
     }
   });
+  // 聊天浮层同样是持久窗口：关闭(× / closeOverlay 的 window.close) = 收起，可被「跟它聊一聊」/
+  // 托盘/热键再次 show 唤出（否则销毁后 overlayWindow() 返 null，showChat 无效）。
+  wins.overlay.on('close', (e) => {
+    if (!isQuitting && wins && !wins.overlay.isDestroyed()) {
+      e.preventDefault();
+      wins.overlay.hide();
+    }
+  });
 });
 
 app.on('before-quit', () => {
