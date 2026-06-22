@@ -1,49 +1,64 @@
-/** D3/C2 provider 配置的纯视图计算（无 Vue 依赖，便于单测）。 */
+/** Provider 工作台的纯视图计算（无 Vue 依赖，便于单测）。对齐 AstrBot useProviderSources。 */
+import type { Capability, ModelCaps, ModelEntry, PrefKey, ProviderSource } from '@desksoul/protocol';
 
-export interface ProviderRow {
-  id: string;
-  name: string;
-  kind: 'chat' | 'embedding';
-  hasKey: boolean;
-  enabled: boolean;
-  models: string[];
+export function sourcesForTab(sources: ProviderSource[], cap: Capability): ProviderSource[] {
+  return sources.filter((s) => s.capability === cap);
 }
 
-export interface ListRow {
-  id: string;
-  name: string;
-  model: string;
-  hasKey: boolean;
-  lastTestOk: boolean | null;
+export function modelsForSource(models: ModelEntry[], sourceId: string): ModelEntry[] {
+  return models.filter((m) => m.sourceId === sourceId);
 }
 
-/** 某 provider 的可选模型：ollama 有检测结果优先用之，否则用 provider.models。 */
-export function modelsFor(providers: ProviderRow[], ollamaModels: string[], id: string): string[] {
-  if (id === 'ollama' && ollamaModels.length) return ollamaModels;
-  return providers.find((p) => p.id === id)?.models ?? [];
+export type MergedEntry =
+  | { type: 'configured'; model: string; entry: ModelEntry }
+  | { type: 'available'; model: string };
+
+/** 已配置在前 + 尚未配置的可用模型（对齐 AstrBot mergedModelEntries）。 */
+export function mergedModelEntries(configured: ModelEntry[], available: string[]): MergedEntry[] {
+  const have = new Set(configured.map((m) => m.model));
+  return [
+    ...configured.map((entry) => ({ type: 'configured' as const, model: entry.model, entry })),
+    ...available.filter((m) => !have.has(m)).map((model) => ({ type: 'available' as const, model })),
+  ];
 }
 
-/** 左栏列表行：当前 provider 显示已选 activeModel，其余显示各自首个模型。 */
-export function buildRows(
-  providers: ProviderRow[],
-  activeId: string,
-  activeModel: string,
-  ollamaModels: string[],
-  testOk: Record<string, boolean | null>,
-): ListRow[] {
-  return providers.map((p) => ({
-    id: p.id,
-    name: p.name,
-    model:
-      p.id === activeId && activeModel
-        ? activeModel
-        : (modelsFor(providers, ollamaModels, p.id)[0] ?? ''),
-    hasKey: p.hasKey,
-    lastTestOk: testOk[p.id] ?? null,
-  }));
+export function formatContextLimit(ctx?: number): string {
+  if (!ctx || typeof ctx !== 'number') return '';
+  if (ctx >= 1_000_000) return `${Math.round(ctx / 1_000_000)}M`;
+  if (ctx >= 1_000) return `${Math.round(ctx / 1_000)}K`;
+  return `${ctx}`;
 }
 
-/** 默认模型下拉显示值：已选模型属当前列表则用它，否则回退首个（= worker 缺省 defaultModels[0]）。 */
-export function activeModelValue(activeModels: string[], savedModel: string): string {
-  return savedModel && activeModels.includes(savedModel) ? savedModel : (activeModels[0] ?? '');
+/** 能力徽标顺序：vision/audio/tool/reasoning + 上下文。 */
+export function capsBadges(caps: ModelCaps, contextTokens?: number): string[] {
+  const out: string[] = [];
+  if (caps.vision) out.push('vision');
+  if (caps.audio) out.push('audio');
+  if (caps.tool) out.push('tool');
+  if (caps.reasoning) out.push('reasoning');
+  const ctx = formatContextLimit(contextTokens);
+  if (ctx) out.push(ctx);
+  return out;
 }
+
+const DEFAULT_KEYS: Record<Capability, PrefKey> = {
+  chat: 'model.defaultChatModelId',
+  agent_runner: 'model.defaultAgentModelId',
+  stt: 'model.defaultSttModelId',
+  tts: 'model.defaultTtsModelId',
+  embedding: 'model.defaultEmbeddingModelId',
+  rerank: 'model.defaultRerankModelId',
+};
+
+export function defaultPrefKeyFor(cap: Capability): PrefKey {
+  return DEFAULT_KEYS[cap];
+}
+
+export const CAPABILITY_TABS: { value: Capability; label: string }[] = [
+  { value: 'chat', label: '对话模型' },
+  { value: 'agent_runner', label: 'Agent' },
+  { value: 'stt', label: '语音转文字' },
+  { value: 'tts', label: '文字转语音' },
+  { value: 'embedding', label: '向量 Embedding' },
+  { value: 'rerank', label: '重排 Rerank' },
+];

@@ -1,44 +1,56 @@
 import { describe, it, expect } from 'vitest';
 import {
-  modelsFor,
-  buildRows,
-  activeModelValue,
-  type ProviderRow,
+  sourcesForTab,
+  modelsForSource,
+  mergedModelEntries,
+  capsBadges,
+  formatContextLimit,
+  defaultPrefKeyFor,
 } from '../src/renderer/settings/provider-config-view';
+import type { ProviderSource, ModelEntry } from '@desksoul/protocol';
 
-const PROVIDERS: ProviderRow[] = [
+const sources: ProviderSource[] = [
+  { id: 'openai-main', adapter: 'openai', capability: 'chat', apiBase: 'b1', key: '', enabled: true },
+  { id: 'voice', adapter: 'openai', capability: 'tts', apiBase: 'b2', key: '', enabled: true },
+];
+const models: ModelEntry[] = [
   {
-    id: 'openai',
-    name: 'OpenAI',
-    kind: 'chat',
-    hasKey: true,
+    id: 'openai-main/gpt-4o',
+    sourceId: 'openai-main',
+    model: 'gpt-4o',
     enabled: true,
-    models: ['gpt-4o', 'gpt-4o-mini'],
+    caps: { vision: true, tool: true },
+    contextTokens: 128000,
   },
-  { id: 'ollama', name: 'Ollama', kind: 'chat', hasKey: false, enabled: true, models: [] },
 ];
 
-describe('provider-config-view（纯）', () => {
-  it('modelsFor：ollama 有检测结果时用检测列表，否则用 provider.models', () => {
-    expect(modelsFor(PROVIDERS, [], 'openai')).toEqual(['gpt-4o', 'gpt-4o-mini']);
-    expect(modelsFor(PROVIDERS, ['llama3', 'qwen2'], 'ollama')).toEqual(['llama3', 'qwen2']);
-    expect(modelsFor(PROVIDERS, [], 'ollama')).toEqual([]);
+describe('provider-config-view（两层，纯）', () => {
+  it('sourcesForTab filters by capability', () => {
+    expect(sourcesForTab(sources, 'chat').map((s) => s.id)).toEqual(['openai-main']);
+    expect(sourcesForTab(sources, 'tts').map((s) => s.id)).toEqual(['voice']);
   });
-  it('buildRows：当前 provider 用已选 activeModel，余用各自首个模型', () => {
-    const rows = buildRows(PROVIDERS, 'openai', 'gpt-4o-mini', [], { openai: false });
-    expect(rows[0]).toEqual({
-      id: 'openai',
-      name: 'OpenAI',
-      model: 'gpt-4o-mini',
-      hasKey: true,
-      lastTestOk: false,
-    });
-    expect(rows[1]!.model).toBe(''); // ollama 无模型
-    expect(rows[1]!.lastTestOk).toBeNull(); // 未测
+  it('modelsForSource filters by sourceId', () => {
+    expect(modelsForSource(models, 'openai-main')).toHaveLength(1);
+    expect(modelsForSource(models, 'voice')).toEqual([]);
   });
-  it('activeModelValue：已选模型属当前列表则用它，否则回退首个', () => {
-    expect(activeModelValue(['gpt-4o', 'gpt-4o-mini'], 'gpt-4o-mini')).toBe('gpt-4o-mini');
-    expect(activeModelValue(['gpt-4o'], 'nonexistent')).toBe('gpt-4o');
-    expect(activeModelValue([], 'x')).toBe('');
+  it('mergedModelEntries puts configured first, drops dup available', () => {
+    const merged = mergedModelEntries(models, ['gpt-4o', 'gpt-4o-mini']);
+    expect(merged.map((e) => [e.type, e.model])).toEqual([
+      ['configured', 'gpt-4o'],
+      ['available', 'gpt-4o-mini'],
+    ]);
+  });
+  it('capsBadges + formatContextLimit', () => {
+    expect(capsBadges({ vision: true, tool: true, reasoning: false }, 128000)).toEqual([
+      'vision',
+      'tool',
+      '128K',
+    ]);
+    expect(formatContextLimit(1_000_000)).toBe('1M');
+    expect(formatContextLimit(undefined)).toBe('');
+  });
+  it('defaultPrefKeyFor maps capability → pref key', () => {
+    expect(defaultPrefKeyFor('chat')).toBe('model.defaultChatModelId');
+    expect(defaultPrefKeyFor('embedding')).toBe('model.defaultEmbeddingModelId');
   });
 });
