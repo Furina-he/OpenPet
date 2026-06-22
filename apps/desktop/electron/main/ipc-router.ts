@@ -12,7 +12,7 @@
  */
 import { ipcMain, BrowserWindow, Menu, type WebContents } from 'electron';
 import { writeFileSync } from 'node:fs';
-import { getProviderBaseUrl } from '@desksoul/protocol';
+import { resolveChatTarget } from '@desksoul/protocol';
 import { ChatService } from './chat-service.js';
 import { createRouter } from './router.js';
 import { buildCharacterMenuTemplate } from './character-menu.js';
@@ -105,15 +105,14 @@ export function registerIpcRouter(deps: IpcRouterDeps): { dispose: () => Promise
     ...(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {}),
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
-    // §7.1：chat.send 未带 providerId 时，动态读 prefs 的当前 provider/model（D3 选择即生效）。
+    // §7.1：chat.send 未带 providerId 时，动态读 prefs 的两层默认 chat 目标（工作台选默认即生效）。
     resolveModel: () => {
       const p = prefsStore.getAll();
-      const providerId = p['model.activeProvider'];
-      return {
-        ...(providerId ? { providerId } : {}),
-        ...(p['model.activeModel'] ? { model: p['model.activeModel'] } : {}),
-        ...(providerId ? { baseUrl: getProviderBaseUrl(providerId, p) } : {}),
-      };
+      return resolveChatTarget(
+        p['model.providerSources'],
+        p['model.models'],
+        p['model.defaultChatModelId'],
+      );
     },
   });
   const idleResponder = createIdleResponder(sendToCharacter);

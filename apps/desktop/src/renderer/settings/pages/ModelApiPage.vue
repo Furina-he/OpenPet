@@ -40,7 +40,8 @@ onMounted(async () => {
 
 async function set<K extends PrefKey>(key: K, value: Prefs[K]): Promise<void> {
   prefs.value = { ...prefs.value, [key]: value };
-  await window.desksoul.rpc('app.prefs.set', { key, value });
+  // app.prefs.set 仅收标量；两层数组键（providerSources/models）走 provider.* RPC。
+  await window.desksoul.rpc('app.prefs.set', { key, value: value as string | number | boolean });
   emit('saved');
 }
 function onOllama(models: string[]): void {

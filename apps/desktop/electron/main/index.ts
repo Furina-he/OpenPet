@@ -11,6 +11,7 @@ import { electronHttpAgent, electronHttpGetJson } from './http-agent.js';
 import { Keychain } from './keychain.js';
 import { createProviderConfig } from './provider-config.js';
 import { createProviderService } from './provider-service.js';
+import { runProviderMigrationIfNeeded } from './startup-provider-migrate.js';
 import { createPrefsStore } from './prefs/index.js';
 import { createAppService } from './app-service.js';
 import { decideStartup } from './startup.js';
@@ -35,7 +36,7 @@ let trayThinking = false;
 let trayError = false;
 let isQuitting = false;
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
   //（turbo 的 ^build 保证 dist 先于 desktop 构建存在）。
   const providerEntryPath = require.resolve(
@@ -53,11 +54,17 @@ app.whenReady().then(() => {
   const dataDir = path.join(app.getPath('userData'), 'data');
   mkdirSync(dataDir, { recursive: true });
   const prefsStore = createPrefsStore({ prefsPath: path.join(dataDir, 'prefs.json') });
-  const providerConfig = createProviderConfig({ keychain, getPrefs: () => prefsStore.getAll() });
+  // 启动一次性：旧单 provider 配置（含 keychain 明文 key）→ 两层 Source+Model（用户裁定 key 随 source 存）。
+  await runProviderMigrationIfNeeded({
+    getPrefs: () => prefsStore.getAll(),
+    setPref: (k, v) => prefsStore.set(k, v),
+    keyLookup: async (pid) => (await keychain.get(pid, 'apiKey')) ?? '',
+  });
+  const providerConfig = createProviderConfig({ getPrefs: () => prefsStore.getAll() });
   const providerService = createProviderService({
-    keychain,
     httpGetJson: electronHttpGetJson,
     getPrefs: () => prefsStore.getAll(),
+    setPref: (k, v) => prefsStore.set(k, v),
   });
   // 窗口定位器 + 广播：registerIpcRouter 与 J2 热键（app-actions）共用同一组，避免重复。
   const targets = rendererTargets(wins);
