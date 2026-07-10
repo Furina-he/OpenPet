@@ -832,6 +832,13 @@ export const Methods = {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'voice.stopPlayback': {
+    // bargeIn：录音开始时调用，广播 voice.stop 停播
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  // notification: Main → Character 窗（停止当前 TTS 播放）
+  'voice.stop': { params: z.object({}), result: z.null() },
 } as const;
 
 export type MethodName = keyof typeof Methods;

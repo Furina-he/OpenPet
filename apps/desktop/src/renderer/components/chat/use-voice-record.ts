@@ -150,6 +150,8 @@ export function createVoiceRecorder(opts: {
     try {
       const prefs = await window.openpet.rpc('app.prefs.getAll', {});
       if (!prefs['privacy.microphone']) throw new Error('privacy.microphone off');
+      // bargeIn：开始录音即停当前朗读（fire-and-forget，不阻塞开录）
+      if (prefs['voice.bargeIn']) void window.openpet.rpc('voice.stopPlayback', {});
       const deviceId = opts.deviceId?.() ?? '';
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: deviceId ? { deviceId: { exact: deviceId } } : true,

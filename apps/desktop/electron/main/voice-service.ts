@@ -458,6 +458,11 @@ export function createVoiceService(deps: VoiceServiceDeps) {
       deps.removeVoiceDir(p.id);
       return { ok: true as const };
     },
+    /** bargeIn：录音端调用，广播停播（character 窗停 activeVoice）。 */
+    'voice.stopPlayback': async (_p: Record<string, never>) => {
+      deps.broadcast('voice.stop', {});
+      return { ok: true as const };
+    },
     /** autoSpeak 旁路入口（chat.done(stop) 挂）：关/未配置/失败一律静默，不影响文本回复。 */
     async speakSession(sessionId: string): Promise<void> {
       if (!deps.getPrefs()['voice.autoSpeak']) return;

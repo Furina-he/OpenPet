@@ -752,6 +752,14 @@ describe('voice.saveRefAudio / commitRefAudio / removeVoiceDir', () => {
   });
 });
 
+describe('voice.stopPlayback（bargeIn 停播）', () => {
+  it('广播 voice.stop 空参', async () => {
+    const { service, broadcasts } = makeService();
+    expect(await service['voice.stopPlayback']({})).toEqual({ ok: true });
+    expect(broadcasts).toEqual([{ channel: 'voice.stop', params: {} }]);
+  });
+});
+
 describe('voice.testEngine（测连）', () => {
   it('gptsovits：GET {apiBase}/tts 有响应即通（400 也算）；连接失败给人话', async () => {
     const fetch400 = fakeFetch({ status: 400 });

@@ -55,6 +55,10 @@ describe('voice protocol', () => {
     );
     expect(Methods['voice.testEngine'].params.safeParse({ engine: 'openai' }).success).toBe(false);
   });
+  it('voice.stopPlayback / voice.stop（bargeIn）注册', () => {
+    expect(Methods['voice.stopPlayback'].params.safeParse({}).success).toBe(true);
+    expect(Methods['voice.stop'].params.safeParse({}).success).toBe(true);
+  });
   it('voice.saveRefAudio / commitRefAudio / removeVoiceDir 注册', () => {
     expect(
       Methods['voice.saveRefAudio'].params.safeParse({ dataBase64: 'AA==', mime: 'audio/wav' })
