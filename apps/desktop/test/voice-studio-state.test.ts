@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import type { VoiceProfile } from '@openpet/protocol';
+import type { ModelEntry, ProviderSource, VoiceProfile } from '@openpet/protocol';
 import {
   appendChip,
+  bindingLabel,
   draftToProfile,
   emptyDraft,
+  mimoSourceOptions,
   newVoiceId,
   sortCards,
   toCardVm,
+  ttsModelOptions,
   validateRefUpload,
 } from '../src/renderer/settings/voice-studio-state.js';
 
@@ -111,6 +114,95 @@ describe('卡片 VM', () => {
   it('sortCards 默认置顶、其余稳定', () => {
     const cards = [toCardVm(preset, 'vp_2'), toCardVm(design, 'vp_2')];
     expect(sortCards(cards).map((c) => c.id)).toEqual(['vp_2', 'vp_1']);
+  });
+});
+
+describe('显式连接绑定（真窗反馈）', () => {
+  const src = (over: Partial<ProviderSource>): ProviderSource =>
+    ({
+      id: 'src',
+      adapter: 'openai',
+      capability: 'tts',
+      apiBase: 'http://x/v1',
+      key: '',
+      enabled: true,
+      ...over,
+    }) as ProviderSource;
+  const sources: ProviderSource[] = [
+    src({ id: 'oa', name: 'OpenAI TTS' }),
+    src({ id: 'mimo', name: 'MiMo', icon: 'mimo' }),
+    src({ id: 'off', enabled: false }),
+    src({ id: 'chat', capability: 'chat' }),
+  ];
+  const models: ModelEntry[] = [
+    { id: 'oa/tts-1', sourceId: 'oa', model: 'tts-1', enabled: true, caps: {} },
+    { id: 'oa/tts-off', sourceId: 'oa', model: 'tts-off', enabled: false, caps: {} },
+    { id: 'mimo/m1', sourceId: 'mimo', model: 'mimo-v2.5-tts', enabled: true, caps: {} },
+    { id: 'off/m', sourceId: 'off', model: 'x', enabled: true, caps: {} },
+    { id: 'chat/m', sourceId: 'chat', model: 'gpt', enabled: true, caps: {} },
+  ];
+
+  it('ttsModelOptions：只列启用 TTS 源下的启用模型，带 mimo 判别', () => {
+    expect(ttsModelOptions(sources, models)).toEqual([
+      { value: 'oa/tts-1', label: 'OpenAI TTS · tts-1', mimo: false },
+      { value: 'mimo/m1', label: 'MiMo · mimo-v2.5-tts', mimo: true },
+    ]);
+  });
+
+  it('mimoSourceOptions：仅启用的 MiMo TTS 源', () => {
+    expect(mimoSourceOptions(sources)).toEqual([{ value: 'mimo', label: 'MiMo' }]);
+  });
+
+  it('draftToProfile 带上 modelId / sourceId（空串剔除）', () => {
+    const p1 = draftToProfile(
+      { ...emptyDraft(), name: 'a', voiceName: 'nova', modelId: 'oa/tts-1' },
+      () => 'vp_1',
+    );
+    expect(p1.ok && p1.profile.modelId).toBe('oa/tts-1');
+    const p2 = draftToProfile(
+      { ...emptyDraft(), kind: 'design', name: 'b', stylePrompt: '温柔', sourceId: 'mimo' },
+      () => 'vp_2',
+    );
+    expect(p2.ok && p2.profile.sourceId).toBe('mimo');
+    const p3 = draftToProfile({ ...emptyDraft(), name: 'c', voiceName: 'nova' }, () => 'vp_3');
+    expect(p3.ok && p3.profile.modelId).toBeUndefined();
+  });
+
+  it('bindingLabel：preset 查模型 / design 拼 designModel / clone 报引擎 / 失效回默认', () => {
+    const dm = 'mimo-v2.5-tts-voicedesign';
+    expect(
+      bindingLabel(
+        { kind: 'preset', engine: 'openai', modelId: 'oa/tts-1' },
+        sources,
+        models,
+        dm,
+        '默认 TTS',
+      ),
+    ).toBe('OpenAI TTS · tts-1');
+    expect(
+      bindingLabel({ kind: 'preset', engine: 'openai' }, sources, models, dm, '默认 TTS'),
+    ).toBe('默认 TTS');
+    expect(
+      bindingLabel(
+        { kind: 'preset', engine: 'openai', modelId: 'gone' },
+        sources,
+        models,
+        dm,
+        '默认 TTS',
+      ),
+    ).toBe('默认 TTS');
+    expect(
+      bindingLabel(
+        { kind: 'design', engine: 'mimo', sourceId: 'mimo' },
+        sources,
+        models,
+        dm,
+        '默认 TTS',
+      ),
+    ).toBe(`MiMo · ${dm}`);
+    expect(
+      bindingLabel({ kind: 'clone', engine: 'gptsovits' }, sources, models, dm, '默认 TTS'),
+    ).toBe('GPT-SoVITS');
   });
 });
 

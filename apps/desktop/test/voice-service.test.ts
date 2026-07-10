@@ -752,6 +752,120 @@ describe('voice.saveRefAudio / commitRefAudio / removeVoiceDir', () => {
   });
 });
 
+describe('音色工坊：显式连接绑定（modelId/sourceId，真窗反馈）', () => {
+  const audioB64 = Buffer.from('fake-wav').toString('base64');
+  const mimoJson = { choices: [{ message: { audio: { data: audioB64 } } }] };
+  /** 默认 TTS 绑 openai 源，另备一个 MiMo 源（未设默认）。 */
+  const dualPrefs = (over: Record<string, unknown> = {}): Prefs =>
+    prefsWith({
+      'model.providerSources': [
+        {
+          id: 'src-tts',
+          adapter: 'openai',
+          capability: 'tts',
+          apiBase: 'http://x/v1',
+          key: 'sk-test',
+          enabled: true,
+          config: { voice: 'miko' },
+        },
+        {
+          id: 'mimo_tts',
+          adapter: 'openai',
+          capability: 'tts',
+          apiBase: 'https://api.xiaomimimo.com/v1',
+          key: 'sk-mimo',
+          enabled: true,
+          icon: 'mimo',
+        },
+      ],
+      'model.models': [
+        { id: 'm-tts', sourceId: 'src-tts', model: 'tts-1', enabled: true },
+        { id: 'mimo_tts/mimo-v2.5-tts', sourceId: 'mimo_tts', model: 'mimo-v2.5-tts', enabled: true },
+      ],
+      'model.defaultTtsModelId': 'm-tts',
+      ...over,
+    });
+
+  it('preset.modelId 指向 MiMo 模型 → 走该源 chat/completions（协议按源判别，不看默认绑定）', async () => {
+    const fetch = fakeFetch({ json: mimoJson });
+    const profile: VoiceProfile = {
+      id: 'vp_m',
+      name: 'm',
+      kind: 'preset',
+      engine: 'mimo',
+      voiceName: 'mimo_cute',
+      modelId: 'mimo_tts/mimo-v2.5-tts',
+    };
+    const { service } = makeService({
+      prefs: dualPrefs({ 'voice.voices': [profile], 'voice.defaultVoiceId': 'vp_m' }),
+      fetch,
+    });
+    await service['voice.speak']({ text: 'hi' });
+    const call = fetch.calls[0]!;
+    expect(call.url).toBe('https://api.xiaomimimo.com/v1/chat/completions');
+    expect(call.init.headers['authorization']).toBe('Bearer sk-mimo');
+    const body = JSON.parse(call.init.body as string);
+    expect(body.model).toBe('mimo-v2.5-tts');
+    expect(body.audio).toEqual({ format: 'wav', voice: 'mimo_cute' });
+  });
+
+  it('design.sourceId 指定 MiMo 源 → 无默认 TTS 也可用，model=designModel', async () => {
+    const fetch = fakeFetch({ json: mimoJson });
+    const profile: VoiceProfile = {
+      id: 'vp_d',
+      name: 'd',
+      kind: 'design',
+      engine: 'mimo',
+      stylePrompt: '温柔',
+      sourceId: 'mimo_tts',
+    };
+    const { service } = makeService({
+      prefs: dualPrefs({
+        'model.defaultTtsModelId': '',
+        'voice.voices': [profile],
+        'voice.defaultVoiceId': 'vp_d',
+      }),
+      fetch,
+    });
+    await service['voice.speak']({ text: 'hi' });
+    const call = fetch.calls[0]!;
+    expect(call.url).toBe('https://api.xiaomimimo.com/v1/chat/completions');
+    expect(JSON.parse(call.init.body as string).model).toBe('mimo-v2.5-tts-voicedesign');
+  });
+
+  it('design 未绑源且默认 TTS 非 MiMo → 人话报错不发请求', async () => {
+    const profile: VoiceProfile = {
+      id: 'vp_d2',
+      name: 'd2',
+      kind: 'design',
+      engine: 'mimo',
+      stylePrompt: '温柔',
+    };
+    const { service, fetch } = makeService({
+      prefs: dualPrefs({ 'voice.voices': [profile], 'voice.defaultVoiceId': 'vp_d2' }),
+    });
+    await expect(service['voice.speak']({ text: 'hi' })).rejects.toThrow(/MiMo/);
+    expect(fetch.calls).toHaveLength(0);
+  });
+
+  it('preset.modelId 失效（模型已删）→ 回退默认 TTS 绑定', async () => {
+    const profile: VoiceProfile = {
+      id: 'vp_g',
+      name: 'g',
+      kind: 'preset',
+      engine: 'openai',
+      voiceName: 'nova',
+      modelId: 'gone/model',
+    };
+    const { service, fetch } = makeService({
+      prefs: dualPrefs({ 'voice.voices': [profile], 'voice.defaultVoiceId': 'vp_g' }),
+    });
+    await service['voice.speak']({ text: 'hi' });
+    expect(fetch.calls[0]!.url).toBe('http://x/v1/audio/speech');
+    expect(JSON.parse(fetch.calls[0]!.init.body as string).voice).toBe('nova');
+  });
+});
+
 describe('voice.stopPlayback（bargeIn 停播）', () => {
   it('广播 voice.stop 空参', async () => {
     const { service, broadcasts } = makeService();

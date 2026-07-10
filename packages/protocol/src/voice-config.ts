@@ -10,6 +10,11 @@ export type VoiceKind = z.infer<typeof VoiceKindSchema>;
 /** fish.audio 平台模型 ID：32 位 hex（照 AstrBot fishaudio_tts_api_source 校验）。 */
 export const FISHAUDIO_REFERENCE_ID_RE = /^[a-fA-F0-9]{32}$/;
 
+/** MiMo（小米）源判别：具名模板带 icon:'mimo'；手填官方域名也识别（voice-service/工坊共用）。 */
+export function isMimoSource(s: { icon?: string; apiBase: string }): boolean {
+  return s.icon === 'mimo' || s.apiBase.includes('xiaomimimo.com');
+}
+
 /**
  * 音色档案（工坊页创建/管理；聊天朗读、试听、角色绑定都消费它）：
  *  - preset：现成音色名（openai alloy… / MiMo mimo_default…）；
@@ -33,6 +38,11 @@ export const VoiceProfileSchema = z
     refText: z.string().min(1).optional(),
     refAudioFile: z.string().min(1).optional(),
     referenceId: z.string().regex(FISHAUDIO_REFERENCE_ID_RE).optional(),
+    // 连接绑定（真窗反馈：显式选模型，不再只靠默认 TTS 隐式绑定）：
+    // preset → modelId（model.models 条目 id）；design → sourceId（MiMo 源 id）。
+    // 缺省或失效 → 回退 D3 默认 TTS 绑定（兼容旧音色）。
+    modelId: z.string().min(1).optional(),
+    sourceId: z.string().min(1).optional(),
   })
   .superRefine((v, ctx) => {
     const issue = (path: string, message: string) =>

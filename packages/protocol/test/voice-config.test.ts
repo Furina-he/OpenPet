@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   VoiceProfileSchema,
+  isMimoSource,
   resolveVoiceProfile,
   type VoiceProfile,
 } from '../src/voice-config.js';
@@ -127,6 +128,29 @@ describe('VoiceProfileSchema 三 kind 校验', () => {
         refText: 'x',
       }).success,
     ).toBe(false);
+  });
+
+  it('连接绑定可选：preset.modelId / design.sourceId', () => {
+    expect(preset({ modelId: 'src1/tts-1' }).modelId).toBe('src1/tts-1');
+    expect(
+      VoiceProfileSchema.safeParse({
+        id: 'vp_d9',
+        name: 'x',
+        kind: 'design',
+        engine: 'mimo',
+        stylePrompt: '低沉',
+        sourceId: 'mimo-src',
+      }).success,
+    ).toBe(true);
+    expect(VoiceProfileSchema.safeParse({ ...preset(), modelId: '' }).success).toBe(false);
+  });
+});
+
+describe('isMimoSource', () => {
+  it('icon 或官方域名判别', () => {
+    expect(isMimoSource({ icon: 'mimo', apiBase: 'http://x/v1' })).toBe(true);
+    expect(isMimoSource({ apiBase: 'https://api.xiaomimimo.com/v1' })).toBe(true);
+    expect(isMimoSource({ icon: 'openai', apiBase: 'https://api.openai.com/v1' })).toBe(false);
   });
 });
 

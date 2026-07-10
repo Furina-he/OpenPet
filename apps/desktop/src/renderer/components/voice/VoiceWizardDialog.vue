@@ -6,9 +6,10 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { BookOpen, Mic, Play, Square, Upload } from 'lucide-vue-next';
-import type { VoiceKind, VoiceProfile } from '@openpet/protocol';
+import type { ModelEntry, ProviderSource, VoiceKind, VoiceProfile } from '@openpet/protocol';
 import Input from '../Input.vue';
 import Button from '../Button.vue';
+import Select from '../Select.vue';
 import { createVoiceRecorder } from '../chat/use-voice-record';
 import {
   DIALECT_CHIPS,
@@ -17,16 +18,24 @@ import {
   OPENAI_VOICE_CHIPS,
   STYLE_CHIPS,
   appendChip,
+  bindingLabel,
   draftToProfile,
   emptyDraft,
+  mimoSourceOptions,
   newVoiceId,
+  ttsModelOptions,
   validateRefUpload,
   type WizardDraft,
 } from '../../settings/voice-studio-state';
 
 const { t } = useI18n();
 const props = defineProps<{ open: boolean; micDeviceId: string }>();
-const emit = defineEmits<{ save: [profile: VoiceProfile, stagedFile: string | null]; cancel: [] }>();
+const emit = defineEmits<{
+  save: [profile: VoiceProfile, stagedFile: string | null];
+  cancel: [];
+  /** 空态引导跳转（前往模型 API 页）。 */
+  navigate: [route: string];
+}>();
 
 const draft = ref<WizardDraft>(emptyDraft());
 const errMsg = ref('');
@@ -41,6 +50,10 @@ const fishApiBase = ref('');
 const fishKey = ref('');
 const fileInput = ref<HTMLInputElement | null>(null);
 const transcribing = ref(false);
+/** 显式绑定候选（真窗反馈：只列可用项）。 */
+const sources = ref<ProviderSource[]>([]);
+const models = ref<ModelEntry[]>([]);
+const designModel = ref('');
 
 watch(
   () => props.open,
@@ -53,6 +66,16 @@ watch(
     gsvApiBase.value = p['voice.engines.gptsovits.apiBase'];
     fishApiBase.value = p['voice.engines.fishaudio.apiBase'];
     fishKey.value = p['voice.engines.fishaudio.key'];
+    sources.value = p['model.providerSources'];
+    models.value = p['model.models'];
+    designModel.value = p['voice.engines.mimo.designModel'];
+    // 预设：默认选中当前默认 TTS（在候选内），否则首个可用；设计：首个 MiMo 源
+    const opts = ttsModelOptions(sources.value, models.value);
+    draft.value.modelId = opts.some((o) => o.value === p['model.defaultTtsModelId'])
+      ? p['model.defaultTtsModelId']
+      : (opts[0]?.value ?? '');
+    draft.value.sourceId = mimoSourceOptions(sources.value)[0]?.value ?? '';
+    syncPresetEngine();
   },
 );
 
@@ -62,14 +85,44 @@ const TABS: Array<{ kind: VoiceKind; label: string }> = [
   { kind: 'clone', label: 'settings.voice.tabClone' },
 ];
 
+const ttsOptions = computed(() => ttsModelOptions(sources.value, models.value));
+const mimoOptions = computed(() => mimoSourceOptions(sources.value));
+
+/** 选中模型的源决定协议与 chip 词表（引擎不再手选）。 */
+function syncPresetEngine(): void {
+  const opt = ttsOptions.value.find((o) => o.value === draft.value.modelId);
+  draft.value.presetEngine = opt?.mimo ? 'mimo' : 'openai';
+}
+function pickModel(v: string): void {
+  draft.value.modelId = v;
+  syncPresetEngine();
+}
+
 const voiceChips = computed(() =>
   draft.value.presetEngine === 'openai' ? OPENAI_VOICE_CHIPS : MIMO_VOICE_CHIPS,
+);
+/** 向导状态行：这个音色实际会用哪个连接+模型。 */
+const willUse = computed(() =>
+  bindingLabel(
+    {
+      kind: draft.value.kind,
+      engine: draft.value.kind === 'clone' ? draft.value.cloneEngine : draft.value.presetEngine,
+      modelId: draft.value.modelId || undefined,
+      sourceId: draft.value.sourceId || undefined,
+    },
+    sources.value,
+    models.value,
+    designModel.value,
+    t('settings.voice.bindingDefault'),
+  ),
 );
 
 // 克隆保存/试听门：引擎测连通过 + 素材齐（refAudio+refText 或 fishaudio referenceId）
 const cloneEngineOk = computed(() => engineTest.value[draft.value.cloneEngine]?.ok === true);
 const canSave = computed(() => {
   if (busy.value) return false;
+  if (draft.value.kind === 'preset' && !draft.value.modelId) return false;
+  if (draft.value.kind === 'design' && !draft.value.sourceId) return false;
   if (draft.value.kind === 'clone' && !cloneEngineOk.value) return false;
   return draftToProfile(draft.value, () => 'vp_probe').ok;
 });
@@ -216,20 +269,23 @@ function save(): void {
       <!-- 预设 Tab -->
       <div v-if="draft.kind === 'preset'" class="mt-4 space-y-3">
         <div>
-          <span class="mb-1 block text-sm text-text-sub">{{ t('settings.voice.engine') }}</span>
-          <div class="flex gap-2">
-            <button
-              v-for="eng in ['openai', 'mimo'] as const"
-              :key="eng"
-              class="rounded-btn border px-3 py-1.5 text-sm transition ease-ds"
-              :class="draft.presetEngine === eng ? 'border-brand-to text-text-main' : 'border-glass-border text-text-sub'"
-              :style="draft.presetEngine === eng ? 'background: var(--ds-warm-soft)' : ''"
-              @click="draft.presetEngine = eng"
-            >
-              {{ t(`settings.voice.engine_${eng}`) }}
+          <span class="mb-1 block text-sm text-text-sub">{{ t('settings.voice.pickModel') }}</span>
+          <template v-if="ttsOptions.length">
+            <Select :model-value="draft.modelId" :options="ttsOptions" @update:model-value="pickModel" />
+            <p class="mt-1 text-sm text-text-sub">
+              {{ t('settings.voice.willUse', { label: willUse }) }}
+            </p>
+          </template>
+          <div
+            v-else
+            class="rounded-card px-3 py-2 text-sm"
+            style="color: var(--ds-danger); background: var(--ds-warm-soft)"
+          >
+            {{ t('settings.voice.noTtsModels') }}
+            <button class="ml-1 underline" @click="emit('navigate', 'model')">
+              {{ t('settings.voice.goModelPage') }}
             </button>
           </div>
-          <p class="mt-1 text-sm text-text-sub">{{ t('settings.voice.presetEngineHint') }}</p>
         </div>
         <label class="block">
           <span class="mb-1 block text-sm text-text-sub">{{ t('settings.voice.voiceName') }}</span>
@@ -250,6 +306,29 @@ function save(): void {
       <!-- 设计 Tab（MiMo voicedesign） -->
       <div v-else-if="draft.kind === 'design'" class="mt-4 space-y-3">
         <p class="text-sm text-text-sub">{{ t('settings.voice.designHint') }}</p>
+        <div>
+          <span class="mb-1 block text-sm text-text-sub">{{ t('settings.voice.pickMimoSource') }}</span>
+          <template v-if="mimoOptions.length">
+            <Select
+              :model-value="draft.sourceId"
+              :options="mimoOptions"
+              @update:model-value="(v) => (draft.sourceId = v)"
+            />
+            <p class="mt-1 text-sm text-text-sub">
+              {{ t('settings.voice.willUse', { label: willUse }) }}
+            </p>
+          </template>
+          <div
+            v-else
+            class="rounded-card px-3 py-2 text-sm"
+            style="color: var(--ds-danger); background: var(--ds-warm-soft)"
+          >
+            {{ t('settings.voice.noMimoSource') }}
+            <button class="ml-1 underline" @click="emit('navigate', 'model')">
+              {{ t('settings.voice.goModelPage') }}
+            </button>
+          </div>
+        </div>
         <textarea
           v-model="draft.stylePrompt"
           rows="3"

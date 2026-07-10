@@ -16,7 +16,7 @@ import SettingCard from '../../components/SettingCard.vue';
 import SettingSection from '../../components/SettingSection.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
 import VoiceWizardDialog from '../../components/voice/VoiceWizardDialog.vue';
-import { sortCards, toCardVm } from '../voice-studio-state';
+import { bindingLabel, sortCards, toCardVm } from '../voice-studio-state';
 
 const emit = defineEmits<{ saved: []; navigate: [string] }>();
 const { t } = useI18n();
@@ -33,7 +33,17 @@ const mics = ref<Array<{ value: string; label: string }>>([]);
 
 const voices = computed(() => prefs.value['voice.voices']);
 const cards = computed(() =>
-  sortCards(voices.value.map((v) => toCardVm(v, prefs.value['voice.defaultVoiceId']))),
+  sortCards(voices.value.map((v) => toCardVm(v, prefs.value['voice.defaultVoiceId']))).map((c) => ({
+    ...c,
+    // 真窗反馈：卡上明示实际使用的连接+模型（区分"这个音色走的是啥"）
+    binding: bindingLabel(
+      voices.value.find((v) => v.id === c.id)!,
+      prefs.value['model.providerSources'],
+      prefs.value['model.models'],
+      prefs.value['voice.engines.mimo.designModel'],
+      t('settings.voice.bindingDefault'),
+    ),
+  })),
 );
 const defaultOptions = computed(() => [
   { value: '', label: t('settings.voice.noDefault') },
@@ -156,6 +166,7 @@ async function confirmDelete(): Promise<void> {
               />
             </div>
             <div class="mt-0.5 truncate text-sm text-text-sub">{{ c.detail || '—' }}</div>
+            <div class="mt-0.5 truncate text-xs text-text-sub opacity-80">{{ c.binding }}</div>
           </div>
           <div class="flex shrink-0 flex-col items-end gap-1">
             <span
@@ -295,6 +306,12 @@ async function confirmDelete(): Promise<void> {
       :mic-device-id="prefs['voice.micDeviceId']"
       @save="onWizardSave"
       @cancel="wizardOpen = false"
+      @navigate="
+        (r) => {
+          wizardOpen = false;
+          emit('navigate', r);
+        }
+      "
     />
     <ConfirmDialog
       :open="!!pendingDelete"

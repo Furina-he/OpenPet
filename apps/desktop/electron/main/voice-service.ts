@@ -19,6 +19,7 @@
 import path from 'node:path';
 import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
+  isMimoSource,
   resolveChatTarget,
   resolveVoiceProfile,
   VoiceProfileSchema,
@@ -65,9 +66,8 @@ interface VoiceTarget {
   source: ProviderSource;
 }
 
-/** MiMo 判别：具名模板带 icon:'mimo'；手填官方域名也识别。provider_type 化收口留 follow-up。 */
-const isMimo = (s: ProviderSource): boolean =>
-  s.icon === 'mimo' || s.apiBase.includes('xiaomimimo.com');
+/** MiMo 判别：源级单一真源（protocol isMimoSource）；工坊下拉过滤与此处分派同口径。 */
+const isMimo = isMimoSource;
 
 // MiMo 常量照 AstrBot mimo_api_common.py
 const MIMO_TTS_SEED_TEXT = 'Hello, MiMo, have you had lunch?';
@@ -288,7 +288,7 @@ export function createVoiceService(deps: VoiceServiceDeps) {
     emitAudio(Buffer.from(await res.arrayBuffer()).toString('base64'), 'audio/wav', rate, sessionId);
   };
 
-  /** 按音色档案分派（openai/mimo 连接沿用 D3 TTS provider 绑定；gptsovits/fishaudio 走引擎卡配置）。 */
+  /** 按音色档案分派（openai/mimo 走 profile 显式绑定 → 默认 TTS 兜底；gptsovits/fishaudio 走引擎卡配置）。 */
   const speakProfile = async (
     profile: VoiceProfile,
     text: string,
@@ -297,12 +297,18 @@ export function createVoiceService(deps: VoiceServiceDeps) {
     const rate = deps.getPrefs()['voice.rate'];
     switch (profile.engine) {
       case 'openai':
-        return speakOpenai(requireTtsTarget(), text, profile.voiceName ?? 'alloy', rate, sessionId);
       case 'mimo': {
-        const t = requireTtsTarget();
-        return profile.kind === 'design'
-          ? speakMimoDesign(t, profile, text, rate, sessionId)
-          : speakMimoPreset(t, text, profile.voiceName ?? 'mimo_default', rate, sessionId);
+        const t = targetFromProfile(profile) ?? requireTtsTarget();
+        if (profile.kind === 'design') {
+          // voicedesign 仅 MiMo 有；打到别家端点只会得到不透明 4xx——本地拦下给人话
+          if (!isMimo(t.source))
+            throw new Error('设计音色需要 MiMo TTS 源（模型 API → 新建 MiMo 源，或在向导里重选）');
+          return speakMimoDesign(t, profile, text, rate, sessionId);
+        }
+        // preset：协议按源判别（引擎字段只作向导校验；绑定改了也不至于发错协议）
+        return isMimo(t.source)
+          ? speakMimoPreset(t, text, profile.voiceName ?? 'mimo_default', rate, sessionId)
+          : speakOpenai(t, text, profile.voiceName ?? 'alloy', rate, sessionId);
       }
       case 'gptsovits':
         return speakGptsovits(profile, text, rate, sessionId);
@@ -310,6 +316,29 @@ export function createVoiceService(deps: VoiceServiceDeps) {
         return speakFishaudio(profile, text, rate, sessionId);
     }
   };
+
+  /** profile 显式绑定解析：preset.modelId 两层解析 / design.sourceId 直取源（model=designModel）；
+   *  失效（被删/停用）返回 null → 调用方回退默认 TTS 绑定。 */
+  function targetFromProfile(profile: VoiceProfile): VoiceTarget | null {
+    const p = deps.getPrefs();
+    if (profile.modelId) {
+      const t = resolveChatTarget(p['model.providerSources'], p['model.models'], profile.modelId);
+      const source = t ? p['model.providerSources'].find((s) => s.id === t.sourceId) : undefined;
+      if (t && source) return { apiBase: t.apiBase, model: t.model, source };
+    }
+    if (profile.sourceId) {
+      const source = p['model.providerSources'].find(
+        (s) => s.id === profile.sourceId && s.enabled,
+      );
+      if (source)
+        return {
+          apiBase: source.apiBase,
+          model: p['voice.engines.mimo.designModel'],
+          source,
+        };
+    }
+    return null;
+  }
 
   const speak = async (text: string, sessionId?: string): Promise<void> => {
     const p = deps.getPrefs();
