@@ -873,6 +873,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       deps.revealItem?.(path.join(root, p.id, 'manifest.json'));
       return { ok: true as const };
     },
+    'character.listFiles': (p) => ({ files: characters.listFiles(p.id) }),
     'character.testGreeting': async (p) => {
       const c = characters.list().find((x) => x.characterId === p.id);
       if (!c) throw new RpcError(-32602, `character not found: ${p.id}`);

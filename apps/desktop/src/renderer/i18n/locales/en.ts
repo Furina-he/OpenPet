@@ -562,6 +562,51 @@ export const en: LocaleMessages = {
       confirmResetDetail:
         'Clears this pack’s emotion mapping override and restores the built-in runtime defaults.',
     },
+    editor: {
+      emptyTitle: 'No editable characters yet',
+      emptyHint:
+        'Built-in characters are read-only. Duplicate one from the library ("Duplicate & edit") or import a pack.',
+      gotoLibrary: 'Open character library',
+      pickCharacter: 'Edit character',
+      dirtyBadge: 'Unsaved',
+      testGreeting: 'Test greeting',
+      greetingBusy: 'Speaking…',
+      greetingSent: 'Greeting sent — watch your desktop pet',
+      greetingNeedsModel: 'Configure a default chat model in "Model API" first',
+      saveReload: 'Save & hot reload',
+      saving: 'Saving…',
+      discard: 'Discard changes',
+      savedToast: '✓ Saved & hot reloaded',
+      immutableHint: 'id / engine / model file cannot be changed (repack to swap models)',
+      personaOrder: 'Persona precedence: user binding > pack declaration > user default > built-in',
+      personaActive: 'Currently effective layer: {layer}',
+      personaShadowed:
+        'A user-bound persona overrides the pack declaration — changes here won’t affect chat until unbound.',
+      noPackPersona:
+        'This pack declares no persona (chat falls back to the user default or built-in persona).',
+      addPersona: 'Add pack persona',
+      removePersona: 'Remove pack persona',
+      tabs: {
+        appearance: 'Appearance',
+        persona: 'Persona',
+        animation: 'Animation & emotions',
+        advanced: 'Advanced',
+      },
+      fields: {
+        name: 'Name',
+        description: 'Description',
+        tags: 'Tags',
+        tagPlaceholder: 'Enter to add',
+        preview: 'Card artwork',
+        previewNone: '(none · initial placeholder)',
+      },
+      errors: {
+        nameRequired: 'Name is required',
+        versionRequired: 'Version is required',
+        tagsTooMany: 'At most 20 tags',
+        emotionWeight: 'Expression weights must be between 0 and 1',
+      },
+    },
     trace: {
       title: 'Diagnostics',
       empty: 'No trace data yet. Start a chat turn and a per-turn timeline will appear here.',

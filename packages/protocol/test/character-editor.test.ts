@@ -45,6 +45,7 @@ describe('⑩.7 角色写侧 5 RPC schema', () => {
       'character.export',
       'character.revealInFolder',
       'character.testGreeting',
+      'character.listFiles',
     ] as const)
       expect(Methods[m]).toBeDefined();
   });

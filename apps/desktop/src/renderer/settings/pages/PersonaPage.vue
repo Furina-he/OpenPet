@@ -3,10 +3,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { PERSONA_TEMPLATES, type Persona } from '@openpet/protocol';
+import { type Persona } from '@openpet/protocol';
 import Button from '../../components/Button.vue';
 import Input from '../../components/Input.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
+import PersonaFields from '../../components/PersonaFields.vue';
 import {
   validateDraft,
   draftToPersona,
@@ -50,16 +51,6 @@ function openEdit(p: Persona): void {
   };
   formError.value = '';
   showForm.value = true;
-}
-function applyTemplate(i: number): void {
-  const tpl = PERSONA_TEMPLATES[i];
-  if (tpl) draft.value.systemPrompt = tpl.systemPrompt;
-}
-function addDialogPair(): void {
-  draft.value.beginDialogs.push('', '');
-}
-function removeDialogPair(i: number): void {
-  draft.value.beginDialogs.splice(i - (i % 2), 2);
 }
 async function save(): Promise<void> {
   const err = validateDraft(draft.value);
@@ -159,61 +150,16 @@ async function toggleBind(id: string): Promise<void> {
         </div>
 
         <div class="mt-4 space-y-3">
-          <div>
-            <span class="mb-1 block text-sm text-text-sub">{{ t('settings.persona.fromTemplate') }}</span>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="(t, i) in PERSONA_TEMPLATES"
-                :key="t.name"
-                class="rounded-full border border-glass-border px-3 py-1 text-sm text-text-sub transition ease-ds hover:text-text-main"
-                @click="applyTemplate(i)"
-              >
-                {{ t.name }}
-              </button>
-            </div>
-          </div>
-
           <label class="block">
             <span class="mb-1 block text-sm text-text-sub">{{ t('settings.persona.name') }}</span>
             <Input v-model="draft.name" :placeholder="t('settings.persona.namePlaceholder')" />
           </label>
 
-          <label class="block">
-            <span class="mb-1 block text-sm text-text-sub">{{ t('settings.persona.prompt') }}</span>
-            <textarea
-              v-model="draft.systemPrompt"
-              rows="6"
-              class="ds-control w-full rounded-input p-2 text-sm text-text-main"
-              :placeholder="t('settings.persona.promptPlaceholder')"
-            />
-          </label>
-
-          <div>
-            <div class="mb-1 flex items-center justify-between">
-              <span class="text-sm text-text-sub">{{ t('settings.persona.beginDialogs') }}</span>
-              <Button variant="secondary" @click="addDialogPair">{{ t('settings.persona.addPair') }}</Button>
-            </div>
-            <div
-              v-for="(_, i) in draft.beginDialogs"
-              :key="i"
-              class="mb-2 flex items-center gap-2"
-            >
-              <span class="w-10 shrink-0 text-xs text-text-sub">
-                {{ i % 2 === 0 ? t('settings.persona.userRole') : t('settings.persona.charRole') }}
-              </span>
-              <Input
-                v-model="draft.beginDialogs[i]!"
-                :placeholder="i % 2 === 0 ? t('settings.persona.userSays') : t('settings.persona.charReplies')"
-              />
-              <button
-                v-if="i % 2 === 1"
-                class="shrink-0 text-sm text-text-sub hover:text-text-main"
-                @click="removeDialogPair(i)"
-              >
-                {{ t('common.delete') }}
-              </button>
-            </div>
-          </div>
+          <PersonaFields
+            v-model:system-prompt="draft.systemPrompt"
+            v-model:begin-dialogs="draft.beginDialogs"
+            show-templates
+          />
         </div>
 
         <div

@@ -396,6 +396,11 @@ export const Methods = {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'character.listFiles': {
+    // E4 外观 Tab preview 下拉数据源：包内文件相对路径列表（不含 manifest.json）。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ files: z.array(z.string()) }),
+  },
   // --- notification: Main → character/overlay（角色已切换；两窗 location.reload()）---
   'character.changed': { params: z.object({ characterId: z.string() }), result: z.null() },
 

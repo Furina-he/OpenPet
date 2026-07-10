@@ -46,6 +46,8 @@ export interface CharacterService {
   duplicate(id: string): { newId: string };
   /** 目录 zip 打包到 targetPath（manifest.json 在 zip 根，与 pack-import 期待一致）。 */
   exportPack(id: string, targetPath: string): void;
+  /** 包内文件相对路径列表（不含 manifest.json；E4 preview 下拉数据源）。 */
+  listFiles(id: string): string[];
 }
 
 export function createCharacterService(deps: CharacterServiceDeps): CharacterService {
@@ -162,6 +164,21 @@ export function createCharacterService(deps: CharacterServiceDeps): CharacterSer
       const zip = new AdmZip();
       zip.addLocalFolder(path.join(root, id)); // 内容置于 zip 根（manifest.json 在根）
       zip.writeZip(targetPath);
+    },
+    listFiles(id) {
+      const root = rootOf(id);
+      if (!root) throw new RpcError(-32602, `character not found: ${id}`);
+      const base = path.join(root, id);
+      const out: string[] = [];
+      const walk = (rel: string): void => {
+        for (const ent of readdirSync(path.join(base, rel), { withFileTypes: true })) {
+          const r = rel ? `${rel}/${ent.name}` : ent.name;
+          if (ent.isDirectory()) walk(r);
+          else if (r !== 'manifest.json') out.push(r);
+        }
+      };
+      walk('');
+      return out.sort();
     },
   };
 }

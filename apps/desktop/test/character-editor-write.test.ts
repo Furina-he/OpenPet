@@ -125,3 +125,13 @@ describe('exportPack（导出再导入 round-trip）', () => {
     expect(() => svc.exportPack('ghost', path.join(base, 'x.dspack'))).toThrow(/not found/i);
   });
 });
+
+describe('listFiles（E4 preview 下拉数据源）', () => {
+  it('递归列相对路径，不含 manifest.json', () => {
+    const { imported, svc } = makeSvc();
+    mkdirSync(path.join(imported, 'miko', 'img'), { recursive: true });
+    writeFileSync(path.join(imported, 'miko', 'img', 'card.png'), 'PNG');
+    expect(svc.listFiles('miko')).toEqual(['img/card.png', 'model.vrm']);
+    expect(() => svc.listFiles('ghost')).toThrow(/not found/i);
+  });
+});
