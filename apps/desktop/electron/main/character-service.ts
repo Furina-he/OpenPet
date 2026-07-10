@@ -5,10 +5,14 @@
  * （userData/characters，导入包）。activeId 持久化在 prefs（注入读写闭包）。
  * current()：load(activeId)，失败回退 default（包被手删不崩）。
  * 切换/导入/卸载后 invalidate() 清缓存；坏包 list 时跳过 + warn（E1 ⚠ 态 follow-up）。
+ * ⑩.7 写侧：updateManifest（仅 userData 根，id/engine/model 不可变，原子写）/
+ * duplicate（复制后编辑）/ exportPack（.dspack 导出，与 pack-import 结构互逆）。
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import AdmZip from 'adm-zip';
 import { CharacterManifestSchema, type CharacterManifest } from '@openpet/protocol';
+import { RpcError } from './router.js';
 
 export interface LoadedCharacter {
   characterId: string;
@@ -31,6 +35,13 @@ export interface CharacterService {
   /** id 所在根目录（导入/卸载/asset 解析辅助）；不存在 → null。 */
   rootOf(id: string): string | null;
   invalidate(): void;
+  // --- ⑩.7 E4 写侧（仅 userData 根可写；内置只读）---
+  /** 整包替换 manifest.json：Zod 全校验 + id/engine/model 不可变 + 原子写（tmp+rename）。 */
+  updateManifest(id: string, next: unknown): CharacterManifest;
+  /** 目录复制到 userData 根 `<id>-copy`（冲突自增）+ manifest id/name 重写；内置可为源。 */
+  duplicate(id: string): { newId: string };
+  /** 目录 zip 打包到 targetPath（manifest.json 在 zip 根，与 pack-import 期待一致）。 */
+  exportPack(id: string, targetPath: string): void;
 }
 
 export function createCharacterService(deps: CharacterServiceDeps): CharacterService {
@@ -95,6 +106,42 @@ export function createCharacterService(deps: CharacterServiceDeps): CharacterSer
     rootOf,
     invalidate() {
       cache = new Map();
+    },
+    updateManifest(id, next) {
+      const root = rootOf(id);
+      if (!root) throw new RpcError(-32602, `character not found: ${id}`);
+      if (root !== deps.importedRoot) throw new RpcError(-32602, '内置角色只读，请复制后编辑');
+      const file = path.join(root, id, 'manifest.json');
+      const prev = CharacterManifestSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+      const manifest = CharacterManifestSchema.parse(next);
+      if (manifest.id !== id || manifest.engine !== prev.engine || manifest.model !== prev.model) {
+        throw new RpcError(-32602, 'id / engine / model 不可变更（改模型请重新制包）');
+      }
+      const tmp = `${file}.tmp`;
+      writeFileSync(tmp, JSON.stringify(manifest, null, 2), 'utf8');
+      renameSync(tmp, file);
+      cache.delete(id);
+      return manifest;
+    },
+    duplicate(id) {
+      const root = rootOf(id);
+      if (!root) throw new RpcError(-32602, `character not found: ${id}`);
+      let newId = `${id}-copy`;
+      for (let n = 2; rootOf(newId) !== null; n++) newId = `${id}-copy${n}`;
+      const dest = path.join(deps.importedRoot, newId);
+      cpSync(path.join(root, id), dest, { recursive: true });
+      const file = path.join(dest, 'manifest.json');
+      const m = CharacterManifestSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+      const copy = { ...m, id: newId, name: `${m.name}（副本）` };
+      writeFileSync(file, JSON.stringify(copy, null, 2), 'utf8');
+      return { newId };
+    },
+    exportPack(id, targetPath) {
+      const root = rootOf(id);
+      if (!root) throw new RpcError(-32602, `character not found: ${id}`);
+      const zip = new AdmZip();
+      zip.addLocalFolder(path.join(root, id)); // 内容置于 zip 根（manifest.json 在根）
+      zip.writeZip(targetPath);
     },
   };
 }
