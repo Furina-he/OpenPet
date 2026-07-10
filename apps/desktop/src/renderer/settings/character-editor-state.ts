@@ -82,6 +82,9 @@ export function isDirty(original: CharacterManifest, draft: EditorDraft): boolea
   return stableStringify(normalizeDraft(cloneManifest(original))) !== stableStringify(normalizeDraft(draft));
 }
 
+/** 词表名形状（同 character-manifest 的 NAME_RE；那边未导出，此处仅客户端速查）。 */
+const NAME_RE = /^[a-zA-Z][\w-]*$/;
+
 /** 客户端速查：字段名 → i18n key（settings.editor.errors.*）。 */
 export function validateDraft(d: EditorDraft): Record<string, string> {
   const errs: Record<string, string> = {};
@@ -89,12 +92,22 @@ export function validateDraft(d: EditorDraft): Record<string, string> {
   if (!d.version.trim()) errs['version'] = 'settings.editor.errors.versionRequired';
   const tags = (d.tags ?? []).map((t) => t.trim()).filter(Boolean);
   if (tags.length > 20) errs['tags'] = 'settings.editor.errors.tagsTooMany';
-  for (const weights of Object.values(d.emotions ?? {})) {
-    for (const w of Object.values(weights)) {
+  for (const [emo, weights] of Object.entries(d.emotions ?? {})) {
+    if (!NAME_RE.test(emo)) errs['emotions'] = 'settings.editor.errors.vocabName';
+    for (const [expr, w] of Object.entries(weights)) {
+      if (!NAME_RE.test(expr)) errs['emotions'] = 'settings.editor.errors.vocabName';
       if (typeof w !== 'number' || Number.isNaN(w) || w < 0 || w > 1) {
         errs['emotions'] = 'settings.editor.errors.emotionWeight';
       }
     }
+  }
+  for (const emo of Object.keys(d.live2dEmotions ?? {})) {
+    if (!NAME_RE.test(emo)) errs['emotions'] = 'settings.editor.errors.vocabName';
+  }
+  if ((d.actions ?? []).some((a) => !NAME_RE.test(a)))
+    errs['actions'] = 'settings.editor.errors.vocabName';
+  for (const key of Object.keys(d.live2dMotions ?? {})) {
+    if (!NAME_RE.test(key)) errs['actions'] = 'settings.editor.errors.vocabName';
   }
   return errs;
 }

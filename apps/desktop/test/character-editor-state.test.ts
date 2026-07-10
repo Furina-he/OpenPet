@@ -85,4 +85,19 @@ describe('validateDraft', () => {
     d.tags = Array.from({ length: 21 }, (_, i) => `t${i}`);
     expect(validateDraft(d)['tags']).toBeTruthy();
   });
+  it('情绪/表情/动作名须符合词表命名（字母开头）', () => {
+    const d = cloneManifest(BASE);
+    d.emotions = { '开心': { happy: 1 } };
+    expect(validateDraft(d)['emotions']).toBeTruthy();
+    const d2 = cloneManifest(BASE);
+    d2.emotions = { happy: { '非法 名': 1 } };
+    expect(validateDraft(d2)['emotions']).toBeTruthy();
+    const d3 = cloneManifest(BASE);
+    d3.actions = ['wave', '挥手'];
+    expect(validateDraft(d3)['actions']).toBeTruthy();
+    const d4 = cloneManifest(BASE);
+    d4.live2dEmotions = { happy: 'exp_smile' };
+    d4.actions = ['wave'];
+    expect(validateDraft(d4)).toEqual({});
+  });
 });
