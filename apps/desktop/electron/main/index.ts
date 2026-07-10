@@ -168,6 +168,8 @@ app.whenReady().then(async () => {
     starHostDir,
     starPluginsDir,
     starVenvDir,
+    // ⑩.6 音色工坊：参考音频根（删除音色即清 <voiceId>/ 子目录）
+    voicesDir: path.join(app.getPath('userData'), 'voices'),
     pickStarPath: async (kind) => {
       const r = await dialog.showOpenDialog({
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
