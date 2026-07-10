@@ -7,6 +7,7 @@ import { setupInteraction } from './interaction';
 import { mountBubble } from './bubble';
 import { resolveMode } from './desktop-state';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
+import { mouthValue, playbackRateOf } from './mouth-drive';
 import type { Prefs } from '@openpet/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
@@ -179,8 +180,11 @@ async function boot(): Promise<void> {
   let audioCtx: AudioContext | null = null;
   let activeVoice: AudioBufferSourceNode | null = null;
   let mouthRaf = 0;
+  // ⑩.6：嘴型开关/强度实时跟 prefs（推送即时生效，无需重播）
+  let mouthSync = true;
+  let mouthStrength = 1;
 
-  async function playVoice(dataBase64: string): Promise<void> {
+  async function playVoice(dataBase64: string, rate?: number): Promise<void> {
     audioCtx ??= new AudioContext();
     const bin = atob(dataBase64);
     const buf = new ArrayBuffer(bin.length);
@@ -190,6 +194,8 @@ async function boot(): Promise<void> {
     activeVoice?.stop(); // 同一时刻只播一条：解码成功才打断旧的（失败则旧的继续播完）
     const source = audioCtx.createBufferSource();
     source.buffer = audio;
+    // 播放端兜底变速（引擎已服务端应用语速的广播 rate=1）；嘴型随播放速率天然同步
+    source.playbackRate.value = playbackRateOf(rate);
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     source.connect(analyser);
@@ -206,7 +212,7 @@ async function boot(): Promise<void> {
         sum += d * d;
       }
       const rms = Math.sqrt(sum / samples.length);
-      runtime?.setMouth(Math.max(0, Math.min(1, (rms - 0.02) * 8)));
+      runtime?.setMouth(mouthSync ? mouthValue(rms, mouthStrength) : 0);
       mouthRaf = requestAnimationFrame(tick);
     };
     mouthRaf = requestAnimationFrame(tick);
@@ -219,12 +225,17 @@ async function boot(): Promise<void> {
     source.start();
   }
 
-  window.openpet.on('voice.audio', ({ dataBase64 }) => {
+  window.openpet.on('voice.audio', ({ dataBase64, rate }) => {
     markActivity();
-    playVoice(dataBase64).catch((e) => {
+    playVoice(dataBase64, rate).catch((e) => {
       console.warn('[character] voice playback failed:', e);
       runtime?.setMouth(0);
     });
+  });
+
+  // bargeIn：录音端经 voice.stopPlayback 广播 → 停当前播放（onended 复位口型）
+  window.openpet.on('voice.stop', () => {
+    activeVoice?.stop();
   });
 
   // ---- A4 存在感模式：全屏检测（Main best-effort）+ 手动 DND/专注 → 淡出 / 月牙徽标 ----
@@ -257,6 +268,10 @@ async function boot(): Promise<void> {
     } else if (c.key === 'display.focusMode') {
       focus = c.value === true;
       applyMode();
+    } else if (c.key === 'voice.mouthSync') {
+      mouthSync = c.value === true;
+    } else if (c.key === 'voice.mouthStrength') {
+      if (typeof c.value === 'number') mouthStrength = c.value;
     }
   });
   // 非阻塞读初值（默认 '5' 已在 mountBubble 内置，await 慢也不漏早到的 stream）。
@@ -268,6 +283,8 @@ async function boot(): Promise<void> {
       locale = String(pf['general.language'] ?? 'zh-CN');
       dnd = pf['display.dndManual'];
       focus = pf['display.focusMode'];
+      mouthSync = pf['voice.mouthSync'];
+      mouthStrength = pf['voice.mouthStrength'];
       applyMode();
     })
     .catch(() => {});

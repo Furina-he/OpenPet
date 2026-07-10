@@ -21,6 +21,7 @@ import { KbSchema, KbDocSchema, KbHitSchema } from './kb-config.js';
 import { MemoryFactSchema } from './memory-config.js';
 import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
+import { VoiceProfileSchema } from './voice-config.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -800,9 +801,44 @@ export const Methods = {
       sessionId: z.string().optional(),
       dataBase64: z.string(),
       mime: z.string(),
+      /** 播放端兜底变速（引擎已在服务端应用语速的传 1）。 */
+      rate: z.number().optional(),
     }),
     result: z.null(),
   },
+
+  // --- ⑩.6 音色工坊（D5，spec 2026-07-10）---
+  'voice.previewProfile': {
+    // 试听未保存草稿：不落库直接合成播
+    params: z.object({ profile: VoiceProfileSchema, text: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'voice.testEngine': {
+    // gptsovits 探活（任何 HTTP 响应算通）；fishaudio 轻量鉴权探测
+    params: z.object({ engine: z.enum(['gptsovits', 'fishaudio']) }),
+    result: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  'voice.saveRefAudio': {
+    // ≤10MB wav/mp3；暂存 voices/_staging/，保存音色时 commitRefAudio 归位
+    params: z.object({ dataBase64: z.string().min(1), mime: z.string().min(1) }),
+    result: z.object({ file: z.string() }),
+  },
+  'voice.commitRefAudio': {
+    params: z.object({ voiceId: z.string().min(1), file: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'voice.removeVoiceDir': {
+    // 删除音色即清 userData/voices/<id>/ 目录
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'voice.stopPlayback': {
+    // bargeIn：录音开始时调用，广播 voice.stop 停播
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  // notification: Main → Character 窗（停止当前 TTS 播放）
+  'voice.stop': { params: z.object({}), result: z.null() },
 } as const;
 
 export type MethodName = keyof typeof Methods;

@@ -4,6 +4,7 @@ import { McpServerSchema } from './mcp-config.js';
 import { KbSchema } from './kb-config.js';
 import { PersonaSchema } from './persona-config.js';
 import { ImPlatformSchema } from './im-config.js';
+import { VoiceProfileSchema } from './voice-config.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
@@ -112,8 +113,21 @@ export const PrefsSchema = z.object({
   'chat.activeSessions': z.record(z.string()).default({}),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
-  // voice（F-VC 语音运行时）
+  // voice（F-VC 语音运行时 + ⑩.6 音色工坊）
   'voice.autoSpeak': z.boolean().default(false),
+  'voice.voices': z.array(VoiceProfileSchema).default([]),
+  'voice.defaultVoiceId': z.string().default(''), // '' = 未设默认音色
+  // 引擎连接（gptsovits/fishaudio 不进 provider 工作台，spec §1 裁定；key 明文随源 F-ST-04 口径）
+  'voice.engines.gptsovits.apiBase': z.string().default('http://127.0.0.1:9880'),
+  'voice.engines.fishaudio.apiBase': z.string().default('https://api.fish-audio.cn'),
+  'voice.engines.fishaudio.key': z.string().default(''),
+  // MiMo voicedesign 模型（照上游 mimo-v2.5-tts-voicedesign）
+  'voice.engines.mimo.designModel': z.string().default('mimo-v2.5-tts-voicedesign'),
+  'voice.rate': z.number().min(0.5).max(2).default(1),
+  'voice.mouthSync': z.boolean().default(true),
+  'voice.mouthStrength': z.number().min(0).max(2).default(1),
+  'voice.bargeIn': z.boolean().default(false),
+  'voice.micDeviceId': z.string().default(''), // '' = 系统默认麦克风
   // budget（D3 预算告警；本期仅持久化）
   'budget.enabled': z.boolean().default(false),
   'budget.monthlyCap': z.number().min(0).default(0),

@@ -11,7 +11,7 @@
  * 业务编排全部下沉到纯模块——本文件只做 Electron 缝。
  */
 import { ipcMain, BrowserWindow, Menu, net, type WebContents } from 'electron';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn as cpSpawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import {
@@ -135,6 +135,8 @@ export interface IpcRouterDeps {
   appService?: ReturnType<typeof createAppService>;
   /** 每条出站通知的旁路观察者（J1 托盘据 chat.stream/done 切三态图标）。 */
   onBroadcast?: (channel: string, params: unknown) => void;
+  /** ⑩.6 音色工坊：参考音频根（生产 userData/voices）；缺省 charactersRoot/_voices（测试）。 */
+  voicesDir?: string;
   /** J5 诊断：app 版本 + .dsdiag 落盘路径（index 注入 app.getVersion() + userData 路径）。 */
   appVersion?: string;
   diagPath?: string;
@@ -191,6 +193,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   });
   // F-VC 语音：Main 直调 openai 兼容端点（spec §2）；net.fetch 走系统代理，Response 结构性满足 FetchLike。
   const voiceFetch: FetchLike = (url, init) => net.fetch(url, init);
+  // ⑩.6 音色工坊：参考音频文件面。id/file 白名单校验挡路径穿越（id 是 vp_ nanoid / _staging）。
+  const voicesDir = deps.voicesDir ?? path.join(deps.charactersRoot, '_voices');
+  const voiceFilePath = (id: string, file: string): string => {
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`非法音色目录名：${id}`);
+    if (path.basename(file) !== file) throw new Error(`非法音频文件名：${file}`);
+    return path.join(voicesDir, id, file);
+  };
   const voice = createVoiceService({
     getPrefs: () => prefsStore.getAll(),
     broadcast,
@@ -200,6 +209,28 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         .filter((r) => r.role === 'assistant')
         .at(-1)?.text ?? null,
     fetchImpl: voiceFetch,
+    // 角色绑定音色（manifest.voice，F-VC-05）：生效序最优先；切角色自然重取。
+    getActiveCharacterVoice: () => characters.current().manifest.voice,
+    voicesDir,
+    readVoiceFile: (id, file) => {
+      try {
+        return readFileSync(voiceFilePath(id, file));
+      } catch {
+        return null;
+      }
+    },
+    writeVoiceFile: (id, file, data) => {
+      mkdirSync(path.join(voicesDir, id), { recursive: true });
+      writeFileSync(voiceFilePath(id, file), data);
+    },
+    moveVoiceFile: (fromId, file, toId) => {
+      mkdirSync(path.join(voicesDir, toId), { recursive: true });
+      renameSync(voiceFilePath(fromId, file), voiceFilePath(toId, file));
+    },
+    removeVoiceDir: (id) => {
+      voiceFilePath(id, 'x'); // 复用 id 白名单校验
+      rmSync(path.join(voicesDir, id), { recursive: true, force: true });
+    },
   });
   voiceService = voice;
   // §4 MCP：McpManager + mcp-service。connectFactory 缺省抛（无 server 配置时不触发）。
