@@ -1,0 +1,44 @@
+node_modules/
+dist/
+target/
+.turbo/
+*.log
+.DS_Store
+.env
+.env.local
+src-tauri/target/
+src-tauri/gen/
+.openpet/
+out/
+release/
+.vite/
+*.tsbuildinfo
+
+# VRM models are fetched locally, never committed (28MB+)
+apps/desktop/public/models/
+
+# Electron 专属 better-sqlite3 产物（fetch-electron-sqlite.mjs 自动下载，按 electron 版本命名）
+apps/desktop/native/
+
+# Live2D Cubism Core：专有许可，用户自行下载（见 src/renderer/public/README.md）
+apps/desktop/src/renderer/public/live2dcubismcore.min.js
+
+# Vitest coverage output
+coverage/
+
+# Visual-fidelity harness artifacts (screenshots are process output, not source)
+apps/desktop/artifacts/
+.playwright-mcp/
+
+# AstrBot 上游克隆（研究参考用，AGPL，体量大，勿入库）；研究笔记在 internal/research/（私仓）
+/research/
+__pycache__/
+
+# 头脑风暴视觉伴侣产物（brainstorming mockups，过程产物不入库）
+.superpowers/
+
+# 内部开发文档私仓（永不入公开仓，见 internal/README.md）；根部地图文件同私
+/internal/
+/CLAUDE.md
+/AGENTS.md
+/.claude/

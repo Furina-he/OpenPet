@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' asset:; img-src 'self' asset: data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' asset: data: blob: ws: http://localhost:*"
+    />
+    <title>openpet · Character</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+      }
+      #stage {
+        width: 100%;
+        height: 100%;
+      }
+      #fallback {
+        display: none;
+        position: absolute;
+        inset: 0;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-family: system-ui, sans-serif;
+      }
+      #fallback .face-disc {
+        width: 160px;
+        height: 160px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #fallback .face {
+        font-size: 88px;
+        transition: transform 0.18s ease;
+      }
+      #fallback .face.pop {
+        transform: scale(1.18);
+      }
+      #fallback .hud {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        color: #555;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 6px;
+        padding: 1px 8px;
+        min-height: 1.2em;
+      }
+      #tooltip {
+        position: absolute;
+        left: 50%;
+        bottom: 12px;
+        transform: translateX(-50%);
+        padding: 4px 10px;
+        font-family: system-ui, sans-serif;
+        font-size: 12px;
+        color: #171821;
+        background: rgba(255, 255, 255, 0.82);
+        border-radius: 999px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        -webkit-backdrop-filter: blur(16px) saturate(180%);
+        backdrop-filter: blur(16px) saturate(180%);
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+      }
+      #tooltip.tooltip-show {
+        opacity: 1;
+      }
+      #bubble {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 280px;
+        min-height: 40px;
+        padding: 12px 16px;
+        border-radius: 18px;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #171821;
+        background: rgba(255, 255, 255, 0.82);
+        border-left: 3px solid #ff8fab;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        backdrop-filter: blur(20px) saturate(180%);
+        word-break: break-word;
+        transition: opacity 0.25s ease;
+      }
+      #bubble.bubble-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #bubble.bubble-above {
+        top: 12px;
+      }
+      #bubble.bubble-below {
+        bottom: 12px;
+      }
+      #ripple {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 24px;
+        height: 24px;
+        margin: -12px 0 0 -12px;
+        border-radius: 50%;
+        pointer-events: none;
+        opacity: 0;
+        background: rgba(111, 168, 255, 0.5);
+      }
+      #ripple.ripple-play {
+        animation: ripple 0.5s ease-out;
+      }
+      @keyframes ripple {
+        from {
+          opacity: 0.6;
+          transform: scale(0.4);
+        }
+        to {
+          opacity: 0;
+          transform: scale(4);
+        }
+      }
+      #toast {
+        position: absolute;
+        left: 50%;
+        top: 12px;
+        transform: translateX(-50%);
+        padding: 6px 14px;
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        color: #171821;
+        background: rgba(255, 255, 255, 0.86);
+        border-radius: 999px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        -webkit-backdrop-filter: blur(16px) saturate(180%);
+        backdrop-filter: blur(16px) saturate(180%);
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      #toast.toast-show {
+        opacity: 1;
+      }
+      #stage,
+      #fallback {
+        transition: opacity 0.3s ease;
+      }
+      #badge {
+        position: absolute;
+        right: 18%;
+        top: 22%;
+        font-size: 22px;
+        pointer-events: none;
+        opacity: 0;
+        transform: scale(0.6);
+        transition:
+          opacity 0.25s ease,
+          transform 0.25s ease;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+      }
+      #badge.badge-show {
+        opacity: 1;
+        transform: scale(1);
+      }
+      /* a11y：系统减少动效 → 涟漪/toast/渐隐动画时长归零。 */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="fallback"></div>
+    <div id="tooltip">双击聊天 · 右键菜单</div>
+    <div id="bubble" class="bubble-hidden"></div>
+    <div id="ripple"></div>
+    <div id="toast" class="toast-hidden"></div>
+    <div id="badge">🌙</div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S3 · VRM 加载 + BlendShape Spike</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+        background: #1a1a1f;
+        color: #f0f0f0;
+        overflow: hidden;
+      }
+      #app {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+      #canvas-wrap {
+        position: absolute;
+        inset: 0;
+      }
+      #canvas-wrap canvas {
+        display: block;
+      }
+      #panel {
+        position: absolute;
+        left: 16px;
+        bottom: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-width: 420px;
+        z-index: 10;
+      }
+      #panel button {
+        font-size: 13px;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #f0f0f0;
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: background 0.15s ease;
+      }
+      #panel button:hover {
+        background: rgba(255, 255, 255, 0.16);
+      }
+      #panel button.active {
+        background: #5b8def;
+        border-color: #5b8def;
+      }
+      #status {
+        position: absolute;
+        left: 16px;
+        top: 16px;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 8px;
+        padding: 10px 14px;
+        z-index: 10;
+        white-space: pre;
+      }
+      /* stats.js panel sits top-right */
+      #stats-wrap {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="canvas-wrap"></div>
+      <div id="status">加载中…</div>
+      <div id="stats-wrap"></div>
+      <div id="panel"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

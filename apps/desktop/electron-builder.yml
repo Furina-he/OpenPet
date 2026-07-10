@@ -1,0 +1,12 @@
+appId: app.openpet.desktop
+productName: openpet
+directories:
+  output: release
+files:
+  - out/**/*
+extraResources:
+  - from: characters
+    to: characters
+win:
+  target: nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}

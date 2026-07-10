@@ -1,0 +1,3 @@
+# VRM model files are large and license-bound — keep them out of git.
+*.vrm
+*.vrma

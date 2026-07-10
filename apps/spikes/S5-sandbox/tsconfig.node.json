@@ -1,0 +1,8 @@
+{
+  "extends": "@openpet/tsconfig/node.json",
+  "compilerOptions": {
+    "composite": true,
+    "types": ["node", "electron-vite/node"]
+  },
+  "include": ["electron/**/*.ts", "electron.vite.config.ts", "test/**/*.ts"]
+}

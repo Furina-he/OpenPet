@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>S5 · Worker 沙箱权限网关</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+        background: #f6f7fb;
+        color: #15151a;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        padding: 18px;
+        gap: 14px;
+      }
+      h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        color: #5b6472;
+      }
+      p.lede {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #8a93a3;
+      }
+      #probes {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .probe {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        background: #fff;
+        border: 1px solid #e3e6ee;
+        border-radius: 10px;
+        padding: 11px 13px;
+        font-size: 13px;
+      }
+      .probe .verdict {
+        flex: none;
+        width: 18px;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .probe .body {
+        flex: 1;
+      }
+      .probe .title {
+        font-weight: 600;
+      }
+      .probe .detail {
+        margin-top: 2px;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        color: #8a93a3;
+        word-break: break-all;
+      }
+      .pass {
+        border-color: #b6e0c2;
+      }
+      .pass .verdict {
+        color: #2e9e57;
+      }
+      .fail {
+        border-color: #f0bcbc;
+      }
+      .fail .verdict {
+        color: #d64545;
+      }
+      button {
+        font-size: 14px;
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: 1px solid #5b8def;
+        background: #5b8def;
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #4a7ce0;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h2>Worker 沙箱权限网关 · S5</h2>
+      <p class="lede">
+        点「运行」在受限 Worker 里跑对抗探针：读 env secrets / 读系统文件 /
+        访问非白名单 host / 访问白名单 host。Worker 全程拿不到密钥，fetch 全部经 Main 网关。
+      </p>
+      <div id="probes"></div>
+      <button id="run">运行对抗探针 (sandbox.run)</button>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
