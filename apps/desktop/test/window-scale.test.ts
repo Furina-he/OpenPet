@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { CHARACTER_BASE_SIZE, scaledBounds } from '../electron/main/window-scale';
+import {
+  CHARACTER_BASE_SIZE,
+  HUB_IDEAL_SIZE,
+  HUB_MIN_SIZE,
+  hubWindowSize,
+  scaledBounds,
+} from '../electron/main/window-scale';
 
 describe('scaledBounds', () => {
   const cur = { x: 100, y: 200, width: 320, height: 480 }; // scale=1 站位
@@ -32,5 +38,22 @@ describe('scaledBounds', () => {
     expect(Number.isInteger(b.x) && Number.isInteger(b.y)).toBe(true);
     expect(b.width).toBe(Math.round(320 * 0.77));
     expect(b.height).toBe(Math.round(480 * 0.77));
+  });
+});
+
+describe('hubWindowSize', () => {
+  it('uses the ideal dashboard size on a large display', () => {
+    expect(hubWindowSize({ width: 1920, height: 1040 })).toEqual({ width: 1280, height: 832 });
+    expect(HUB_IDEAL_SIZE).toEqual({ width: 1280, height: 832 });
+  });
+
+  it('clamps into the work area with margin on a small laptop display', () => {
+    // 1366×768 工作区：宽 1318 可容理想 1280；高 clamp 到 768-48=720
+    expect(hubWindowSize({ width: 1366, height: 768 })).toEqual({ width: 1280, height: 720 });
+  });
+
+  it('never goes below the minimum usable size', () => {
+    expect(hubWindowSize({ width: 800, height: 600 })).toEqual(HUB_MIN_SIZE);
+    expect(HUB_MIN_SIZE).toEqual({ width: 960, height: 640 });
   });
 });

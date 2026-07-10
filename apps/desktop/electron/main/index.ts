@@ -1,4 +1,4 @@
-import { app, screen, protocol, shell, globalShortcut, dialog } from 'electron';
+import { app, Menu, screen, protocol, shell, globalShortcut, dialog } from 'electron';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +54,8 @@ const perf = new PerfMarks();
 perf.mark('boot');
 
 app.whenReady().then(async () => {
+  // 去掉默认应用菜单（File/Edit/View…）：产品窗口不需要；dev 的 devtools 走 F12（windows.ts）。
+  Menu.setApplicationMenu(null);
   // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
   //（turbo 的 ^build 保证 dist 先于 desktop 构建存在）。
   const providerEntryPath = require.resolve(

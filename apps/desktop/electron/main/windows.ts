@@ -7,10 +7,10 @@
  *  - settings：常驻隐藏，按需 show（全沙箱）。
  * 所有窗口挂 render-process-gone 自愈：崩溃即 reload（进程级隔离由 Chromium 保证）。
  */
-import { BrowserWindow, screen, type WebContents } from 'electron';
+import { BrowserWindow, app, screen, type WebContents } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CHARACTER_BASE_SIZE } from './window-scale.js';
+import { CHARACTER_BASE_SIZE, HUB_MIN_SIZE, hubWindowSize } from './window-scale.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(__dirname, '../preload/index.cjs');
@@ -39,6 +39,16 @@ function attachCrashRecovery(win: BrowserWindow, name: string): void {
     console.warn(`[windows] ${name} renderer gone (${details.reason}); reloading`);
     // TODO(M9 J5)：崩溃时自动生成 .dsdiag + 排队上报（本期仅 reload + console；D8 提供手动生成）。
     if (!win.isDestroyed()) win.webContents.reload();
+  });
+}
+
+/** 应用菜单已全局移除（Menu.setApplicationMenu(null)），dev 下用 F12 保住 devtools 入口。 */
+function attachDevtoolsHotkey(win: BrowserWindow): void {
+  if (app.isPackaged) return;
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      win.webContents.toggleDevTools();
+    }
   });
 }
 
@@ -79,9 +89,14 @@ export function createAppWindows(): AppWindows {
     },
   });
 
+  // Hub 承载总览仪表盘（KPI+图表宽幅布局），理想 1280×832，小屏 clamp 进工作区；
+  // 不传 x/y 走 Electron 默认居中。
+  const hubSize = hubWindowSize(workArea);
   const settings = new BrowserWindow({
-    width: 720,
-    height: 520,
+    width: hubSize.width,
+    height: hubSize.height,
+    minWidth: HUB_MIN_SIZE.width,
+    minHeight: HUB_MIN_SIZE.height,
     show: false,
     webPreferences: {
       preload: PRELOAD,
@@ -118,6 +133,11 @@ export function createAppWindows(): AppWindows {
   attachCrashRecovery(overlay, 'overlay');
   attachCrashRecovery(settings, 'settings');
   attachCrashRecovery(onboarding, 'onboarding');
+
+  attachDevtoolsHotkey(character);
+  attachDevtoolsHotkey(overlay);
+  attachDevtoolsHotkey(settings);
+  attachDevtoolsHotkey(onboarding);
 
   void loadRenderer(character, 'character');
   void loadRenderer(overlay, 'overlay');
