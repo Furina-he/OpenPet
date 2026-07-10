@@ -1,5 +1,6 @@
 <!-- settings/components/ModelShowcase.vue — 总览页左柱：VRM 实时展示（呼吸/眨眼+视线跟鼠标），
-     降级链 live→preview→首字占位（overview-view.showcaseMode）。离开页面 dispose 不留 WebGL。 -->
+     降级链 live→preview→首字占位（overview-view.showcaseMode）。离开页面 dispose 不留 WebGL。
+     ⑩.7：compact 态（E2 抽屉/E4 编辑器复用，隐藏 footer）+ expose 表情/动作试播驱动。 -->
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -11,7 +12,9 @@ import { showcaseMode, previewUrlOf, modelUrlOf, type ShowcaseMode } from '../ov
 const props = defineProps<{
   characterId: string;
   manifest: CharacterManifest;
-  companionDays: number;
+  companionDays?: number;
+  /** E2/E4 复用：只留舞台，不渲染名称/在线 footer。 */
+  compact?: boolean;
 }>();
 const { t } = useI18n();
 const stage = ref<HTMLElement | null>(null);
@@ -57,6 +60,14 @@ watch(
   () => props.characterId,
   () => void mount(),
 );
+
+// ⑩.7 试播驱动（live 态生效；preview/initial 降级 no-op）
+defineExpose({
+  applyEmotion: (name: string, weight = 1): void => runtime?.applyEmotion(name, weight),
+  playAction: (name: string): void => runtime?.playAction(name),
+  playIdle: (): void => runtime?.setIdle({ mood: 'neutral', energy: 'mid' }),
+  isLive: (): boolean => mode.value === 'live',
+});
 </script>
 
 <template>
@@ -77,12 +88,12 @@ watch(
       {{ manifest.name.slice(0, 1) }}
     </div>
 
-    <div class="flex flex-col items-center gap-1 border-t border-glass-border p-3">
+    <div v-if="!compact" class="flex flex-col items-center gap-1 border-t border-glass-border p-3">
       <div class="text-base font-semibold text-text-main">{{ manifest.name }}</div>
       <div class="flex items-center gap-1.5 text-xs" :style="{ color: 'var(--ds-success)' }">
         <span class="h-1.5 w-1.5 rounded-full" style="background: var(--ds-success)" />
         {{ t('settings.overview.model.online') }} ·
-        <span class="text-text-sub">{{ t('settings.overview.model.companion', { days: companionDays }) }}</span>
+        <span class="text-text-sub">{{ t('settings.overview.model.companion', { days: companionDays ?? 0 }) }}</span>
       </div>
       <div
         v-if="mode === 'live'"

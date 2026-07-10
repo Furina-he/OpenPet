@@ -71,6 +71,12 @@ function viewImSession(id: string): void {
   readonlySessionId.value = id;
   active.value = 'conversation.chat';
 }
+// ⑩.7 E4：库页「编辑」→ 编辑器带初始角色。
+const editCharacterId = ref<string | null>(null);
+function openEditor(id: string): void {
+  editCharacterId.value = id;
+  active.value = 'character.editor';
+}
 watch(active, (v) => {
   if (v !== 'conversation.chat') readonlySessionId.value = null;
 });function toggleGroup(id: string): void {
@@ -304,7 +310,7 @@ const navTree = computed(() =>
           <MemoryPage v-else-if="active === 'conversation.memory'" />
           <DataPage v-else-if="active === 'system.data'" />
           <VoicePage v-else-if="active === 'system.voice'" @saved="saved" @navigate="active = $event" />
-          <CharacterLibraryPage v-else-if="active === 'character.library'" />
+          <CharacterLibraryPage v-else-if="active === 'character.library'" @edit="openEditor" />
           <TracePage v-else-if="active === 'system.trace'" />
           <HotkeysPage v-else-if="active === 'system.hotkeys'" @saved="saved" />
           <AboutPage v-else-if="active === 'system.about'" />

@@ -326,6 +326,9 @@ export const Methods = {
           manifest: CharacterManifestSchema,
           builtin: z.boolean(),
           active: z.boolean(),
+          // ⑩.7 E2 信息区：包目录大小 / 安装时间（目录 birthtime；Main 计算）。
+          sizeBytes: z.number().optional(),
+          installedAt: z.number().optional(),
         }),
       ),
     }),

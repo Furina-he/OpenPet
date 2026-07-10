@@ -8,7 +8,7 @@
  * ⑩.7 写侧：updateManifest（仅 userData 根，id/engine/model 不可变，原子写）/
  * duplicate（复制后编辑）/ exportPack（.dspack 导出，与 pack-import 结构互逆）。
  */
-import { cpSync, existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { CharacterManifestSchema, type CharacterManifest } from '@openpet/protocol';
@@ -17,6 +17,10 @@ import { RpcError } from './router.js';
 export interface LoadedCharacter {
   characterId: string;
   manifest: CharacterManifest;
+  /** 包目录大小（E2 信息区）；load 时随缓存计算。 */
+  sizeBytes: number;
+  /** 安装时间 = 包目录 birthtime（Windows 有效；异常回退 mtime）。 */
+  installedAt: number;
 }
 
 export interface CharacterServiceDeps {
@@ -53,6 +57,15 @@ export function createCharacterService(deps: CharacterServiceDeps): CharacterSer
     return null;
   }
 
+  function dirSize(dir: string): number {
+    let total = 0;
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, ent.name);
+      total += ent.isDirectory() ? dirSize(p) : statSync(p).size;
+    }
+    return total;
+  }
+
   function load(id: string): LoadedCharacter {
     const hit = cache.get(id);
     if (hit) return hit;
@@ -63,7 +76,14 @@ export function createCharacterService(deps: CharacterServiceDeps): CharacterSer
     if (manifest.id !== id) {
       throw new Error(`manifest id "${manifest.id}" mismatches directory "${id}"`);
     }
-    const loaded = { characterId: id, manifest };
+    const dir = path.join(root, id);
+    const st = statSync(dir);
+    const loaded = {
+      characterId: id,
+      manifest,
+      sizeBytes: dirSize(dir),
+      installedAt: st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs,
+    };
     cache.set(id, loaded);
     return loaded;
   }
