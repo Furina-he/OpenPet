@@ -154,6 +154,15 @@ app.whenReady().then(async () => {
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },
+    // ⑩.7 E4：导出 .dspack 保存框 + 在文件夹中显示
+    pickDspackSave: async (defaultName) => {
+      const r = await dialog.showSaveDialog({
+        defaultPath: defaultName,
+        filters: [{ name: 'openpet 角色包', extensions: ['dspack'] }],
+      });
+      return r.canceled ? null : (r.filePath ?? null);
+    },
+    revealItem: (fullPath) => shell.showItemInFolder(fullPath),
     pluginsRoot,
     pluginEntryPath,
     pickPluginPath: async (kind) => {

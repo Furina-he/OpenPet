@@ -45,12 +45,13 @@ import { createMemoryService } from './memory-service.js';
 import { createMemoryExtractor } from './memory-extractor.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
-import { createRouter } from './router.js';
+import { createRouter, RpcError } from './router.js';
 import { buildCharacterMenuTemplate } from './character-menu.js';
 import { menuLabels } from './menu-labels.js';
 import * as appActions from './app-actions.js';
 import { assembleDiag } from './crash-payload.js';
 import { createCharacterService } from './character-service.js';
+import { runTestGreeting } from './character-greeting.js';
 import { inspectPack, installPack } from './pack-import.js';
 import { removeCharacter } from './character-ops.js';
 import { DesktopPluginHost } from './plugins/desktop-plugin-host.js';
@@ -89,6 +90,10 @@ export interface IpcRouterDeps {
   importedCharactersRoot?: string;
   /** E3 系统选择框（index 注入 dialog.showOpenDialog）；缺省 null=取消。 */
   pickCharacterPath?: (kind: 'pack' | 'folder') => Promise<string | null>;
+  /** ⑩.7 E4：导出 .dspack 保存框（index 注入 dialog.showSaveDialog）；缺省 null=取消。 */
+  pickDspackSave?: (defaultName: string) => Promise<string | null>;
+  /** ⑩.7 E2：在文件夹中显示（index 注入 shell.showItemInFolder）。 */
+  revealItem?: (fullPath: string) => void;
   /** 线 B-2 Desktop 插件：安装根（生产 userData/plugins）；缺省 charactersRoot/_plugins（测试空）。 */
   pluginsRoot?: string;
   /** 线 B-2：sidecar dist plugin-entry 路径；缺省 ''（无插件时永不 spawn，测试安全）。 */
@@ -407,22 +412,24 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     getPrefs: () => prefsStore.getAll(),
     character: () => ({ id: characters.current().characterId }),
   });
+  // 默认 chat 目标 + source key（memory-extractor 与 ⑩.7 testGreeting 共用的单发通道形态）。
+  const chatTargetWithKey = () => {
+    const p = prefsStore.getAll();
+    const t = resolveChatTarget(
+      p['model.providerSources'],
+      p['model.models'],
+      p['model.defaultChatModelId'],
+    );
+    if (!t) return null;
+    const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
+    return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
+  };
   const memoryExtractor = createMemoryExtractor({
     store,
     embed: memoryEmbed,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
-    resolveTarget: () => {
-      const p = prefsStore.getAll();
-      const t = resolveChatTarget(
-        p['model.providerSources'],
-        p['model.models'],
-        p['model.defaultChatModelId'],
-      );
-      if (!t) return null;
-      const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
-      return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
-    },
+    resolveTarget: chatTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
   // 批次⑥ F-AI-08：本地时区自然月起点（用量聚合月界 + 预算门共用）。
@@ -842,6 +849,38 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         importedRoot,
         onChanged: (id) => broadcast('character.changed', { characterId: id }),
       });
+      return { ok: true as const };
+    },
+    // --- ⑩.7 E4 角色编辑器写侧 ---
+    'character.updateManifest': (p) => {
+      const manifest = characters.updateManifest(p.id, p.manifest);
+      if (characters.current().characterId === p.id) {
+        broadcast('character.changed', { characterId: p.id }); // 编辑当前角色 → 热重载
+      }
+      return { ok: true as const, manifest };
+    },
+    'character.duplicate': (p) => characters.duplicate(p.id),
+    'character.export': async (p) => {
+      if (!characters.rootOf(p.id)) throw new RpcError(-32602, `character not found: ${p.id}`);
+      const target = (await deps.pickDspackSave?.(`${p.id}.dspack`)) ?? null;
+      if (!target) return { canceled: true as const };
+      characters.exportPack(p.id, target);
+      return { canceled: false as const, path: target };
+    },
+    'character.revealInFolder': (p) => {
+      const root = characters.rootOf(p.id);
+      if (!root) throw new RpcError(-32602, `character not found: ${p.id}`);
+      deps.revealItem?.(path.join(root, p.id, 'manifest.json'));
+      return { ok: true as const };
+    },
+    'character.testGreeting': async (p) => {
+      const c = characters.list().find((x) => x.characterId === p.id);
+      if (!c) throw new RpcError(-32602, `character not found: ${p.id}`);
+      await runTestGreeting(
+        c.manifest,
+        personaService.resolveFor(p.id, c.manifest.persona ?? null),
+        { fetchImpl: voiceFetch, resolveTarget: chatTargetWithKey, broadcast },
+      );
       return { ok: true as const };
     },
     'app.window.setClickThrough': (p, ctx) => {
