@@ -35,6 +35,7 @@ import KnowledgePage from './pages/KnowledgePage.vue';
 import PersonaPage from './pages/PersonaPage.vue';
 import MemoryPage from './pages/MemoryPage.vue';
 import DataPage from './pages/DataPage.vue';
+import VoicePage from './pages/VoicePage.vue';
 import CharacterLibraryPage from './pages/CharacterLibraryPage.vue';
 import TracePage from './pages/TracePage.vue';
 import ToastHost from '../components/ToastHost.vue';
@@ -302,6 +303,7 @@ const navTree = computed(() =>
           <PersonaPage v-else-if="active === 'conversation.persona'" />
           <MemoryPage v-else-if="active === 'conversation.memory'" />
           <DataPage v-else-if="active === 'system.data'" />
+          <VoicePage v-else-if="active === 'system.voice'" @saved="saved" @navigate="active = $event" />
           <CharacterLibraryPage v-else-if="active === 'character.library'" />
           <TracePage v-else-if="active === 'system.trace'" />
           <HotkeysPage v-else-if="active === 'system.hotkeys'" @saved="saved" />

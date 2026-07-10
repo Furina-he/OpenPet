@@ -79,6 +79,10 @@ export function createVoiceRecorder(opts: {
   enabled?: () => boolean;
   /** 转写文本回调（追加进输入框由调用方决定）。 */
   onText: (text: string) => void;
+  /** ⑩.6 克隆录制：wav 转换完成、转写之前回调（参考音频暂存用）；缺省无副作用。 */
+  onWav?: (dataBase64: string, mime: string) => void | Promise<void>;
+  /** 指定输入设备（voice.micDeviceId；'' = 系统默认）。 */
+  deviceId?: () => string;
 }): VoiceRecorder {
   const state = ref<VoiceState>('idle');
   const micError = ref(false);
@@ -127,6 +131,7 @@ export function createVoiceRecorder(opts: {
         return raw;
       });
       const dataBase64 = await blobToBase64(blob);
+      await opts.onWav?.(dataBase64, blob.type);
       const { text } = await window.openpet.rpc('voice.transcribe', {
         dataBase64,
         mime: blob.type,
@@ -145,7 +150,10 @@ export function createVoiceRecorder(opts: {
     try {
       const prefs = await window.openpet.rpc('app.prefs.getAll', {});
       if (!prefs['privacy.microphone']) throw new Error('privacy.microphone off');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const deviceId = opts.deviceId?.() ?? '';
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      });
       chunks = [];
       discard = false;
       recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });

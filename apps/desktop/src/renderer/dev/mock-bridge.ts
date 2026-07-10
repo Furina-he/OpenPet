@@ -94,6 +94,13 @@ export function createMockBridge(): MockBridge {
           return { dbBytes: 0, messageCount: 0, characterCount: 1 };
         case 'app.usageSummary':
           return { sinceTs: 0, tokensIn: 0, tokensOut: 0, messages: 0 };
+        // ⑩.6 音色工坊（视觉 harness：暂存/测连/转写给形状正确的假值）
+        case 'voice.saveRefAudio':
+          return { file: 'ref.wav' };
+        case 'voice.testEngine':
+          return { ok: false, error: 'mock' };
+        case 'voice.transcribe':
+          return { text: '' };
         default:
           console.warn(`[mock-bridge] unhandled method ${method} → {ok:true} 兜底`);
           return { ok: true };
