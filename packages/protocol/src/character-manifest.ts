@@ -55,6 +55,11 @@ export const CharacterManifestSchema = z
       .refine(isSafeRelPath, { message: 'preview must be a safe relative path' })
       .optional(),
     persona: PackPersonaSchema.optional(),
+    // --- 元数据（⑩.7 E2 信息区；全 optional 向后兼容）---
+    author: z.string().min(1).optional(),
+    description: z.string().optional(),
+    license: z.string().min(1).optional(),
+    tags: z.array(z.string().min(1)).max(20).optional(),
     /** 角色绑定音色（音色库 voiceId，F-VC-05）；生效序最优先（voice-config）。 */
     voice: z.string().min(1).optional(),
     /** Live2D：情绪名 → 表情名（.exp3.json 的 Name；单表情，无权重混合）。 */

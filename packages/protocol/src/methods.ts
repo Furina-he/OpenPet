@@ -362,6 +362,37 @@ export const Methods = {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
+  // --- request/response: Renderer → Main（⑩.7 E4 角色编辑器写侧）---
+  'character.updateManifest': {
+    // 整包替换写回 manifest.json：仅 userData 根；id/engine/model 不可变；原子写；
+    // 命中当前角色补发 character.changed 热重载。
+    params: z.object({ id: z.string().min(1), manifest: CharacterManifestSchema }),
+    result: z.object({ ok: z.literal(true), manifest: CharacterManifestSchema }),
+  },
+  'character.duplicate': {
+    // 目录复制到 userData 根 <id>-copy（冲突自增）+ manifest id/name 重写；内置→userData 即「复制后编辑」。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ newId: z.string() }),
+  },
+  'character.export': {
+    // dialog.showSaveDialog(.dspack) + 目录 zip 打包（结构与 importPick 期待一致）。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.union([
+      z.object({ canceled: z.literal(true) }),
+      z.object({ canceled: z.literal(false), path: z.string() }),
+    ]),
+  },
+  'character.revealInFolder': {
+    // shell.showItemInFolder 打开角色目录。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'character.testGreeting': {
+    // E4 试讲：生效 persona → provider 单发（30 字内问候）→ 行为标签解析 → cue 通道播放。
+    // 不建会话、不进记忆、不计统计；异步播放，错误走 toast。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   // --- notification: Main → character/overlay（角色已切换；两窗 location.reload()）---
   'character.changed': { params: z.object({ characterId: z.string() }), result: z.null() },
 
