@@ -73,6 +73,12 @@ describe('character-service 多角色（批次④）', () => {
     expect(svc.isBuiltin('default')).toBe(true);
     expect(svc.isBuiltin('miko')).toBe(false);
   });
+  it('list 携带包大小与安装时间（⑩.7 E2 信息区）', () => {
+    const { svc } = makeSvc();
+    const c = svc.list()[0]!;
+    expect(c.sizeBytes).toBeGreaterThan(0);
+    expect(c.installedAt).toBeGreaterThan(0);
+  });
 });
 
 // 旧单角色负路径用例并入（M3 起）：current() 对 default 自身坏包仍须抛错（渲染端 fallback 脸）。
