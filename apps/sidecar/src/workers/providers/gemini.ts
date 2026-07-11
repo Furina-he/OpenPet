@@ -2,19 +2,56 @@ import type { ChatEvent, ChatRequest, ProviderDialect } from '@openpet/protocol'
 import { parseSseStream } from '@openpet/plugin-sdk';
 import { classifyStatus, classifyThrown } from './openai-compat.js';
 
-/** §5：Gemini contents 消毒（同 anthropic 策略：丢空 assistant，tool 折叠为 user）。 */
+/** Gemini content part（wire 形状；text / functionCall / functionResponse 三种）。 */
+type GeminiPart =
+  | { text: string }
+  | { functionCall: { name: string; args: unknown } }
+  | { functionResponse: { name: string; response: { result: string } } };
+
+/**
+ * §5 FC 全映射：assistant+toolCalls → `role:'model'` functionCall parts（有文本则 text part 在前）；
+ * tool 消息 → `role:'user'` functionResponse part——Gemini 要函数名而非 id，先扫一遍
+ * toolCallId→name 索引再映射（两遍扫描，纯函数）。纯文本轮保持不变。
+ */
 export function toGeminiContents(
   msgs: ChatRequest['messages'],
-): Array<{ role: 'user' | 'model'; parts: [{ text: string }] }> {
+): Array<{ role: 'user' | 'model'; parts: GeminiPart[] }> {
+  const idToName = new Map<string, string>();
+  for (const m of msgs) {
+    if (m.role === 'assistant' && m.toolCalls) {
+      for (const tc of m.toolCalls) idToName.set(tc.id, tc.name);
+    }
+  }
   return msgs
     .filter((m) => m.role !== 'system')
-    .filter((m) => !(m.role === 'assistant' && m.content.length === 0))
-    .map((m) => ({
-      role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
-      parts: [{ text: m.role === 'tool' ? `[工具结果] ${m.content}` : m.content }] as [
-        { text: string },
-      ],
-    }));
+    .filter((m) => !(m.role === 'assistant' && m.content.length === 0 && !m.toolCalls?.length))
+    .map((m) => {
+      if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+        const parts: GeminiPart[] = [];
+        if (m.content.length > 0) parts.push({ text: m.content });
+        for (const tc of m.toolCalls) {
+          let args: unknown = {};
+          try {
+            args = tc.argsJson ? JSON.parse(tc.argsJson) : {};
+          } catch {
+            args = { _raw: tc.argsJson };
+          }
+          parts.push({ functionCall: { name: tc.name, args } });
+        }
+        return { role: 'model' as const, parts };
+      }
+      if (m.role === 'tool') {
+        const name = (m.toolCallId && idToName.get(m.toolCallId)) || '';
+        return {
+          role: 'user' as const,
+          parts: [{ functionResponse: { name, response: { result: m.content } } }] as GeminiPart[],
+        };
+      }
+      return {
+        role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+        parts: [{ text: m.content }] as GeminiPart[],
+      };
+    });
 }
 
 /**
@@ -36,7 +73,22 @@ export async function* geminiChat(
     res = await fetch(`${base}/models/${model}:streamGenerateContent?alt=sse`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ contents }),
+      body: JSON.stringify({
+        contents,
+        ...(req.tools
+          ? {
+              tools: [
+                {
+                  functionDeclarations: req.tools.map((t) => ({
+                    name: t.name,
+                    description: t.description,
+                    parameters: t.parameters,
+                  })),
+                },
+              ],
+            }
+          : {}),
+      }),
       signal,
     });
   } catch (e) {
@@ -59,13 +111,16 @@ export async function* geminiChat(
   let prompt = 0;
   let completion = 0;
   let sawUsage = false;
+  const toolCalls: Array<{ name: string; args: unknown }> = [];
   for await (const sse of parseSseStream(res.body)) {
     if (signal.aborted) {
       yield { type: 'done', finishReason: 'cancel' };
       return;
     }
     let json: {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string; functionCall?: { name?: string; args?: unknown } }> };
+      }>;
       usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
     };
     try {
@@ -73,8 +128,14 @@ export async function* geminiChat(
     } catch {
       continue;
     }
-    const text = json?.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+    const parts = json?.candidates?.[0]?.content?.parts ?? [];
+    const text = parts.map((p) => p.text ?? '').join('');
     if (text) yield { type: 'delta', text };
+    for (const p of parts) {
+      if (p.functionCall?.name) {
+        toolCalls.push({ name: p.functionCall.name, args: p.functionCall.args ?? {} });
+      }
+    }
     if (json?.usageMetadata) {
       sawUsage = true;
       prompt = json.usageMetadata.promptTokenCount ?? prompt;
@@ -85,6 +146,11 @@ export async function* geminiChat(
   if (signal.aborted) {
     yield { type: 'done', finishReason: 'cancel' };
     return;
+  }
+  // Gemini 无 tool_call id：合成 call_<name>_<序号>（id 只在我们侧回灌闭环，不回传 Gemini）。
+  for (let i = 0; i < toolCalls.length; i++) {
+    const tc = toolCalls[i]!;
+    yield { type: 'tool_call', id: `call_${tc.name}_${i}`, name: tc.name, args: tc.args };
   }
   if (sawUsage) yield { type: 'usage', prompt, completion };
   yield { type: 'done', finishReason: 'stop' };
