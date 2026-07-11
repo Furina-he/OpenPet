@@ -14,6 +14,8 @@ import { CHARACTER_BASE_SIZE, HUB_MIN_SIZE, hubWindowSize } from './window-scale
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRELOAD = path.join(__dirname, '../preload/index.cjs');
+// dev 下任务栏窗口显式挂品牌图标；打包后 exe 内嵌 ico 自动生效，无需再指
+const WINDOW_ICON = app.isPackaged ? undefined : path.join(__dirname, '../../build/icon.ico');
 
 export interface AppWindows {
   character: BrowserWindow;
@@ -81,6 +83,7 @@ export function createAppWindows(): AppWindows {
     height: 560,
     x: workArea.x + workArea.width - CHARACTER_BASE_SIZE.width - margin - 420 - 16,
     y: workArea.y + workArea.height - 560 - margin,
+    icon: WINDOW_ICON,
     webPreferences: {
       preload: PRELOAD,
       sandbox: true,
@@ -98,6 +101,7 @@ export function createAppWindows(): AppWindows {
     minWidth: HUB_MIN_SIZE.width,
     minHeight: HUB_MIN_SIZE.height,
     show: false,
+    icon: WINDOW_ICON,
     webPreferences: {
       preload: PRELOAD,
       sandbox: true,

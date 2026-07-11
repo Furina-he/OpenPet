@@ -1,7 +1,6 @@
 <div align="center">
-  <img src="docs/assets/openpet-logo.jpg" width="220" alt="openpet logo" />
+  <img src="docs/assets/openpet-logo.png" width="420" alt="OpenPet" />
 
-  <h1>openpet</h1>
 
   <p>
     一个桌面常驻的 AI 角色伙伴，让 AI 不只待在聊天窗口里，而是能被看见、能互动、会用表情和动作回应你。
@@ -14,7 +13,7 @@
     ·
     <a href="packages/plugin-sdk/README.md">插件 SDK</a>
     ·
-    <a href="https://github.com/Furina-he/openpet/releases">下载（Releases）</a>
+    <a href="https://github.com/Furina-he/OpenPet/releases">下载（Releases）</a>
   </p>
 
   <p>
@@ -28,7 +27,7 @@
 
 ## 简介
 
-openpet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI 对话、角色包、知识库和工具插件：角色可以常驻桌面，接收对话输入，在 AI 思考、回复、调用工具时做出即时的表情、动作和状态反馈。
+OpenPet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI 对话、角色包、知识库和工具插件：角色可以常驻桌面，接收对话输入，在 AI 思考、回复、调用工具时做出即时的表情、动作和状态反馈。
 
 它的核心目标是把“AI 助手”从一个窗口，变成一个有存在感的桌面伙伴。
 
@@ -64,7 +63,7 @@ openpet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI
 
 ### 下载安装包
 
-打包发布准备中——正式安装包（NSIS / portable）将在 [Releases](https://github.com/Furina-he/openpet/releases) 提供。
+打包发布准备中——正式安装包（NSIS / portable）将在 [Releases](https://github.com/Furina-he/OpenPet/releases) 提供。
 
 ### 从源码运行
 
@@ -110,7 +109,7 @@ flowchart LR
   Worker -. shared types .-> Protocol
 ```
 
-openpet 使用 Electron 作为桌面壳，业务大脑运行在 Main 进程，Renderer 负责 UI、桌面浮层和角色渲染。Provider、插件、工具和记忆相关任务运行在 `worker_threads` 中，避免复杂任务拖垮主进程。
+OpenPet 使用 Electron 作为桌面壳，业务大脑运行在 Main 进程，Renderer 负责 UI、桌面浮层和角色渲染。Provider、插件、工具和记忆相关任务运行在 `worker_threads` 中，避免复杂任务拖垮主进程。
 
 跨进程协议由 `packages/protocol` 统一维护，Zod schema 是 Main、Renderer、Worker 之间的单一协议真源。
 
@@ -133,7 +132,7 @@ docs/                 用户手册与资源
 - [用户手册](docs/user-manual.md)
 - [角色包格式说明](apps/desktop/characters/default/README.md)
 - [插件 SDK](packages/plugin-sdk/README.md)
-- [Releases](https://github.com/Furina-he/openpet/releases)
+- [Releases](https://github.com/Furina-he/OpenPet/releases)
 
 ## 🗺️ Roadmap
 

@@ -1,5 +1,5 @@
 appId: app.openpet.desktop
-productName: openpet
+productName: OpenPet
 directories:
   output: release
 files:

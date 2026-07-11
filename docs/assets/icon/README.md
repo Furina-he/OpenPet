@@ -7,10 +7,12 @@
 | `openpet-icon.svg` | 主图标源文件（渐变瓦片 `#F8697B → #FEA583` + 白色符号，圆角率 22.5%） |
 | `openpet-tray.svg` | 纯白符号（无底板），托盘/暗色场景用 |
 | `png/openpet-{16..256}.png` | 从 SVG 光栅化的各尺寸 PNG（含透明通道） |
+| `poppins-700.woff2` | 横版 lockup 字体（Poppins Bold，OFL 许可） |
 | `preview.html` | 多尺寸预览页（本地起 http 服务打开，file:// 下 SVG 不加载） |
 
 ## 衍生产物（不在本目录）
 
+- `docs/assets/openpet-logo.png` — README 顶部横版 lockup：瓦片图标 + 「OpenPet」字标（Poppins 700，`#0C0E41`），canvas 渲染后裁边。
 - `apps/desktop/build/icon.ico` — 7 尺寸（16/24/32/48/64/128/256）合成的 Windows 图标，electron-builder `win.icon` 引用。
 - `apps/desktop/resources/tray/{default,thinking,error}.png` — 32px 三态托盘图标：白符号 / 琥珀点（思考中）/ 红点（错误），角标带透明间隙。
 
