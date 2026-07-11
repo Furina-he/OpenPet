@@ -34,6 +34,11 @@ OpenPet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI
 ## 📸 效果预览
 
 <div align="center">
+  <img src="docs/assets/demo.gif" width="900" alt="演示：角色跟随流式输出实时变换表情，并通过 MCP 工具查询天气" />
+  <p><sub>真实录屏 —— 回复还在流式输出，角色表情已随行内 <code>&lt;emo:/&gt;</code> 标签实时变化；中途调用 MCP 工具 <code>get_weather</code>，参数、状态与结果回灌全程可见</sub></p>
+</div>
+
+<div align="center">
   <img src="docs/assets/hub-overview.png" width="900" alt="Hub 总览页：左侧 VRM 角色实时渲染，右侧陪伴统计仪表盘" />
   <p><sub>Hub 总览 —— 左侧 VRM 角色实时渲染，右侧消息趋势、Token 用量与连接生态一屏总览</sub></p>
 </div>
