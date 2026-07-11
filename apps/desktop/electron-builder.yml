@@ -7,6 +7,9 @@ files:
 extraResources:
   - from: characters
     to: characters
+  - from: resources/tray
+    to: tray
 win:
   target: nsis
+  icon: build/icon.ico
   artifactName: ${productName}-${version}-${arch}.${ext}
