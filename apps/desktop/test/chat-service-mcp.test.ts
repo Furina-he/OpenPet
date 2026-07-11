@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ChatService, type McpToolPort } from '../electron/main/chat-service';
+import { createTraceCollector } from '../electron/main/trace-collector';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOOL_ENTRY = path.join(__dirname, 'fixtures/tool-worker.mjs');
@@ -61,6 +62,43 @@ describe('ChatService · MCP 工具路由 (§4)', () => {
       .map((s) => s.params.text)
       .join('');
     expect(text).toContain('MCP:echo:');
+  });
+
+  it('§7 Trace 工具可见性：provider.stream 记 toolsSent/toolCalls，回灌重发记 turn.reprompt', async () => {
+    const collector = createTraceCollector({ broadcast: () => {}, enabled: () => true });
+    const sent: Sent[] = [];
+    const mcp: McpToolPort = {
+      activeToolDefs: () => [
+        { name: 'echo', description: 'echo it', parameters: { type: 'object' } },
+      ],
+      callTool: async (name: string, args: unknown) => `MCP:${name}:${JSON.stringify(args)}`,
+    };
+    svc = new ChatService({
+      providerEntryPath: TOOL_ENTRY,
+      broadcast: (c, p) => sent.push({ channel: c, params: p }),
+      providerChain: ['openai'],
+      queue: { flushIntervalMs: 5 },
+      mcp,
+      trace: collector,
+    });
+    svc.send('s1', 'use a tool');
+    await until(() => !!doneOf(sent, 's1'), 'traced tool reprompt done');
+
+    const recs = collector.history();
+    // 每轮 provider 流封口一条：首轮发了 1 个工具、模型调了 1 次；回灌轮 tools 保留、无再调。
+    expect(recs.filter((r) => r.action === 'provider.stream').map((r) => r.fields)).toEqual([
+      { toolsSent: 1, toolCalls: 1 },
+      { toolsSent: 1, toolCalls: 0 },
+    ]);
+    // 回灌重发一条：二轮请求消息数（原始 user + assistant 载体 + tool 结果 ≥3）与 tools 字段保留。
+    const reprompt = recs.find((r) => r.action === 'turn.reprompt');
+    expect(reprompt?.fields).toMatchObject({ tools: 1 });
+    expect((reprompt?.fields as { messages: number }).messages).toBeGreaterThanOrEqual(3);
+    // 时间线顺序：首轮 stream → 回灌 → 二轮 stream。
+    const seq = recs
+      .map((r) => r.action)
+      .filter((a) => a === 'provider.stream' || a === 'turn.reprompt');
+    expect(seq).toEqual(['provider.stream', 'turn.reprompt', 'provider.stream']);
   });
 
   it('mcp.callTool 抛 → 广播 error 相 + 回灌 error 文本', async () => {

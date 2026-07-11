@@ -148,6 +148,14 @@ export class TurnOrchestrator {
         }
       }
     }
+    // §7 工具可见性：每轮 provider 流封口记 toolsSent/toolCalls——一条记录分清
+    // 「工具没附上」(toolsSent=0)与「发了但模型没调」(toolsSent>0 且 toolCalls=0，中转站吞 tools 常见)。
+    if (event.type === 'done' && event.finishReason === 'stop' && turn) {
+      turn.span?.record('provider.stream', {
+        toolsSent: turn.request.tools?.length ?? 0,
+        toolCalls: turn.pendingTools.length,
+      });
+    }
     // done(stop) 且本轮有未回灌的 tool_call → 执行 + 回灌一轮。
     if (
       event.type === 'done' &&
@@ -227,6 +235,10 @@ export class TurnOrchestrator {
       messages: [...turn.request.messages, assistantToolMsg, ...toolMessages],
     };
     this.onToolsExecuted?.(sessionId);
+    turn.span?.record('turn.reprompt', {
+      messages: turn.request.messages.length,
+      tools: turn.request.tools?.length ?? 0,
+    });
     const providerId = turn.chain[turn.idx]!;
     this.host.send(sessionId, {
       providerId,
