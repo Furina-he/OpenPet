@@ -915,6 +915,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       ctx.win?.hide();
       return { ok: true as const };
     },
+    'app.window.minimizeSelf': (_p, ctx) => {
+      ctx.win?.minimize();
+      return { ok: true as const };
+    },
     'app.window.moveBy': (p, ctx) => {
       if (ctx.win) {
         const [x, y] = ctx.win.getPosition();

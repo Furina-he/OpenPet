@@ -4,21 +4,21 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   Activity,
-  Bell,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Menu,
   Minus,
-  Plus,
-  Search,
+  Monitor,
+  Moon,
   Settings,
   Sun,
   Wifi,
+  WifiOff,
   X,
 } from 'lucide-vue-next';
+import type { ThemePref } from '@openpet/protocol';
 import { NAV_TREE, isActive } from './nav-tree';
 import { activeModelLabel, budgetVm } from './overview-view.js';
+import { nextTheme, themeTitleKey, avatarInitialOf } from './shell-view.js';
 import OverviewPage from './pages/OverviewPage.vue';
 import GeneralPage from './pages/GeneralPage.vue';
 import DisplayPage from './pages/DisplayPage.vue';
@@ -55,7 +55,7 @@ const activeMeta = computed(() => {
     const leaf = group.children.find((item) => item.id === active.value);
     if (leaf) return { group: t(group.label), leaf: t(leaf.label) };
   }
-  return { group: 'openpet', leaf: active.value };
+  return { group: 'OpenPet', leaf: active.value };
 });
 function groupActive(groupId: string): boolean {
   const group = NAV_TREE.find((item) => item.id === groupId);
@@ -99,6 +99,27 @@ watch(
 
 // §7：诊断叶子仅开发者模式可见（D2 general.developerMode，实时生效）。
 const devMode = ref(false);
+// 发布门回修：顶栏接真——折叠导航 / 主题三态循环 / 最小化 / 关闭（frame:false 无系统栏）。
+const navCollapsed = ref(false);
+const theme = ref<ThemePref>('system');
+function cycleTheme(): void {
+  const next = nextTheme(theme.value);
+  theme.value = next;
+  void window.openpet.rpc('app.prefs.set', { key: 'display.theme', value: next });
+}
+function minimizeWin(): void {
+  void window.openpet.rpc('app.window.minimizeSelf', {});
+}
+function closeWin(): void {
+  // frame:false 下不能用 window.close()（sandbox 会绕过 Main 拦截直接销毁）；Hub 关闭=收起
+  void window.openpet.rpc('app.window.hideSelf', {});
+}
+// 左下角色卡接真：当前激活角色（热切换广播刷新）；设置按钮跳角色库。
+const characterName = ref('');
+async function refreshCharacter(): Promise<void> {
+  const cur = await window.openpet.rpc('character.current', {});
+  characterName.value = cur.manifest.name;
+}
 // footer 真值（偿债：原硬编码 GPT-4o/32.6K/v0.1.0）——active 模型 + 本月用量 + 版本。
 const footerModel = ref<string | null>(null);
 const footerToken = ref<{ text: string; pct: number | null }>({ text: '0', pct: null });
@@ -115,13 +136,17 @@ async function refreshFooter(): Promise<void> {
 }
 onMounted(async () => {
   void refreshFooter();
+  void refreshCharacter();
   setInterval(() => void refreshFooter(), 60_000);
   const p = await window.openpet.rpc('app.prefs.getAll', {});
   devMode.value = p['general.developerMode'] === true;
+  theme.value = p['display.theme'];
   window.openpet.on('app.prefs.changed', (c) => {
     if (c.key === 'general.developerMode') devMode.value = c.value === true;
+    if (c.key === 'display.theme') theme.value = c.value as ThemePref;
     if (c.key.startsWith('model.') || c.key.startsWith('budget.')) void refreshFooter();
   });
+  window.openpet.on('character.changed', () => void refreshCharacter());
 });
 const navTree = computed(() =>
   NAV_TREE.map((g) =>
@@ -135,12 +160,12 @@ const navTree = computed(() =>
   <div class="ds-window-bg flex h-screen p-4 text-base">
     <ToastHost ref="toast" />
     <section class="ds-glass flex h-full min-h-0 w-full overflow-hidden rounded-panel">
-      <!-- 左导航 280px -->
-      <nav class="flex w-[280px] shrink-0 flex-col border-r border-glass-border p-4">
+      <!-- 左导航 280px（顶栏 Menu 可折叠） -->
+      <nav v-show="!navCollapsed" class="flex w-[280px] shrink-0 flex-col border-r border-glass-border p-4">
         <div class="mb-5 flex items-center gap-3 px-1">
-          <span class="ds-avatar h-8 w-8 text-sm">o</span>
+          <span class="ds-avatar h-8 w-8 text-sm">O</span>
           <div class="min-w-0">
-            <div class="truncate text-md font-semibold text-text-main">openpet P0</div>
+            <div class="truncate text-md font-semibold text-text-main">OpenPet</div>
             <div class="text-sm text-text-sub">{{ t('settings.shell.subtitle') }}</div>
           </div>
         </div>
@@ -204,17 +229,23 @@ const navTree = computed(() =>
           </template>
         </div>
 
+        <!-- 当前角色卡（接真：character.current + 热切换刷新；⚙ 跳角色库） -->
         <div class="mt-4 rounded-panel border border-glass-border bg-white/30 p-3">
           <div class="flex items-center gap-3">
-            <span class="ds-avatar h-11 w-11 text-base">{{ t('settings.shell.avatarInitial') }}</span>
+            <span class="ds-avatar h-11 w-11 text-base">{{ avatarInitialOf(characterName) }}</span>
             <div class="min-w-0 flex-1">
-              <div class="truncate text-base font-medium text-text-main">{{ t('settings.shell.demoCharacterName') }}</div>
+              <div class="truncate text-base font-medium text-text-main">{{ characterName }}</div>
               <div class="flex items-center gap-1 text-sm text-text-sub">
                 <span class="h-1.5 w-1.5 rounded-full" style="background: var(--ds-success)" />
                 {{ t('settings.shell.online') }}
               </div>
             </div>
-            <button class="ds-icon-button" :title="t('settings.shell.characterSettings')" :aria-label="t('settings.shell.characterSettings')">
+            <button
+              class="ds-icon-button"
+              :title="t('settings.shell.characterSettings')"
+              :aria-label="t('settings.shell.characterSettings')"
+              @click="active = 'character.library'"
+            >
               <Settings :size="16" :stroke-width="1.5" />
             </button>
           </div>
@@ -223,54 +254,51 @@ const navTree = computed(() =>
 
       <!-- 顶栏 56px + 内容区 + 状态条 32px -->
       <div class="flex min-w-0 flex-1 flex-col">
+        <!-- 顶栏 56px：拖动区（frame:false 唯一移动窗口的方式）+ 全部按钮接真 -->
         <header
           class="flex h-[56px] shrink-0 items-center justify-between border-b border-glass-border px-4 text-text-main"
+          style="-webkit-app-region: drag"
         >
-          <div class="flex items-center gap-2">
-            <button class="ds-icon-button" :title="t('settings.shell.collapseNav')" :aria-label="t('settings.shell.collapseNav')">
+          <div class="flex items-center gap-2" style="-webkit-app-region: no-drag">
+            <button
+              class="ds-icon-button"
+              :title="t('settings.shell.collapseNav')"
+              :aria-label="t('settings.shell.collapseNav')"
+              @click="navCollapsed = !navCollapsed"
+            >
               <Menu :size="17" :stroke-width="1.5" />
             </button>
-            <button class="ds-icon-button" :title="t('settings.shell.back')" :aria-label="t('settings.shell.back')">
-              <ChevronLeft :size="17" :stroke-width="1.5" />
-            </button>
-            <button class="ds-icon-button" :title="t('settings.shell.forward')" :aria-label="t('settings.shell.forward')">
-              <ChevronRight :size="17" :stroke-width="1.5" />
-            </button>
-            <div class="relative ml-2 w-[320px]">
-              <Search
-                class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-sub"
-                :size="15"
-                :stroke-width="1.5"
-              />
-              <input
-                class="ds-control h-9 w-full rounded-input py-1.5 pl-9 pr-20 text-sm text-text-main"
-                :placeholder="t('settings.shell.searchPlaceholder')"
-              />
-              <span
-                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-btn border border-glass-border px-2 py-0.5 text-xs text-text-sub"
-              >
-                Ctrl + K
-              </span>
-            </div>
+            <span class="ml-1 text-sm text-text-sub">
+              {{ activeMeta.group }}<template v-if="activeMeta.leaf !== activeMeta.group"> · {{ activeMeta.leaf }}</template>
+            </span>
           </div>
 
-          <div class="flex items-center gap-2">
-            <button class="ds-icon-button" :title="t('settings.shell.new')" :aria-label="t('settings.shell.new')">
-              <Plus :size="17" :stroke-width="1.5" />
+          <div class="flex items-center gap-2" style="-webkit-app-region: no-drag">
+            <button
+              class="ds-icon-button"
+              :title="t(themeTitleKey(theme))"
+              :aria-label="t(themeTitleKey(theme))"
+              @click="cycleTheme"
+            >
+              <Sun v-if="theme === 'light'" :size="17" :stroke-width="1.5" />
+              <Moon v-else-if="theme === 'dark'" :size="17" :stroke-width="1.5" />
+              <Monitor v-else :size="17" :stroke-width="1.5" />
             </button>
             <span class="mx-1 h-5 w-px bg-glass-border" />
-            <button class="ds-icon-button" :title="t('settings.shell.theme')" :aria-label="t('settings.shell.theme')">
-              <Sun :size="17" :stroke-width="1.5" />
-            </button>
-            <button class="ds-icon-button" :title="t('settings.shell.notifications')" :aria-label="t('settings.shell.notifications')">
-              <Bell :size="17" :stroke-width="1.5" />
-            </button>
-            <span class="ds-avatar h-8 w-8 text-sm">{{ t('settings.shell.avatarInitial') }}</span>
-            <span class="text-sm font-medium text-text-main">{{ t('settings.shell.demoCharacterName') }}</span>
-            <button class="ds-icon-button" :title="t('settings.shell.minimize')" :aria-label="t('settings.shell.minimize')">
+            <button
+              class="ds-icon-button"
+              :title="t('settings.shell.minimize')"
+              :aria-label="t('settings.shell.minimize')"
+              @click="minimizeWin"
+            >
               <Minus :size="16" :stroke-width="1.5" />
             </button>
-            <button class="ds-icon-button" :title="t('common.close')" :aria-label="t('common.close')">
+            <button
+              class="ds-icon-button"
+              :title="t('common.close')"
+              :aria-label="t('common.close')"
+              @click="closeWin"
+            >
               <X :size="16" :stroke-width="1.5" />
             </button>
           </div>
@@ -332,9 +360,11 @@ const navTree = computed(() =>
               <Activity :size="13" :stroke-width="1.5" />
               {{ t('settings.shell.running') }}
             </span>
+            <!-- 接真：默认 Chat 模型已配置=已连接，否则提示未配置 -->
             <span class="flex items-center gap-1">
-              <Wifi :size="13" :stroke-width="1.5" />
-              {{ t('settings.shell.connected') }}
+              <Wifi v-if="footerModel" :size="13" :stroke-width="1.5" />
+              <WifiOff v-else :size="13" :stroke-width="1.5" />
+              {{ footerModel ? t('settings.shell.connected') : t('settings.shell.noModel') }}
             </span>
           </div>
           <div class="flex items-center gap-4">

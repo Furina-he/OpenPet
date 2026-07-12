@@ -157,6 +157,11 @@ export const Methods = {
     params: z.object({}),
     result: z.object({ ok: z.literal(true) }),
   },
+  'app.window.minimizeSelf': {
+    // 窗口自最小化（Hub frame:false 无系统标题栏，顶栏 − 按钮走它）。
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
 
   // --- request/response: Renderer → Main（数据管理，M6；D7 UI 在 M7 接）---
   'app.storageUsage': {
