@@ -22,3 +22,4 @@ export * from './hotkeys.js';
 export * from './interaction-cues.js';
 export * from './plugin-config.js';
 export * from './voice-config.js';
+export * from './update-config.js';

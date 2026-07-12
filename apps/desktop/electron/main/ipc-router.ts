@@ -148,6 +148,8 @@ export interface IpcRouterDeps {
   /** J5 诊断：app 版本 + .dsdiag 落盘路径（index 注入 app.getVersion() + userData 路径）。 */
   appVersion?: string;
   diagPath?: string;
+  /** ⑪ 自动更新服务（index 注入 createUpdateService 真实例；缺省 RPC 返回 disabled）。 */
+  updateService?: import('./update-service.js').UpdateService;
 }
 
 export interface RpcContext {
@@ -758,6 +760,17 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'app.usageSummary': () => ({ sinceTs: monthStart(), ...store.usageSummary(monthStart()) }),
     'app.stats.overview': (p) => statsService.overview(p.rangeDays),
     'app.version': () => ({ version: deps.appVersion ?? '0.0.0' }),
+    // ⑪ 自动更新三件套（服务缺省=永远 disabled(dev)，测试/dev 装配无需注入）
+    'app.update.check': async () =>
+      deps.updateService ? await deps.updateService.check() : { state: 'disabled' as const, reason: 'dev' as const },
+    'app.update.download': async () => {
+      await deps.updateService?.download();
+      return { ok: true as const };
+    },
+    'app.update.install': async () => {
+      await deps.updateService?.install();
+      return { ok: true as const };
+    },
     'kb.importFile': async (p) => {
       // 批次⑥：Main 弹框选 .txt/.md/.pdf → 解析（PDF 走 unpdf）→ 复用摄入内部。
       const picked = (await deps.pickKbFile?.()) ?? null;

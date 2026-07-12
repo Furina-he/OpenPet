@@ -26,6 +26,7 @@ import { createTray, type TrayHandle } from './tray-service.js';
 import * as appActions from './app-actions.js';
 import { migrateUserData } from './user-data-migrate.js';
 import { resolveNativeDir, toUnpackedPath } from './packaged-paths.js';
+import { createUpdateService, type UpdateMode } from './update-service.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +48,7 @@ let cursorPublisher: { stop: () => void } | null = null;
 let fsWatch: FullscreenWatch | null = null;
 let hotkeys: ReturnType<typeof createHotkeyService> | null = null;
 let tray: TrayHandle | null = null;
+let updateSvc: ReturnType<typeof createUpdateService> | null = null;
 let trayThinking = false;
 let trayError = false;
 let isQuitting = false;
@@ -146,6 +148,33 @@ app.whenReady().then(async () => {
   //（旧库转 .bak-<ts> 兜底）。必须先于 registerIpcRouter（它持 DB 单连接）。
   const sqlitePath = path.join(dataDir, 'sessions.db');
   applyPendingImport(sqlitePath);
+  // ⑪ 自动更新：dev/portable 门控；electron-updater CJS 动态载入（仅 packaged 需要）。
+  const updateMode: UpdateMode = !app.isPackaged
+    ? 'dev'
+    : process.env.PORTABLE_EXECUTABLE_DIR
+      ? 'portable'
+      : 'packaged';
+  const { autoUpdater } = (require('electron-updater') as typeof import('electron-updater'));
+  const updateService = createUpdateService({
+    updater: autoUpdater,
+    mode: updateMode,
+    getPrefs: () => prefsStore.getAll(),
+    broadcast,
+    confirmInstall: async () => {
+      const zh = String(prefsStore.getAll()['general.language'] ?? 'zh-CN').startsWith('zh');
+      const r = await dialog.showMessageBox({
+        type: 'question',
+        buttons: zh ? ['重启并更新', '稍后'] : ['Restart & Update', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: zh ? '更新已就绪' : 'Update ready',
+        detail: zh
+          ? '重启 OpenPet 以完成安装。你的对话与数据不受影响。'
+          : 'Restart OpenPet to finish installing. Your chats and data are unaffected.',
+      });
+      return r.response === 0;
+    },
+  });
   router = registerIpcRouter({
     targets,
     characterWindow,
@@ -252,6 +281,7 @@ app.whenReady().then(async () => {
     appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
     appVersion: app.getVersion(),
     diagPath: path.join(dataDir, 'openpet.dsdiag'),
+    updateService,
     // J1 托盘三态：thinking=streaming 中，error=最近一轮 error（仅状态变化时刷新图标）。
     onBroadcast: (channel, params) => {
       if (channel === 'chat.stream') {
@@ -280,6 +310,9 @@ app.whenReady().then(async () => {
     wins.overlay.hide();
     wins.onboarding.show();
   }
+  // 周期检查（启动 30s + 24h；dev/portable 内部 no-op）
+  updateSvc = updateService;
+  updateService.start();
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),
     send: (p) => {
@@ -373,6 +406,8 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   isQuitting = true;
   globalShortcut.unregisterAll();
+  updateSvc?.stop();
+  updateSvc = null;
   cursorPublisher?.stop();
   cursorPublisher = null;
   fsWatch?.stop();
