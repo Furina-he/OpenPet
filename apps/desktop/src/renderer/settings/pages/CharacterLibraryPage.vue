@@ -100,6 +100,38 @@ async function applyImport(): Promise<void> {
     importing.value = false;
   }
 }
+
+// ⑫ ST 卡导入（两段式）：摘要确认 + 形象来源（donor）选择。
+const stImport = ref<{
+  path: string;
+  summary: { name: string; creator: string; version: string; greetingCount: number; lorebookCount: number; tags: string[]; hasAvatar: boolean };
+} | null>(null);
+const stDonor = ref('default');
+async function pickStCard(): Promise<void> {
+  try {
+    const r = await window.openpet.rpc('character.importCardPick', {});
+    if (!r.cancelled) {
+      stDonor.value = items.value.find((x) => x.characterId === 'default') ? 'default' : (items.value[0]?.characterId ?? 'default');
+      stImport.value = { path: r.path, summary: r.summary };
+    }
+  } catch (e) {
+    toast(t('settings.characters.importFailed', { detail: errText(e) }));
+  }
+}
+async function applyStCard(): Promise<void> {
+  if (!stImport.value) return;
+  importing.value = true;
+  try {
+    await window.openpet.rpc('character.importCardApply', { path: stImport.value.path, donorId: stDonor.value });
+    toast(t('settings.characters.stImportedToast', { name: stImport.value.summary.name }));
+    stImport.value = null;
+    await load();
+  } catch (e) {
+    toast(t('settings.characters.importFailed', { detail: errText(e) }));
+  } finally {
+    importing.value = false;
+  }
+}
 async function doRemove(): Promise<void> {
   if (!removing.value) return;
   await window.openpet.rpc('character.remove', { id: removing.value.id });
@@ -210,6 +242,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
         <div class="flex gap-2">
           <Button variant="primary" @click="pickImport('pack')">{{ t('settings.characters.importPack') }}</Button>
           <Button variant="secondary" @click="pickImport('folder')">{{ t('settings.characters.importFolder') }}</Button>
+          <Button variant="secondary" @click="pickStCard">{{ t('settings.characters.importStCard') }}</Button>
         </div>
       </div>
 
@@ -497,6 +530,58 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
         <div class="mt-5 flex justify-end gap-2">
           <Button variant="ghost" :disabled="importing" @click="confirmImport = null">{{ t('common.cancel') }}</Button>
           <Button variant="primary" :disabled="importing" @click="applyImport">
+            {{ importing ? t('settings.characters.importing') : t('settings.characters.importLabel') }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑫ ST 卡导入确认（摘要 + 形象来源选择；容器 class 与 confirmImport 弹窗同款） -->
+    <div
+      v-if="stImport"
+      class="fixed inset-0 z-[60] flex items-center justify-center"
+      style="background: rgba(0, 0, 0, 0.32)"
+    >
+      <div class="ds-glass w-[420px] rounded-panel p-5">
+        <div class="text-md text-text-main">{{ t('settings.characters.stImportTitle') }}</div>
+        <div class="mt-3 space-y-1.5 text-sm">
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.persona.name') }}</span>
+            <span class="text-text-main">{{ stImport.summary.name }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.stCreator') }}</span>
+            <span class="text-text-main">{{ stImport.summary.creator || '—' }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.version') }}</span>
+            <span class="text-text-main">v{{ stImport.summary.version }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.stGreetings') }}</span>
+            <span class="text-text-main">{{ stImport.summary.greetingCount }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.stLorebook') }}</span>
+            <span class="text-text-main">{{ stImport.summary.lorebookCount }}</span>
+          </div>
+          <div v-if="!stImport.summary.hasAvatar" class="text-xs text-text-sub">{{ t('settings.characters.stNoAvatar') }}</div>
+        </div>
+        <div class="mt-4">
+          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.stBody') }}</p>
+          <select
+            v-model="stDonor"
+            class="ds-control h-9 w-full rounded-input px-2 text-sm text-text-main"
+          >
+            <option v-for="c in items" :key="c.characterId" :value="c.characterId">
+              {{ c.manifest.name }}（{{ c.characterId }}）
+            </option>
+          </select>
+          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.stBodyHint') }}</p>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" :disabled="importing" @click="stImport = null">{{ t('common.cancel') }}</Button>
+          <Button variant="primary" :disabled="importing" @click="applyStCard">
             {{ importing ? t('settings.characters.importing') : t('settings.characters.importLabel') }}
           </Button>
         </div>
