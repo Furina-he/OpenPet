@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CueSchema } from './interaction-cues.js';
 import { BeginDialogsSchema } from './persona-config.js';
+import { PackLorebookSchema } from './lorebook.js';
 
 /**
  * 角色包 manifest —— Main（校验/asset 协议）与 Character Renderer（运行时词表）
@@ -26,6 +27,8 @@ export function isSafeRelPath(p: string): boolean {
 export const PackPersonaSchema = z.object({
   systemPrompt: z.string().min(1),
   beginDialogs: BeginDialogsSchema,
+  /** ⑫ 开场白（ST first_mes/alternate_greetings）：切换到该角色时气泡随机一条（宏展开；不进 LLM 上下文、不落库，spec §6）。 */
+  greetings: z.array(z.string().min(1).max(4000)).max(10).optional(),
 });
 export type PackPersona = z.infer<typeof PackPersonaSchema>;
 
@@ -55,6 +58,8 @@ export const CharacterManifestSchema = z
       .refine(isSafeRelPath, { message: 'preview must be a safe relative path' })
       .optional(),
     persona: PackPersonaSchema.optional(),
+    /** ⑫ 世界书（ST character_book 最小子集）；命中注入 system「世界设定」块。 */
+    lorebook: PackLorebookSchema.optional(),
     // --- 元数据（⑩.7 E2 信息区；全 optional 向后兼容）---
     author: z.string().min(1).optional(),
     description: z.string().optional(),
