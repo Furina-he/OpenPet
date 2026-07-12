@@ -12,6 +12,7 @@ import type { Prefs } from '@openpet/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
 import { charStrings } from './strings';
+import { CUBISM_CORE_CANDIDATES, cubismCoreMissingMessage } from './cubism-core-chain';
 
 // 跨 renderer 即时换肤：character 也订阅 app.prefs.changed（tokens.css 保持 body 透明）。
 subscribeTheme();
@@ -32,27 +33,35 @@ declare global {
   }
 }
 
-/** Cubism Core 动态注入（只注一次）；缺失/加载失败 → throw，由 boot 的 catch 落 fallback 脸。 */
+/** Cubism Core 动态注入（只注一次）；三级链全失败 → throw，由 boot 的 catch 落 fallback 脸。 */
 let cubismCoreLoading: Promise<void> | null = null;
-function ensureCubismCore(): Promise<void> {
-  if ((window as { Live2DCubismCore?: unknown }).Live2DCubismCore) return Promise.resolve();
-  cubismCoreLoading ??= new Promise((resolve, reject) => {
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    // 相对路径：dev(http://…/character/) 与生产(file://…/renderer/character/) 都指到
+    // 一级相对路径：dev(http://…/character/) 与生产(file://…/renderer/character/) 都指到
     // publicDir 拷贝目标（renderer 根）；根绝对路径在 file:// 下会指向盘符根，不可用。
-    s.src = '../live2dcubismcore.min.js';
-    s.onload = () => {
-      if ((window as { Live2DCubismCore?: unknown }).Live2DCubismCore) resolve();
-      else reject(new Error('live2dcubismcore.min.js 已加载但未暴露 Live2DCubismCore'));
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      s.remove();
+      reject(new Error(`script load failed: ${src}`));
     };
-    s.onerror = () =>
-      reject(
-        new Error(
-          'Live2D Cubism Core 未安装：请从官方下载 live2dcubismcore.min.js 放入 src/renderer/public/（见该目录 README.md）',
-        ),
-      );
     document.head.appendChild(s);
   });
+}
+function ensureCubismCore(): Promise<void> {
+  if ((window as { Live2DCubismCore?: unknown }).Live2DCubismCore) return Promise.resolve();
+  cubismCoreLoading ??= (async () => {
+    for (const src of CUBISM_CORE_CANDIDATES) {
+      try {
+        await loadScript(src);
+      } catch {
+        continue; // 下一级候选（public → resources/cubism → userData/cubism）
+      }
+      if ((window as { Live2DCubismCore?: unknown }).Live2DCubismCore) return;
+    }
+    throw new Error(cubismCoreMissingMessage());
+  })();
   return cubismCoreLoading;
 }
 

@@ -2,13 +2,23 @@ appId: app.openpet.desktop
 productName: OpenPet
 directories:
   output: release
+# 白名单三个构建目标目录——out/ 下可能有 dev 期的 Chromium profile（chrome-profile 等，
+# 含本机浏览数据），绝不入包
 files:
-  - out/**/*
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
 # Electron ABI 的 better-sqlite3 由 scripts/fetch-electron-sqlite.mjs 下载到 native/ 并经
 # extraResources 带入（运行时 resolveNativeBinding 加载），不走 electron-builder rebuild
 npmRebuild: false
 asarUnpack:
   - '**/*.node'
+  # worker_threads 无 asar hook：sidecar worker entry 及其依赖树必须是真实文件
+  #（main 侧经 toUnpackedPath 重写路径）
+  - 'node_modules/@openpet/**'
+  - 'node_modules/zod/**'
+  - 'node_modules/zod-to-json-schema/**'
+  - 'node_modules/gpt-tokenizer/**'
 extraResources:
   # 只带内置角色（characters/ 下可能有用户本地测试包，不入发布产物）
   - from: characters
@@ -17,6 +27,14 @@ extraResources:
       - default/**
   - from: resources/tray
     to: tray
+  # Electron ABI 的 better-sqlite3（package/release 脚本前置 fetch-electron-sqlite.mjs 保证在场）
+  - from: native
+    to: native
+    filter:
+      - '*.node'
+  # Star Python shim（spawn 真实 .py 文件，不能进 asar；index.ts 打包分支指 resources/star-host）
+  - from: resources/star-host
+    to: star-host
 win:
   target:
     - nsis

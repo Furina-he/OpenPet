@@ -120,8 +120,11 @@ export interface IpcRouterDeps {
   providerEntryPath: string;
   /** sessions.db 路径（生产 userData/data/sessions.db；测试省略=纯内存）。 */
   sqlitePath?: string;
-  /** Electron 专属 better-sqlite3 产物目录（app 根 native/；Node 测试省略）。 */
+  /** Electron 专属 better-sqlite3 产物目录（dev=app 根 native/；打包=resources/native）。 */
   nativeDir?: string;
+  /** ⑪ 发布批次：打包版 sqlite 失败即响（true=不降级内存库，调 onStoreFatal 后抛）。 */
+  requireNativeStore?: boolean;
+  onStoreFatal?: (message: string) => void;
   /** 代理 fetch 网关依赖（Electron net + 白名单 + Keychain 注入）；生产由 index.ts 注入。 */
   fetch?: import('./fetch-gateway.js').FetchGatewayDeps;
   /** 默认 provider id（chat.send 未指定时用）；M5 固定 'openai'，M7 接用户选择。 */
@@ -179,7 +182,12 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
 
   const store = createConversationStore(
     deps.sqlitePath
-      ? { sqlitePath: deps.sqlitePath, ...(deps.nativeDir ? { nativeDir: deps.nativeDir } : {}) }
+      ? {
+          sqlitePath: deps.sqlitePath,
+          ...(deps.nativeDir ? { nativeDir: deps.nativeDir } : {}),
+          ...(deps.requireNativeStore ? { requireNative: true } : {}),
+          ...(deps.onStoreFatal ? { onFatal: deps.onStoreFatal } : {}),
+        }
       : {},
   );
   // 应用偏好（M7a）：单写者 PrefsStore。在 ChatService 之前声明，供 resolveModel 读当前 provider/model。

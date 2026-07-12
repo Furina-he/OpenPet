@@ -66,4 +66,26 @@ describe('resolveAssetPath', () => {
     const got = resolveAssetPath(['/r1', '/r2'], 'asset://miko/model.vrm', exists);
     expect(got?.replace(/\\/g, '/')).toContain('/r2/miko/model.vrm');
   });
+
+  it('保留 host（cubism）优先于角色目录：直接在专用根列表内多根解析', () => {
+    const reserved = { cubism: ['/res/cubism', '/userdata/cubism'] };
+    const hits = new Set(['/userdata/cubism/live2dcubismcore.min.js'.split('/').join(path.sep)]);
+    const exists = (p: string): boolean => hits.has(p.replace(/^([A-Za-z]:)?/, ''));
+    const got = resolveAssetPath(
+      [ROOT],
+      'asset://cubism/live2dcubismcore.min.js',
+      exists,
+      reserved,
+    );
+    expect(got?.replace(/\\/g, '/')).toContain('/userdata/cubism/live2dcubismcore.min.js');
+    // 同名角色包目录不参与解析（保留字优先，均缺 → 首个专用根候选）
+    const none = resolveAssetPath([ROOT], 'asset://cubism/x.js', () => false, reserved);
+    expect(none?.replace(/\\/g, '/')).toContain('/res/cubism/x.js');
+  });
+
+  it('保留 host 同样执行段级校验（越级/反斜杠 404）', () => {
+    const reserved = { cubism: ['/res/cubism'] };
+    expect(resolveAssetPath([ROOT], 'asset://cubism/a%5Cb.js', () => true, reserved)).toBeNull();
+    expect(resolveAssetPath([ROOT], 'asset://cubism//x.js', () => true, reserved)).toBeNull();
+  });
 });

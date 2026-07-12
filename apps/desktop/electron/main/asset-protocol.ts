@@ -35,11 +35,16 @@ export function assetSchemePrivileges(): Electron.CustomScheme[] {
 /**
  * asset URL → 磁盘绝对路径；多根按序找存在文件，均缺 → 首根候选（自然 404）；
  * 任何不合法形状返回 null（调用方 404）。纯函数可单测。
+ *
+ * reservedHosts（⑪ 发布批次）：保留 host → 专用根列表（host 直接映射目录本身，
+ * 不叠加 <id>/ 子目录）。用于非角色资产（cubism core 三级加载链的后两级）；
+ * 保留字优先于同名角色包。
  */
 export function resolveAssetPath(
   charactersRoots: string[],
   rawUrl: string,
   exists: (p: string) => boolean = existsSync,
+  reservedHosts: Record<string, string[]> = {},
 ): string | null {
   let url: URL;
   try {
@@ -63,6 +68,19 @@ export function resolveAssetPath(
   const segs = rel.split('/');
   if (segs.some((s) => s.length === 0 || s === '.' || s === '..' || s.includes(':'))) return null;
 
+  const reserved = reservedHosts[id];
+  if (reserved) {
+    let first: string | null = null;
+    for (const root of reserved) {
+      const base = path.resolve(root);
+      const full = path.resolve(base, rel);
+      if (!full.startsWith(base + path.sep)) continue;
+      first ??= full;
+      if (exists(full)) return full;
+    }
+    return first;
+  }
+
   let first: string | null = null;
   for (const root of charactersRoots) {
     const base = path.resolve(root, id);
@@ -74,9 +92,12 @@ export function resolveAssetPath(
   return first;
 }
 
-export function registerAssetProtocol(charactersRoots: string[]): void {
+export function registerAssetProtocol(
+  charactersRoots: string[],
+  reservedHosts: Record<string, string[]> = {},
+): void {
   protocol.handle(ASSET_SCHEME, async (request) => {
-    const filePath = resolveAssetPath(charactersRoots, request.url);
+    const filePath = resolveAssetPath(charactersRoots, request.url, existsSync, reservedHosts);
     if (!filePath) return new Response('not found', { status: 404 });
     const res = await net.fetch(pathToFileURL(filePath).toString());
     // net.fetch(file://) 不带 CORS 头；renderer 源（localhost/file）跨源取 asset:// 必须显式放行
