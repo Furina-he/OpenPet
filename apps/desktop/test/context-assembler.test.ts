@@ -129,3 +129,37 @@ describe('assembleContext', () => {
     expect(req.messages).toHaveLength(2);
   });
 });
+
+
+describe('⑫ 世界设定块 + 宏展开', () => {
+  const CH2 = { id: 'a', name: '芙宁娜' };
+
+  it('loreHits 注入「世界设定」块且宏展开；缺省无块', () => {
+    const store = new MemoryStore();
+    const req = assembleContext({
+      store, character: CH2, sessionId: 's', userText: 'hi',
+      loreHits: ['{{char}}的城堡在悬崖上'],
+      macroCtx: { user: '旅行者' },
+    });
+    const sys = req.messages[0]?.content ?? '';
+    expect(sys).toContain('## 世界设定');
+    expect(sys).toContain('芙宁娜的城堡在悬崖上');
+    const bare = assembleContext({ store, character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi' });
+    expect(bare.messages[0]?.content).not.toContain('## 世界设定');
+  });
+  it('personaPrompt 与 beginDialogs 宏展开；未给 macroCtx 不展开（向后兼容）', () => {
+    const store = new MemoryStore();
+    const req = assembleContext({
+      store, character: CH2, sessionId: 's', userText: 'hi',
+      personaPrompt: '你是{{char}}，称呼对方{{user}}', beginDialogs: ['{{user}}你好', '嗯，{{char}}在'],
+      macroCtx: { user: '旅行者' },
+    });
+    expect(req.messages[0]?.content).toContain('你是芙宁娜，称呼对方旅行者');
+    expect(req.messages[1]?.content).toBe('旅行者你好');
+    expect(req.messages[2]?.content).toBe('嗯，芙宁娜在');
+    const raw = assembleContext({
+      store, character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi', personaPrompt: '{{user}}',
+    });
+    expect(raw.messages[0]?.content).toContain('{{user}}');
+  });
+});

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PackLorebookSchema } from '@openpet/protocol';
 import { createContextPipeline } from '../electron/main/context-pipeline.js';
 import { MemoryStore } from '../electron/main/db/memory-store.js';
 
@@ -41,5 +42,22 @@ describe('context-pipeline', () => {
       },
     });
     await expect(boom.build({ sessionId: 's', userText: 'hi' })).resolves.toBeTruthy();
+  });
+});
+
+
+describe('⑫ loreStage', () => {
+  it('命中注入 + trace context.lore；无 lorebook 供给不触发', async () => {
+    const store = new MemoryStore();
+    store.appendMessage({ characterId: 'a', sessionId: 's', role: 'user', text: '我们聊过 Nyx 城', ts: 1 });
+    const trace: Array<[string, unknown]> = [];
+    const pipeline = createContextPipeline({
+      store,
+      character: () => ({ id: 'a', name: 'A' }),
+      lorebook: () => PackLorebookSchema.parse({ entries: [{ keys: ['Nyx 城'], content: '城建在悬崖上' }] }),
+    });
+    const req = await pipeline.build({ sessionId: 's', userText: '继续说', trace: (a, f) => trace.push([a, f]) });
+    expect(req.messages[0]?.content).toContain('城建在悬崖上');
+    expect(trace.some(([a, f]) => a === 'context.lore' && (f as { hits: number }).hits === 1)).toBe(true);
   });
 });

@@ -111,6 +111,8 @@ export const PrefsSchema = z.object({
   'persona.bindings': z.record(z.string()).default({}), // characterId → personaId
   // 会话管理：当前会话指针（characterId → sessionId；缺省视为 'default'）。Hub/浮层共享。
   'chat.activeSessions': z.record(z.string()).default({}),
+  // ⑫ {{user}} 宏数据源（D2「怎么称呼你」）；空 = 组装侧回退「用户」。
+  'chat.userName': z.string().max(40).default(''),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
   // voice（F-VC 语音运行时 + ⑩.6 音色工坊）

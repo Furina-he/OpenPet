@@ -1,4 +1,9 @@
-import { buildSystemPrompt, DEFAULT_PERSONA_STATE, type ChatRequest } from '@openpet/protocol';
+import {
+  buildSystemPrompt,
+  DEFAULT_PERSONA_STATE,
+  expandMacros,
+  type ChatRequest,
+} from '@openpet/protocol';
 import type { ConversationStore } from './db/store.js';
 
 /** Working Memory 窗口（tech-design §8：最近 N=20 轮原始消息）。 */
@@ -27,6 +32,10 @@ export interface AssembleInput {
   personaPrompt?: string;
   /** §6 情景开场白（偶数条 user/assistant 交替）；只进请求不持久化（照 AstrBot _no_save）。 */
   beginDialogs?: string[];
+  /** ⑫ Lorebook 命中内容（loreStage 产物）；注入 base 之后的「世界设定」块。 */
+  loreHits?: string[];
+  /** ⑫ 宏展开上下文（{{char}}/{{user}}/{{time}}/{{date}}/{{random}}）；缺省不展开（向后兼容）。 */
+  macroCtx?: { user: string; locale?: string; hour12?: boolean };
 }
 
 /**
@@ -35,11 +44,21 @@ export interface AssembleInput {
  * Episodic 向量召回 / Semantic 事实硬注入 / token budget packing 留 V1+。
  */
 export function assembleContext(input: AssembleInput): ChatRequest {
+  const mc = input.macroCtx;
+  const ex = mc
+    ? (t: string) =>
+        expandMacros(t, {
+          char: input.character.name,
+          user: mc.user,
+          ...(mc.locale ? { locale: mc.locale } : {}),
+          ...(mc.hour12 !== undefined ? { hour12: mc.hour12 } : {}),
+        })
+    : (t: string) => t;
   const persona = input.store.getPersonaState(input.character.id) ?? DEFAULT_PERSONA_STATE;
   const base = buildSystemPrompt({
     name: input.character.name,
     persona,
-    ...(input.personaPrompt ? { personaPrompt: input.personaPrompt } : {}),
+    ...(input.personaPrompt ? { personaPrompt: ex(input.personaPrompt) } : {}),
     ...(input.character.emotions ? { emotions: input.character.emotions } : {}),
     ...(input.character.actions ? { actions: input.character.actions } : {}),
   });
@@ -57,7 +76,12 @@ export function assembleContext(input: AssembleInput): ChatRequest {
           .map((m) => `- ${m}`)
           .join('\n')}`
       : '';
-  const system = base + memoryBlock + kbBlock;
+  // ⑫ 世界设定（Lorebook 命中）；宏先展开再拼块。
+  const loreBlock =
+    input.loreHits && input.loreHits.length > 0
+      ? `\n\n## 世界设定（背景资料，自然运用，勿逐条复述）\n${input.loreHits.map((t) => ex(t)).join('\n\n')}`
+      : '';
+  const system = base + loreBlock + memoryBlock + kbBlock;
   const history = input.store
     .recentMessages(input.character.id, input.sessionId, WORKING_TURNS)
     .filter((r) => r.text.length > 0)
@@ -65,7 +89,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
   // §6 开场白：user/assistant 交替，插在 system 与 history 之间（只进请求不持久化）。
   const beginMsgs = (input.beginDialogs ?? []).map((text, i) => ({
     role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
-    content: text,
+    content: ex(text),
   }));
   return {
     messages: [

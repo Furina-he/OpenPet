@@ -6,7 +6,7 @@
  *
  * kbStage 带 1.5s 超时兜底（arch-evolution #5）：检索超时/异常 → 空 hits，不阻断对话。
  */
-import type { ChatRequest, ChatTool } from '@openpet/protocol';
+import { activateLorebook, type ChatRequest, type ChatTool, type PackLorebook } from '@openpet/protocol';
 import { assembleContext } from './context-assembler.js';
 import type { ConversationStore } from './db/index.js';
 
@@ -28,6 +28,10 @@ export interface ContextPipelineDeps {
   mcp?: { activeToolDefs: (serverActive: (id: string) => boolean) => ChatTool[] } | undefined;
   /** §6 当前生效 persona（绑定>默认>null=内置）；ipc-router 注入 persona-service.resolveFor。 */
   persona?: (() => { systemPrompt: string; beginDialogs: string[] } | null) | undefined;
+  /** ⑫ 当前角色 lorebook 供给（ipc-router 注入 characters.current().manifest.lorebook）；缺省不注入。 */
+  lorebook?: (() => PackLorebook | null) | undefined;
+  /** ⑫ 宏上下文供给（chat.userName / 语言 / 12 小时制）；缺省组装侧不展开宏。 */
+  macroUser?: (() => { user: string; locale?: string; hour12?: boolean }) | undefined;
 }
 
 export interface BuildInput {
@@ -44,6 +48,7 @@ export const KB_RETRIEVE_TIMEOUT_MS = 1500;
 interface StageBag {
   kbHits: { text: string }[];
   memories: string[];
+  loreHits: string[];
   tools: ChatTool[];
 }
 
@@ -89,19 +94,31 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
     input.trace?.('context.memory', { hits: bag.memories.length });
   };
 
+  const loreStage = async (input: BuildInput, bag: StageBag): Promise<void> => {
+    // ⑫ Lorebook：关键词扫描（最近 scanDepth 条 + 当前输入）→ 命中 content 注入「世界设定」块。
+    const book = deps.lorebook?.() ?? null;
+    if (!book || book.entries.length === 0) return;
+    const history = deps.store
+      .recentMessages(deps.character().id, input.sessionId, book.scanDepth)
+      .map((r) => r.text);
+    bag.loreHits = activateLorebook(book, { history, current: input.userText });
+    input.trace?.('context.lore', { hits: bag.loreHits.length });
+  };
+
   const toolsStage = async (_input: BuildInput, bag: StageBag): Promise<void> => {
     // §4：注入 active MCP 工具定义（worker buildBody 映射成 provider tools）。
     bag.tools = deps.mcp?.activeToolDefs(() => true) ?? [];
   };
 
-  const stages = [kbStage, memoryStage, toolsStage];
+  const stages = [kbStage, memoryStage, loreStage, toolsStage];
 
   return {
     async build(input: BuildInput): Promise<ChatRequest> {
-      const bag: StageBag = { kbHits: [], memories: [], tools: [] };
+      const bag: StageBag = { kbHits: [], memories: [], loreHits: [], tools: [] };
       for (const stage of stages) await stage(input, bag);
       // ContextAssembler：system prompt(人设+persona+行为标签规约 + §5 参考资料) + 最近 20 轮 + 当前 user。
       const personaSel = deps.persona?.() ?? null;
+      const mc = deps.macroUser?.();
       const assembled = assembleContext({
         store: deps.store,
         character: deps.character(),
@@ -110,6 +127,8 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(input.model ? { model: input.model } : {}),
         ...(bag.kbHits.length > 0 ? { kbHits: bag.kbHits } : {}),
         ...(bag.memories.length > 0 ? { memories: bag.memories } : {}),
+        ...(bag.loreHits.length > 0 ? { loreHits: bag.loreHits } : {}),
+        ...(mc ? { macroCtx: mc } : {}),
         ...(personaSel
           ? { personaPrompt: personaSel.systemPrompt, beginDialogs: personaSel.beginDialogs }
           : {}),
