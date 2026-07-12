@@ -389,6 +389,31 @@ export const Methods = {
     params: z.object({ path: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), id: z.string() }),
   },
+  'character.importCardPick': {
+    // ⑫ ST 卡两段式①：系统选择框（png/charx/json）+ 解析摘要（不安装）；坏卡 -32602。
+    params: z.object({}),
+    result: z.union([
+      z.object({ cancelled: z.literal(true) }),
+      z.object({
+        cancelled: z.literal(false),
+        path: z.string(),
+        summary: z.object({
+          name: z.string(),
+          creator: z.string(),
+          version: z.string(),
+          greetingCount: z.number().int(),
+          lorebookCount: z.number().int(),
+          tags: z.array(z.string()),
+          hasAvatar: z.boolean(),
+        }),
+      }),
+    ]),
+  },
+  'character.importCardApply': {
+    // ⑫ ST 卡两段式②：灵魂来自卡 + 形象复制自 donorId 所指已装包（spec §3）。
+    params: z.object({ path: z.string().min(1), donorId: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
   'character.remove': {
     // 仅导入包可卸；卸当前角色 → 先切回 default。
     params: z.object({ id: z.string().min(1) }),

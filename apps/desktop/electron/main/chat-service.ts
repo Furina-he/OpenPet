@@ -100,6 +100,10 @@ export interface ChatServiceOptions {
   interactions?: InteractionService;
   /** §6：当前生效 persona 解析器；缺省 null = 内置人设。ipc-router 注入。 */
   persona?: () => { systemPrompt: string; beginDialogs: string[] } | null;
+  /** ⑫ 当前角色 lorebook（loreStage 供给）；缺省不注入。ipc-router 注入。 */
+  lorebook?: () => import('@openpet/protocol').PackLorebook | null;
+  /** ⑫ 宏上下文（chat.userName / 语言 / 12 小时制）；缺省组装侧不展开宏。ipc-router 注入。 */
+  macroUser?: () => { user: string; locale?: string; hour12?: boolean };
   /** §7：诊断时间线采集器；缺省不埋点。ipc-router 注入。 */
   trace?: import('./trace-collector.js').TraceCollector;
   /**
@@ -217,6 +221,8 @@ export class ChatService {
       retrieveMemory: opts.retrieveMemory,
       mcp: opts.mcp,
       persona: opts.persona,
+      lorebook: opts.lorebook,
+      macroUser: opts.macroUser,
     });
     this.onTurnEnd = opts.onTurnEnd;
     this.budgetGate = opts.budgetGate;

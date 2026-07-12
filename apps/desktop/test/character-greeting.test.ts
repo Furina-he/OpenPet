@@ -1,7 +1,7 @@
 /** ⑩.7 试讲链路：prompt 形状 + provider 单发 + 行为标签解析 → cue 通道播放（不落库）。 */
 import { describe, expect, it, vi } from 'vitest';
-import type { CharacterManifest } from '@openpet/protocol';
-import { buildGreetingMessages, runTestGreeting } from '../electron/main/character-greeting.js';
+import { CharacterManifestSchema, type CharacterManifest } from '@openpet/protocol';
+import { buildGreetingMessages, pickGreeting, runTestGreeting } from '../electron/main/character-greeting.js';
 
 const MANIFEST: CharacterManifest = {
   id: 'miko',
@@ -100,5 +100,21 @@ describe('runTestGreeting（单发 + 解析 + 播放）', () => {
       }),
     ).rejects.toThrow();
     expect(broadcast).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('⑫ pickGreeting（切换问候）', () => {
+  const manifest = CharacterManifestSchema.parse({
+    id: 'aqua', name: '芙宁娜', version: '1', engine: 'vrm', model: 'a.vrm',
+    persona: { systemPrompt: 'x', beginDialogs: [], greetings: ['来啦 {{user}}，我是{{char}}', '第二条'] },
+  });
+  it('随机取一条并宏展开', () => {
+    expect(pickGreeting(manifest, { user: '旅行者', random: () => 0 })).toBe('来啦 旅行者，我是芙宁娜');
+    expect(pickGreeting(manifest, { user: '旅行者', random: () => 0.9 })).toBe('第二条');
+  });
+  it('无 greetings → null', () => {
+    const bare = CharacterManifestSchema.parse({ id: 'a', name: 'A', version: '1', engine: 'vrm', model: 'a.vrm' });
+    expect(pickGreeting(bare, { user: 'u' })).toBeNull();
   });
 });

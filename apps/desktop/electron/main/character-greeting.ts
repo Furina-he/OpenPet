@@ -7,6 +7,7 @@
 import {
   BehaviorParser,
   buildSystemPrompt,
+  expandMacros,
   type CharacterManifest,
 } from '@openpet/protocol';
 import type { FetchLike } from './rerank-client.js';
@@ -82,4 +83,22 @@ export async function runTestGreeting(
   if (action) deps.broadcast('behavior.playAction', action);
   const say = text.trim();
   if (say) deps.broadcast('pet.say', { text: say });
+}
+
+
+/** ⑫ 切换问候：greetings 随机一条 + 宏展开（不落库不进上下文，spec §6）；无则 null。 */
+export function pickGreeting(
+  manifest: CharacterManifest,
+  ctx: { user: string; locale?: string; hour12?: boolean; random?: () => number },
+): string | null {
+  const gs = manifest.persona?.greetings ?? [];
+  const picked = gs[Math.floor((ctx.random ?? Math.random)() * gs.length)];
+  if (picked === undefined) return null;
+  return expandMacros(picked, {
+    char: manifest.name,
+    user: ctx.user,
+    ...(ctx.locale ? { locale: ctx.locale } : {}),
+    ...(ctx.hour12 !== undefined ? { hour12: ctx.hour12 } : {}),
+    ...(ctx.random ? { random: ctx.random } : {}),
+  });
 }

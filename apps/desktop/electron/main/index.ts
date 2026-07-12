@@ -188,7 +188,9 @@ app.whenReady().then(async () => {
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
         ...(kind === 'pack'
           ? { filters: [{ name: 'openpet 角色包', extensions: ['dspack', 'zip'] }] }
-          : {}),
+          : kind === 'stcard'
+            ? { filters: [{ name: 'SillyTavern 角色卡', extensions: ['png', 'charx', 'json'] }] }
+            : {}),
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },

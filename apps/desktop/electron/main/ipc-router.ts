@@ -51,8 +51,9 @@ import { menuLabels } from './menu-labels.js';
 import * as appActions from './app-actions.js';
 import { assembleDiag } from './crash-payload.js';
 import { createCharacterService } from './character-service.js';
-import { runTestGreeting } from './character-greeting.js';
+import { runTestGreeting, pickGreeting } from './character-greeting.js';
 import { inspectPack, installPack } from './pack-import.js';
+import { inspectStCard, installStCard } from './st-card-import.js';
 import { removeCharacter } from './character-ops.js';
 import { DesktopPluginHost } from './plugins/desktop-plugin-host.js';
 import { mergeToolPorts } from './plugins/tool-port-merge.js';
@@ -89,7 +90,7 @@ export interface IpcRouterDeps {
   /** 导入包根（生产 userData/characters）；缺省 charactersRoot/_imported（测试）。 */
   importedCharactersRoot?: string;
   /** E3 系统选择框（index 注入 dialog.showOpenDialog）；缺省 null=取消。 */
-  pickCharacterPath?: (kind: 'pack' | 'folder') => Promise<string | null>;
+  pickCharacterPath?: (kind: 'pack' | 'folder' | 'stcard') => Promise<string | null>;
   /** ⑩.7 E4：导出 .dspack 保存框（index 注入 dialog.showSaveDialog）；缺省 null=取消。 */
   pickDspackSave?: (defaultName: string) => Promise<string | null>;
   /** ⑩.7 E2：在文件夹中显示（index 注入 shell.showItemInFolder）。 */
@@ -528,6 +529,16 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       const cur = characters.current();
       return personaService.resolveFor(cur.characterId, cur.manifest.persona ?? null);
     },
+    // ⑫ Lorebook + 宏上下文注入（loreStage / assembler 宏展开）。
+    lorebook: () => characters.current().manifest.lorebook ?? null,
+    macroUser: () => {
+      const p = prefsStore.getAll();
+      return {
+        user: p['chat.userName'] || '用户',
+        locale: p['general.language'],
+        hour12: !p['general.hour24'],
+      };
+    },
     trace,
   });
   chatRef = chat;
@@ -849,6 +860,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'character.switch': (p) => {
       characters.switch(p.id);
       broadcast('character.changed', { characterId: p.id });
+      // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
+      const greeting = pickGreeting(characters.current().manifest, {
+        user: prefsStore.getAll()['chat.userName'] || '用户',
+      });
+      if (greeting) broadcast('pet.say', { text: greeting });
       return { ok: true as const };
     },
     'character.importPick': async (p) => {
@@ -865,6 +881,28 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       const m = installPack(p.path, importedRoot, (id) => characters.rootOf(id) !== null);
       characters.invalidate();
       return { ok: true as const, id: m.id };
+    },
+    'character.importCardPick': async () => {
+      const picked = (await deps.pickCharacterPath?.('stcard')) ?? null;
+      if (!picked) return { cancelled: true as const };
+      try {
+        return { cancelled: false as const, path: picked, summary: inspectStCard(picked) };
+      } catch (e) {
+        throw new RpcError(-32602, `无法解析角色卡：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    'character.importCardApply': (p) => {
+      const donorRoot = characters.rootOf(p.donorId);
+      if (!donorRoot) throw new RpcError(-32602, `形象来源角色不存在: ${p.donorId}`);
+      const { id } = installStCard({
+        cardPath: p.path,
+        donorId: p.donorId,
+        donorRoot,
+        importedRoot,
+        exists: (x) => characters.rootOf(x) !== null,
+      });
+      characters.invalidate();
+      return { ok: true as const, id };
     },
     'character.remove': (p) => {
       removeCharacter(p.id, {
