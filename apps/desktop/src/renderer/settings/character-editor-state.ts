@@ -43,6 +43,20 @@ export function normalizeDraft(d: EditorDraft): CharacterManifest {
       systemPrompt: d.persona.systemPrompt.trim(),
       beginDialogs: d.persona.beginDialogs.map((s) => s.trim()),
     };
+    // ⑫ 开场白：丢空串；空数组收敛为 undefined。
+    const greetings = (d.persona.greetings ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
+    if (greetings.length > 0) out.persona.greetings = greetings;
+  }
+  // ⑫ 世界书：丢空 content 条目 + keys trim；空 entries 收敛（整个 lorebook 删除）。
+  if (d.lorebook) {
+    const entries = d.lorebook.entries
+      .map((e) => ({
+        ...e,
+        content: e.content.trim(),
+        keys: e.keys.map((k) => k.trim()).filter((k) => k.length > 0),
+      }))
+      .filter((e) => e.content.length > 0);
+    if (entries.length > 0) out.lorebook = { ...d.lorebook, entries };
   }
   if (d.emotions && Object.keys(d.emotions).length > 0) out.emotions = d.emotions;
   if (d.live2dEmotions && Object.keys(d.live2dEmotions).length > 0)

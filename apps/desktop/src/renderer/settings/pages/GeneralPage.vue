@@ -86,6 +86,15 @@ const THINKING = computed(() => [
           @update:model-value="(v) => set('general.hour24', v)"
         />
       </SettingCard>
+      <!-- ⑫ user 宏数据源：人设/开场白/世界书中的 user 宏替换为该称呼 -->
+      <SettingCard :label="t('settings.general.userName')">
+        <input
+          class="ds-control h-9 w-56 rounded-input px-3 text-sm text-text-main"
+          :value="prefs['chat.userName']"
+          :placeholder="t('settings.general.userNamePlaceholder')"
+          @change="set('chat.userName', ($event.target as HTMLInputElement).value)"
+        />
+      </SettingCard>
     </SettingSection>
 
     <SettingSection :title="t('settings.general.secUpdate')">

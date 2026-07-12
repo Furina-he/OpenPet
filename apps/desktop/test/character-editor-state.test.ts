@@ -101,3 +101,26 @@ describe('validateDraft', () => {
     expect(validateDraft(d4)).toEqual({});
   });
 });
+
+
+describe('⑫ greetings / lorebook 规范化', () => {
+  it('normalize：greetings 丢空串、空数组收敛；lorebook 丢空 content 条目、空表收敛', () => {
+    const m = normalizeDraft({
+      ...cloneManifest(BASE),
+      persona: { systemPrompt: 'x', beginDialogs: [], greetings: [' 你好 ', '  '] },
+      lorebook: { scanDepth: 4, tokenBudget: 1024, entries: [
+        { keys: ['k'], content: ' v ', enabled: true, insertionOrder: 100, caseSensitive: false, constant: false },
+        { keys: [], content: '   ', enabled: true, insertionOrder: 100, caseSensitive: false, constant: false },
+      ] },
+    });
+    expect(m.persona?.greetings).toEqual(['你好']);
+    expect(m.lorebook?.entries).toHaveLength(1);
+    const empty = normalizeDraft({
+      ...cloneManifest(BASE),
+      persona: { systemPrompt: 'x', beginDialogs: [], greetings: ['  '] },
+      lorebook: { scanDepth: 4, tokenBudget: 1024, entries: [] },
+    });
+    expect(empty.persona?.greetings).toBeUndefined();
+    expect(empty.lorebook).toBeUndefined();
+  });
+});

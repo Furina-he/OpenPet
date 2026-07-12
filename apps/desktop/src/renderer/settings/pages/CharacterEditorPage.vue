@@ -174,6 +174,31 @@ function removePersona(): void {
   if (draft.value) delete draft.value.persona;
 }
 
+// --- ⑫ 开场白 / 世界书编辑（normalize 收敛空值；schema 校验兜底在保存链）---
+function addGreeting(): void {
+  if (!draft.value?.persona) return;
+  draft.value.persona.greetings = [...(draft.value.persona.greetings ?? []), ''];
+}
+function removeGreeting(i: number): void {
+  if (!draft.value?.persona) return;
+  draft.value.persona.greetings = (draft.value.persona.greetings ?? []).filter((_, x) => x !== i);
+}
+function addLoreEntry(): void {
+  if (!draft.value) return;
+  if (!draft.value.lorebook) draft.value.lorebook = { scanDepth: 4, tokenBudget: 1024, entries: [] };
+  draft.value.lorebook.entries.push({ keys: [], content: '', enabled: true, insertionOrder: 100, caseSensitive: false, constant: false });
+}
+function setLoreKeys(i: number, raw: string): void {
+  const entry = draft.value?.lorebook?.entries[i];
+  if (!entry) return;
+  entry.keys = raw.split(/[,，]/).map((s) => s.trim()).filter((s) => s.length > 0);
+  entry.constant = entry.keys.length === 0; // 留空 = 常驻
+}
+function removeLoreEntry(i: number): void {
+  if (!draft.value?.lorebook) return;
+  draft.value.lorebook.entries = draft.value.lorebook.entries.filter((_, x) => x !== i);
+}
+
 // --- 动画 & 情绪 Tab ---
 const CUE_EVENTS = CueEventSchema.options;
 const BASIC_EMOTIONS = ['happy', 'sad', 'angry', 'surprised', 'relaxed', 'shy', 'curious', 'sleepy'];
@@ -429,11 +454,57 @@ const TABS = [
                   @update:system-prompt="draft.persona!.systemPrompt = $event"
                   @update:begin-dialogs="draft.persona!.beginDialogs = $event"
                 />
+                <!-- ⑫ 开场白：切换角色时气泡随机一条；支持 char/user 宏 -->
+                <div>
+                  <div class="mb-2 flex items-center justify-between">
+                    <span class="text-sm font-medium text-text-main">{{ t('settings.editor.greetings') }}</span>
+                    <Button variant="secondary" @click="addGreeting">{{ t('settings.editor.addGreeting') }}</Button>
+                  </div>
+                  <div v-for="(g, i) in draft.persona.greetings ?? []" :key="i" class="mb-2 flex items-start gap-2">
+                    <textarea
+                      :value="g" rows="2"
+                      class="ds-control flex-1 rounded-input p-2 text-sm text-text-main"
+                      @change="draft.persona!.greetings![i] = ($event.target as HTMLTextAreaElement).value"
+                    />
+                    <button class="text-xs" style="color: var(--ds-danger)" @click="removeGreeting(i)">{{ t('common.delete') }}</button>
+                  </div>
+                </div>
                 <Button variant="ghost" @click="removePersona">{{ t('settings.editor.removePersona') }}</Button>
               </template>
               <div v-else class="rounded-card border border-dashed border-glass-border p-6 text-center">
                 <p class="text-sm text-text-sub">{{ t('settings.editor.noPackPersona') }}</p>
                 <Button class="mt-3" variant="secondary" @click="addPersona">{{ t('settings.editor.addPersona') }}</Button>
+              </div>
+
+              <!-- ⑫ 世界书：关键词触发注入（keys 逗号分隔，留空=常驻） -->
+              <div>
+                <div class="mb-2 flex items-center justify-between">
+                  <span class="text-sm font-medium text-text-main">{{ t('settings.editor.lorebook') }}</span>
+                  <Button variant="secondary" @click="addLoreEntry">{{ t('settings.editor.addLorebookEntry') }}</Button>
+                </div>
+                <p class="mb-2 text-xs text-text-sub">{{ t('settings.editor.lorebookHint') }}</p>
+                <p v-if="!draft.lorebook?.entries.length" class="rounded-card border border-dashed border-glass-border p-4 text-center text-sm text-text-sub">
+                  {{ t('settings.editor.lorebookEmpty') }}
+                </p>
+                <div v-for="(e, i) in draft.lorebook?.entries ?? []" :key="i" class="mb-2 rounded-card border border-glass-border bg-white/20 p-3">
+                  <div class="flex items-center gap-2">
+                    <input
+                      :value="e.keys.join(', ')" :placeholder="t('settings.editor.lorebookKeys')"
+                      class="ds-control h-8 flex-1 rounded-input px-2 text-sm text-text-main"
+                      @change="setLoreKeys(i, ($event.target as HTMLInputElement).value)"
+                    />
+                    <label class="flex items-center gap-1 text-xs text-text-sub">
+                      <input type="checkbox" :checked="e.enabled" @change="draft.lorebook!.entries[i]!.enabled = ($event.target as HTMLInputElement).checked" />
+                      {{ t('settings.editor.lorebookEnabled') }}
+                    </label>
+                    <button class="text-xs" style="color: var(--ds-danger)" @click="removeLoreEntry(i)">{{ t('common.delete') }}</button>
+                  </div>
+                  <textarea
+                    :value="e.content" rows="3" :placeholder="t('settings.editor.lorebookContent')"
+                    class="ds-control mt-2 w-full rounded-input p-2 text-sm text-text-main"
+                    @change="draft.lorebook!.entries[i]!.content = ($event.target as HTMLTextAreaElement).value"
+                  />
+                </div>
               </div>
             </div>
 
