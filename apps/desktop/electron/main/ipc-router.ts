@@ -761,6 +761,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'app.stats.overview': (p) => statsService.overview(p.rangeDays),
     'app.version': () => ({ version: deps.appVersion ?? '0.0.0' }),
     // ⑪ 自动更新三件套（服务缺省=永远 disabled(dev)，测试/dev 装配无需注入）
+    'app.update.status': () =>
+      deps.updateService?.status() ?? { state: 'disabled' as const, reason: 'dev' as const },
     'app.update.check': async () =>
       deps.updateService ? await deps.updateService.check() : { state: 'disabled' as const, reason: 'dev' as const },
     'app.update.download': async () => {

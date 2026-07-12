@@ -251,6 +251,10 @@ export const Methods = {
   },
 
   // --- request/response: Renderer → Main（⑪ 自动更新：自动查手动装）---
+  'app.update.status': {
+    params: z.object({}),
+    result: UpdateStatusSchema, // 当前状态只读（关于页 mounted 取态，不触发检查）
+  },
   'app.update.check': {
     params: z.object({}),
     result: UpdateStatusSchema, // 触发后即时状态（checking / disabled{reason}）
