@@ -2,6 +2,8 @@
   "name": "@openpet/desktop",
   "private": true,
   "version": "0.1.0",
+  "description": "OpenPet —— 桌面常驻的 AI 角色伙伴",
+  "author": "Furina-he",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {

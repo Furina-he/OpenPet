@@ -4,12 +4,37 @@ directories:
   output: release
 files:
   - out/**/*
+# Electron ABI 的 better-sqlite3 由 scripts/fetch-electron-sqlite.mjs 下载到 native/ 并经
+# extraResources 带入（运行时 resolveNativeBinding 加载），不走 electron-builder rebuild
+npmRebuild: false
+asarUnpack:
+  - '**/*.node'
 extraResources:
+  # 只带内置角色（characters/ 下可能有用户本地测试包，不入发布产物）
   - from: characters
     to: characters
+    filter:
+      - default/**
   - from: resources/tray
     to: tray
 win:
-  target: nsis
+  target:
+    - nsis
+    - portable
   icon: build/icon.ico
-  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  allowElevation: true
+  createDesktopShortcut: always
+  shortcutName: OpenPet
+  artifactName: ${productName}-Setup-${version}.${ext}
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+publish:
+  provider: github
+  owner: Furina-he
+  repo: OpenPet
+  releaseType: draft
