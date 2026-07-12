@@ -22,6 +22,7 @@ import { MemoryFactSchema } from './memory-config.js';
 import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
+import { UpdateStatusSchema } from './update-config.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -247,6 +248,29 @@ export const Methods = {
   'app.version': {
     params: z.object({}),
     result: z.object({ version: z.string() }),
+  },
+
+  // --- request/response: Renderer → Main（⑪ 自动更新：自动查手动装）---
+  'app.update.status': {
+    params: z.object({}),
+    result: UpdateStatusSchema, // 当前状态只读（关于页 mounted 取态，不触发检查）
+  },
+  'app.update.check': {
+    params: z.object({}),
+    result: UpdateStatusSchema, // 触发后即时状态（checking / disabled{reason}）
+  },
+  'app.update.download': {
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'app.update.install': {
+    params: z.object({}),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  // --- notification: Main → 所有 renderer（更新状态机变化，关于页驱动）---
+  'update.status': {
+    params: UpdateStatusSchema,
+    result: z.null(),
   },
 
   // --- request/response: Renderer → Main（应用偏好，M7a；UI 在 D 系列）---

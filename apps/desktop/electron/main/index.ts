@@ -25,6 +25,8 @@ import { PerfMarks } from './perf-marks.js';
 import { createTray, type TrayHandle } from './tray-service.js';
 import * as appActions from './app-actions.js';
 import { migrateUserData } from './user-data-migrate.js';
+import { resolveNativeDir, toUnpackedPath } from './packaged-paths.js';
+import { createUpdateService, type UpdateMode } from './update-service.js';
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +48,7 @@ let cursorPublisher: { stop: () => void } | null = null;
 let fsWatch: FullscreenWatch | null = null;
 let hotkeys: ReturnType<typeof createHotkeyService> | null = null;
 let tray: TrayHandle | null = null;
+let updateSvc: ReturnType<typeof createUpdateService> | null = null;
 let trayThinking = false;
 let trayError = false;
 let isQuitting = false;
@@ -57,9 +60,10 @@ app.whenReady().then(async () => {
   // 去掉默认应用菜单（File/Edit/View…）：产品窗口不需要；dev 的 devtools 走 F12（windows.ts）。
   Menu.setApplicationMenu(null);
   // sidecar 的 worker entry 必须以真实文件路径喂给 new Worker()，不能被 bundle
-  //（turbo 的 ^build 保证 dist 先于 desktop 构建存在）。
-  const providerEntryPath = require.resolve(
-    '@openpet/sidecar/dist/workers/provider-worker-entry.js',
+  //（turbo 的 ^build 保证 dist 先于 desktop 构建存在）。打包后 sidecar 及依赖已
+  // asarUnpack（worker_threads 无 asar hook），路径重写到 app.asar.unpacked。
+  const providerEntryPath = toUnpackedPath(
+    require.resolve('@openpet/sidecar/dist/workers/provider-worker-entry.js'),
   );
   // 角色包根：dev 在仓库 apps/desktop/characters（out/main 的上两级）；
   // 打包后 electron-builder extraResources 落在 resources/characters。
@@ -69,7 +73,7 @@ app.whenReady().then(async () => {
   // 批次④ 导入包根（userData/characters）；asset:// 双根顺序与 character-service.rootOf 一致：内置优先。
   const importedCharactersRoot = path.join(app.getPath('userData'), 'characters');
   // 线 B-2 Desktop 插件：worker entry 同 provider 手法（真实文件路径喂 new Worker）；安装根 userData/plugins。
-  const pluginEntryPath = require.resolve('@openpet/sidecar/dist/plugin-entry.js');
+  const pluginEntryPath = toUnpackedPath(require.resolve('@openpet/sidecar/dist/plugin-entry.js'));
   const pluginsRoot = path.join(app.getPath('userData'), 'plugins');
   // 线 B-2 Star 宿主：shim 目录随包走（dev 在仓库 resources/，打包 extraResources）；插件/venv 在 userData。
   const starHostDir = app.isPackaged
@@ -78,7 +82,14 @@ app.whenReady().then(async () => {
   const starPluginsDir = path.join(app.getPath('userData'), 'star-plugins');
   const starVenvDir = path.join(app.getPath('userData'), 'star-host', 'venv');
 
-  registerAssetProtocol([charactersRoot, importedCharactersRoot]);
+  registerAssetProtocol([charactersRoot, importedCharactersRoot], {
+    // Cubism Core 三级加载链后两级（⑪ 发布批次）：打包 resources/cubism → userData/cubism。
+    // 专有许可不随包分发；用户自置 userData\cubism\live2dcubismcore.min.js（角色页/手册引导）。
+    cubism: [
+      path.join(process.resourcesPath, 'cubism'),
+      path.join(app.getPath('userData'), 'cubism'),
+    ],
+  });
   wins = createAppWindows();
   wins.character.webContents.once('did-finish-load', () => perf.measure('boot', 'cold-start'));
   // 每 5min 打 rss（仅 developerMode 开时，避免刷日志）；数字由用户真窗实测记 RESULTS。
@@ -137,6 +148,33 @@ app.whenReady().then(async () => {
   //（旧库转 .bak-<ts> 兜底）。必须先于 registerIpcRouter（它持 DB 单连接）。
   const sqlitePath = path.join(dataDir, 'sessions.db');
   applyPendingImport(sqlitePath);
+  // ⑪ 自动更新：dev/portable 门控；electron-updater CJS 动态载入（仅 packaged 需要）。
+  const updateMode: UpdateMode = !app.isPackaged
+    ? 'dev'
+    : process.env.PORTABLE_EXECUTABLE_DIR
+      ? 'portable'
+      : 'packaged';
+  const { autoUpdater } = (require('electron-updater') as typeof import('electron-updater'));
+  const updateService = createUpdateService({
+    updater: autoUpdater,
+    mode: updateMode,
+    getPrefs: () => prefsStore.getAll(),
+    broadcast,
+    confirmInstall: async () => {
+      const zh = String(prefsStore.getAll()['general.language'] ?? 'zh-CN').startsWith('zh');
+      const r = await dialog.showMessageBox({
+        type: 'question',
+        buttons: zh ? ['重启并更新', '稍后'] : ['Restart & Update', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+        message: zh ? '更新已就绪' : 'Update ready',
+        detail: zh
+          ? '重启 OpenPet 以完成安装。你的对话与数据不受影响。'
+          : 'Restart OpenPet to finish installing. Your chats and data are unaffected.',
+      });
+      return r.response === 0;
+    },
+  });
   router = registerIpcRouter({
     targets,
     characterWindow,
@@ -223,7 +261,13 @@ app.whenReady().then(async () => {
     },
     providerEntryPath,
     sqlitePath,
-    nativeDir: path.join(app.getAppPath(), 'native'),
+    nativeDir: resolveNativeDir(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    // 打包版 sqlite 失败即响（P0）：静默内存库=数据丢失事故；dev 保持降级告警。
+    requireNativeStore: app.isPackaged,
+    onStoreFatal: (message) => {
+      dialog.showErrorBox('OpenPet 无法启动', message);
+      app.exit(1);
+    },
     fetch: {
       agent: electronHttpAgent,
       resolveHost: (url) => providerConfig.resolveHost(url),
@@ -237,6 +281,7 @@ app.whenReady().then(async () => {
     appService: createAppService({ openExternal: (url) => shell.openExternal(url) }),
     appVersion: app.getVersion(),
     diagPath: path.join(dataDir, 'openpet.dsdiag'),
+    updateService,
     // J1 托盘三态：thinking=streaming 中，error=最近一轮 error（仅状态变化时刷新图标）。
     onBroadcast: (channel, params) => {
       if (channel === 'chat.stream') {
@@ -265,6 +310,9 @@ app.whenReady().then(async () => {
     wins.overlay.hide();
     wins.onboarding.show();
   }
+  // 周期检查（启动 30s + 24h；dev/portable 内部 no-op）
+  updateSvc = updateService;
+  updateService.start();
   cursorPublisher = startCursorPublisher({
     getCursor: () => screen.getCursorScreenPoint(),
     send: (p) => {
@@ -358,6 +406,8 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   isQuitting = true;
   globalShortcut.unregisterAll();
+  updateSvc?.stop();
+  updateSvc = null;
   cursorPublisher?.stop();
   cursorPublisher = null;
   fsWatch?.stop();
