@@ -30,6 +30,13 @@ describe('PackLorebookSchema', () => {
     // 旧 manifest（无新字段）照常通过
     expect(() => CharacterManifestSchema.parse({ id: 'a', name: 'A', version: '1', engine: 'vrm', model: 'a.vrm' })).not.toThrow();
   });
+  it('⑭ persona.styleAnchor 可选且向后兼容', () => {
+    const m = CharacterManifestSchema.parse({
+      id: 'a', name: 'A', version: '1', engine: 'vrm', model: 'a.vrm',
+      persona: { systemPrompt: 'x', beginDialogs: [], styleAnchor: '说话要短' },
+    });
+    expect(m.persona?.styleAnchor).toBe('说话要短');
+  });
 });
 
 describe('activateLorebook（最小子集：keys+scanDepth+预算）', () => {

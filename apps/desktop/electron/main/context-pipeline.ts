@@ -32,6 +32,8 @@ export interface ContextPipelineDeps {
   lorebook?: (() => PackLorebook | null) | undefined;
   /** ⑫ 宏上下文供给（chat.userName / 语言 / 12 小时制）；缺省组装侧不展开宏。 */
   macroUser?: (() => { user: string; locale?: string; hour12?: boolean }) | undefined;
+  /** ⑭ 风格锚供给（包锚 > 全局文案 > 内置；总闸关 = null）。ipc-router 注入。 */
+  styleAnchor?: (() => string | null) | undefined;
 }
 
 export interface BuildInput {
@@ -119,6 +121,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       // ContextAssembler：system prompt(人设+persona+行为标签规约 + §5 参考资料) + 最近 20 轮 + 当前 user。
       const personaSel = deps.persona?.() ?? null;
       const mc = deps.macroUser?.();
+      const anchor = deps.styleAnchor?.() ?? null;
       const assembled = assembleContext({
         store: deps.store,
         character: deps.character(),
@@ -129,6 +132,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(bag.memories.length > 0 ? { memories: bag.memories } : {}),
         ...(bag.loreHits.length > 0 ? { loreHits: bag.loreHits } : {}),
         ...(mc ? { macroCtx: mc } : {}),
+        ...(anchor ? { styleAnchor: anchor } : {}),
         ...(personaSel
           ? { personaPrompt: personaSel.systemPrompt, beginDialogs: personaSel.beginDialogs }
           : {}),

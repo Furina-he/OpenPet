@@ -17,6 +17,7 @@ import path from 'node:path';
 import {
   DEFAULT_CUES,
   DEFAULT_EMOTIONS,
+  DEFAULT_STYLE_ANCHOR,
   mergeCues,
   parseImOrigin,
   resolveChatTarget,
@@ -556,6 +557,15 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         locale: p['general.language'],
         hour12: !p['general.hour24'],
       };
+    },
+    // ⑭ 风格锚（近生成点反 AI 腔）：包锚 > 全局文案 > 内置；总闸关 = null 不注入。
+    styleAnchor: () => {
+      const p = prefsStore.getAll();
+      if (!p['chat.styleAnchorEnabled']) return null;
+      return (
+        characters.current().manifest.persona?.styleAnchor ??
+        (p['chat.styleAnchorText'].trim() || DEFAULT_STYLE_ANCHOR)
+      );
     },
     trace,
   });

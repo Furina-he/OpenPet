@@ -29,6 +29,8 @@ export const PackPersonaSchema = z.object({
   beginDialogs: BeginDialogsSchema,
   /** ⑫ 开场白（ST first_mes/alternate_greetings）：切换到该角色时气泡随机一条（宏展开；不进 LLM 上下文、不落库，spec §6）。 */
   greetings: z.array(z.string().min(1).max(4000)).max(10).optional(),
+  /** ⑭ 风格锚（ST post_history_instructions）：组装时以 system 消息插在 history 后（近生成点）。 */
+  styleAnchor: z.string().min(1).max(2000).optional(),
 });
 export type PackPersona = z.infer<typeof PackPersonaSchema>;
 

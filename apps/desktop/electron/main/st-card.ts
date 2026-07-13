@@ -41,6 +41,7 @@ export const StCardSchema = z.object({
   first_mes: CARD_TEXT(4000),
   mes_example: CARD_TEXT(8000),
   system_prompt: CARD_TEXT(8000),
+  post_history_instructions: CARD_TEXT(2000),
   creator: CARD_TEXT(100),
   creator_notes: CARD_TEXT(2000),
   character_version: CARD_TEXT(40),
@@ -132,7 +133,12 @@ export interface StCardSoul {
   author?: string;
   description?: string;
   tags?: string[];
-  persona: { systemPrompt: string; beginDialogs: string[]; greetings?: string[] };
+  persona: {
+    systemPrompt: string;
+    beginDialogs: string[];
+    greetings?: string[];
+    styleAnchor?: string;
+  };
   lorebook?: PackLorebook;
 }
 
@@ -187,7 +193,7 @@ export function mapCharacterBook(raw: unknown): PackLorebook | undefined {
   });
 }
 
-/** 卡 → 灵魂层（spec §2 映射表）；post_history_instructions/extensions 等明确丢弃。 */
+/** 卡 → 灵魂层（spec §2 映射表）；extensions 等明确丢弃（⑭ 回捡 post_history_instructions → styleAnchor）。 */
 export function mapStCardToSoul(card: StCard): StCardSoul {
   const name = card.name.trim();
   const base = [
@@ -223,7 +229,14 @@ export function mapStCardToSoul(card: StCard): StCardSoul {
     ...(card.creator.trim() ? { author: card.creator.trim() } : {}),
     ...(description ? { description } : {}),
     ...(card.tags.length > 0 ? { tags: card.tags.slice(0, 20) } : {}),
-    persona: { systemPrompt, beginDialogs: [], ...(greetings.length > 0 ? { greetings } : {}) },
+    persona: {
+      systemPrompt,
+      beginDialogs: [],
+      ...(greetings.length > 0 ? { greetings } : {}),
+      ...(card.post_history_instructions.trim()
+        ? { styleAnchor: card.post_history_instructions.trim() }
+        : {}),
+    },
     ...(lorebook ? { lorebook } : {}),
   };
 }

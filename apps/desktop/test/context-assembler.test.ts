@@ -163,3 +163,29 @@ describe('⑫ 世界设定块 + 宏展开', () => {
     expect(raw.messages[0]?.content).toContain('{{user}}');
   });
 });
+
+describe('⑭ 风格锚 + idle_duration', () => {
+  it('styleAnchor 以 system 消息插在 history 之后、当前 user 之前，且宏展开', () => {
+    const store = new MemoryStore();
+    store.appendMessage({
+      characterId: 'a', sessionId: 's', role: 'user', text: '早', ts: Date.now() - 3_600_000,
+    });
+    const req = assembleContext({
+      store, character: { id: 'a', name: '芙宁娜' }, sessionId: 's', userText: 'hi',
+      styleAnchor: '你是{{char}}，{{idle_duration}}没聊了，说话要短',
+      macroCtx: { user: '旅行者' },
+    });
+    const n = req.messages.length;
+    expect(req.messages[n - 1]).toMatchObject({ role: 'user', content: 'hi' });
+    expect(req.messages[n - 2]?.role).toBe('system');
+    expect(req.messages[n - 2]?.content).toContain('芙宁娜');
+    expect(req.messages[n - 2]?.content).toContain('1 小时');
+    expect(req.messages[n - 3]?.content).toBe('早'); // history 在锚之前
+  });
+  it('无 styleAnchor 不插消息（向后兼容）', () => {
+    const req = assembleContext({
+      store: new MemoryStore(), character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi',
+    });
+    expect(req.messages.filter((m) => m.role === 'system')).toHaveLength(1); // 只有开头 system
+  });
+});

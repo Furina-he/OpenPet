@@ -36,6 +36,8 @@ export interface AssembleInput {
   loreHits?: string[];
   /** ⑫ 宏展开上下文（{{char}}/{{user}}/{{time}}/{{date}}/{{random}}）；缺省不展开（向后兼容）。 */
   macroCtx?: { user: string; locale?: string; hour12?: boolean };
+  /** ⑭ 风格锚：以 system 消息插在 history 之后、当前 user 之前（近生成点服从度最高，spec §1）。 */
+  styleAnchor?: string;
 }
 
 /**
@@ -44,6 +46,10 @@ export interface AssembleInput {
  * Episodic 向量召回 / Semantic 事实硬注入 / token budget packing 留 V1+。
  */
 export function assembleContext(input: AssembleInput): ChatRequest {
+  // ⑭ {{idle_duration}} 数据源：history 最后一条消息距今的毫秒数（无历史不注入，宏原样保留）。
+  const rows = input.store.recentMessages(input.character.id, input.sessionId, WORKING_TURNS);
+  const lastTs = [...rows].reverse().find((r) => typeof r.ts === 'number')?.ts;
+  const idleMs = lastTs !== undefined ? Math.max(0, Date.now() - lastTs) : undefined;
   const mc = input.macroCtx;
   const ex = mc
     ? (t: string) =>
@@ -52,6 +58,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
           user: mc.user,
           ...(mc.locale ? { locale: mc.locale } : {}),
           ...(mc.hour12 !== undefined ? { hour12: mc.hour12 } : {}),
+          ...(idleMs !== undefined ? { idleMs } : {}),
         })
     : (t: string) => t;
   const persona = input.store.getPersonaState(input.character.id) ?? DEFAULT_PERSONA_STATE;
@@ -82,8 +89,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
       ? `\n\n## 世界设定（背景资料，自然运用，勿逐条复述）\n${input.loreHits.map((t) => ex(t)).join('\n\n')}`
       : '';
   const system = base + loreBlock + memoryBlock + kbBlock;
-  const history = input.store
-    .recentMessages(input.character.id, input.sessionId, WORKING_TURNS)
+  const history = rows
     .filter((r) => r.text.length > 0)
     .map((r) => ({ role: r.role, content: r.text }));
   // §6 开场白：user/assistant 交替，插在 system 与 history 之间（只进请求不持久化）。
@@ -96,6 +102,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
       { role: 'system', content: system },
       ...beginMsgs,
       ...history,
+      ...(input.styleAnchor ? [{ role: 'system' as const, content: ex(input.styleAnchor) }] : []),
       { role: 'user', content: input.userText },
     ],
     ...(input.model ? { model: input.model } : {}),

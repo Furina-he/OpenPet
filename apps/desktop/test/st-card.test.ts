@@ -158,6 +158,12 @@ describe('mapStCardToSoul（spec §2 映射表）', () => {
     expect(soul.lorebook?.entries[0]).toMatchObject({ keys: ['Nyx'], insertionOrder: 5, caseSensitive: true, name: '城设定' });
     expect(soul.lorebook?.entries[1]).toMatchObject({ constant: true, enabled: false });
   });
+  it('⑭ post_history_instructions → persona.styleAnchor（回捡）；空/缺失不带键', () => {
+    const soul = mapStCardToSoul(normalizeStCard({ data: { name: 'A', post_history_instructions: '短句，禁书面语' } }));
+    expect(soul.persona.styleAnchor).toBe('短句，禁书面语');
+    const bare = mapStCardToSoul(normalizeStCard({ data: { name: 'A' } }));
+    expect(bare.persona.styleAnchor).toBeUndefined();
+  });
 });
 
 describe('pickCharacterId', () => {

@@ -104,6 +104,8 @@ export interface ChatServiceOptions {
   lorebook?: () => import('@openpet/protocol').PackLorebook | null;
   /** ⑫ 宏上下文（chat.userName / 语言 / 12 小时制）；缺省组装侧不展开宏。ipc-router 注入。 */
   macroUser?: () => { user: string; locale?: string; hour12?: boolean };
+  /** ⑭ 风格锚（包锚>全局>内置；总闸关 = null）；缺省不注入。ipc-router 注入。 */
+  styleAnchor?: () => string | null;
   /** §7：诊断时间线采集器；缺省不埋点。ipc-router 注入。 */
   trace?: import('./trace-collector.js').TraceCollector;
   /**
@@ -237,6 +239,7 @@ export class ChatService {
       persona: opts.persona,
       lorebook: opts.lorebook,
       macroUser: opts.macroUser,
+      styleAnchor: opts.styleAnchor,
     });
     this.onTurnEnd = opts.onTurnEnd;
     this.budgetGate = opts.budgetGate;
