@@ -5,6 +5,7 @@ import { KbSchema } from './kb-config.js';
 import { PersonaSchema } from './persona-config.js';
 import { ImPlatformSchema } from './im-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
+import { RegexRuleSchema, REGEX_PRESETS } from './humanize.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
@@ -115,6 +116,11 @@ export const PrefsSchema = z.object({
   'chat.activeSessions': z.record(z.string()).default({}),
   // ⑫ {{user}} 宏数据源（D2「怎么称呼你」）；空 = 组装侧回退「用户」。
   'chat.userName': z.string().max(40).default(''),
+  // ⑭ 拟人化对话
+  'chat.naturalRhythm': z.boolean().default(true),
+  'chat.styleAnchorEnabled': z.boolean().default(true),
+  'chat.styleAnchorText': z.string().max(2000).default(''), // 空 = 用内置 DEFAULT_STYLE_ANCHOR
+  'chat.regexRules': z.array(RegexRuleSchema).default(REGEX_PRESETS),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
   // voice（F-VC 语音运行时 + ⑩.6 音色工坊）
