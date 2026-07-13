@@ -20,6 +20,12 @@ describe('expandMacros（⑤ 宏子集）', () => {
     expect(expandMacros('{{random:}}', ctx)).toBe('');
   });
   it('未知宏原样保留', () => {
-    expect(expandMacros('{{idle_duration}} 不动', ctx)).toBe('{{idle_duration}} 不动');
+    expect(expandMacros('{{unknown_macro}} 不动', ctx)).toBe('{{unknown_macro}} 不动');
+  });
+  it('{{idle_duration}}：给 idleMs 则人话替换；未给保持原样', () => {
+    expect(expandMacros('我们{{idle_duration}}没聊了', { ...ctx, idleMs: 2 * 86_400_000 })).toBe(
+      '我们2 天没聊了',
+    );
+    expect(expandMacros('{{idle_duration}}', ctx)).toBe('{{idle_duration}}');
   });
 });

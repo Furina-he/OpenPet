@@ -3,6 +3,8 @@
  * 大小写不敏感；未知宏原样保留（不吞正文）。时钟/随机源可注入（测试定值）。
  * 应用点：context-assembler（persona/开场白/世界书）与切换问候，DB 永存原文。
  */
+import { formatIdleDuration } from './humanize.js';
+
 export interface MacroContext {
   char: string;
   user: string;
@@ -12,6 +14,8 @@ export interface MacroContext {
   /** BCP-47（{{time}}/{{date}} 格式化）；缺省 zh-CN。 */
   locale?: string;
   hour12?: boolean;
+  /** ⑭ {{idle_duration}} 数据源：距上次消息的毫秒数；未提供则宏原样保留。 */
+  idleMs?: number;
 }
 
 export function expandMacros(text: string, ctx: MacroContext): string {
@@ -34,5 +38,8 @@ export function expandMacros(text: string, ctx: MacroContext): string {
         .filter((s) => s.length > 0);
       if (opts.length === 0) return '';
       return opts[Math.floor(rand() * opts.length)] ?? '';
-    });
+    })
+    .replace(/\{\{idle_duration\}\}/gi, (m) =>
+      ctx.idleMs !== undefined ? formatIdleDuration(ctx.idleMs) : m,
+    );
 }
