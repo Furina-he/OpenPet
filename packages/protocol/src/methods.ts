@@ -284,12 +284,13 @@ export const Methods = {
     result: PrefsSchema,
   },
   'app.prefs.set': {
-    // value 必填：标量或 string[]（线 B-1 起 im.wakePrefixes 等数组键开放直写）；
-    // 注：不能用 z.unknown()——它在对象里自动可选，会让缺 value 也通过校验。
-    // 按 key 对应字段的深校验在 prefs-service 做（命中非法 → -32602）。
+    // value 必填：标量或数组（线 B-1 起 im.wakePrefixes 等数组键开放直写；⑭ 起
+    // chat.regexRules / voice.voices 等对象数组键同面直写）。
+    // 注：不能用 z.unknown()——它在对象里自动可选，会让缺 value 也通过校验；
+    // z.array(z.unknown()) 无此问题。按 key 深校验在 prefs-service 做（非法 → -32602）。
     params: z.object({
       key: z.string().min(1),
-      value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+      value: z.union([z.string(), z.number(), z.boolean(), z.array(z.unknown())]),
     }),
     result: z.object({ ok: z.literal(true) }),
   },
@@ -302,7 +303,7 @@ export const Methods = {
         z.string(),
         z.number(),
         z.boolean(),
-        z.array(z.string()),
+        z.array(z.unknown()),
         z.record(z.string()),
       ]),
     }),

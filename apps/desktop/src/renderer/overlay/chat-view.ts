@@ -17,12 +17,19 @@ export interface ChatMessage {
   finishReason: 'stop' | 'cancel' | 'error' | null;
   /** J3：仅 finishReason==='error' 时有意义（错误分级台词用）。 */
   errorKind?: ErrorKind;
+  /**
+   * ⑭ 显示分段点（text 内偏移，newBubble 事件时记录）：渲染层据此把一条消息
+   * 切成多个气泡。display-only——存储/快照仍是单条完整文本（历史重载合并）。
+   */
+  splits?: number[];
 }
 
 export interface StreamEvent {
   sessionId: string;
   text: string;
   seq: number;
+  /** ⑭ 自然节奏：true = 本段起开新气泡。 */
+  newBubble?: boolean;
 }
 
 export interface DoneEvent {
@@ -37,6 +44,36 @@ export interface DoneEvent {
  */
 export function isEmptyReply(m: Pick<ChatMessage, 'role' | 'text' | 'finishReason'>): boolean {
   return m.role === 'assistant' && m.finishReason === 'stop' && m.text.trim() === '';
+}
+
+/** ⑭ 按分段点切文本（无分段点 = 单段全文）。 */
+export function bubbleSegments(m: Pick<ChatMessage, 'text' | 'splits'>): string[] {
+  const splits = m.splits ?? [];
+  if (splits.length === 0) return [m.text];
+  const out: string[] = [];
+  let prev = 0;
+  for (const s of splits) {
+    out.push(m.text.slice(prev, s));
+    prev = s;
+  }
+  out.push(m.text.slice(prev));
+  return out;
+}
+
+/**
+ * ⑭ 显示展开：带分段点的消息拆成多条显示气泡。前段视为已说完（finishReason
+ * 'stop'，不挂思考态/错误态），末段继承原消息收尾状态；无分段的消息引用透传
+ * （情绪 chip 的 `m === last` 判定不受影响）。
+ */
+export function explodeSegments(messages: ChatMessage[]): ChatMessage[] {
+  return messages.flatMap((m) => {
+    const segs = bubbleSegments(m);
+    if (segs.length === 1) return [m];
+    return segs.map((text, i) => {
+      const { splits: _splits, ...rest } = m;
+      return i < segs.length - 1 ? { ...rest, text, finishReason: 'stop' as const } : { ...rest, text };
+    });
+  });
 }
 
 export interface Snapshot {
@@ -117,6 +154,8 @@ export class ChatView {
       last = { role: 'assistant', text: '', finishReason: null };
       this.messages.push(last);
     }
+    // ⑭ newBubble：在当前长度处记显示分段点（占位空文本时首段无点可记）。
+    if (ev.newBubble && last.text.length > 0) (last.splits ??= []).push(last.text.length);
     last.text += ev.text;
     this.streaming = true;
     if (!opts.silent) this.onChange();

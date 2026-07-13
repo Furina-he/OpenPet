@@ -34,7 +34,8 @@ export function typingDelayMs(chars: number, cfg: TypingCfg): number {
 export const RegexRuleSchema = z.object({
   id: z.string().min(1),
   name: z.string().max(60).default(''),
-  find: z.string().min(1).max(200),
+  // find 允许空串：D2 新增行未填写时是 no-op（applyRegexRules 跳过），不炸 per-key 校验。
+  find: z.string().max(200),
   replace: z.string().max(200).default(''),
   ignoreCase: z.boolean().default(true),
   enabled: z.boolean().default(true),
@@ -45,7 +46,7 @@ export type RegexRule = z.infer<typeof RegexRuleSchema>;
 export function applyRegexRules(text: string, rules: readonly RegexRule[]): string {
   let out = text;
   for (const r of rules) {
-    if (!r.enabled) continue;
+    if (!r.enabled || r.find.length === 0) continue;
     try {
       out = out.replace(new RegExp(r.find, r.ignoreCase ? 'gi' : 'g'), r.replace);
     } catch {

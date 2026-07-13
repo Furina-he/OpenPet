@@ -41,6 +41,7 @@ describe('applyRegexRules', () => {
       RegexRuleSchema.parse({ id: '1', find: '作为(一个)?AI[^。！？!?]*[。！？!?]', replace: '' }),
       RegexRuleSchema.parse({ id: '2', find: '((', replace: 'x' }), // 非法
       RegexRuleSchema.parse({ id: '3', find: '哦', replace: '喔', enabled: false }),
+      RegexRuleSchema.parse({ id: '4', find: '', replace: 'y' }), // 空 find（D2 新增未填写行）= no-op
     ];
     expect(applyRegexRules('作为一个AI我没有情感。但今天天气不错哦', rules)).toBe(
       '但今天天气不错哦',

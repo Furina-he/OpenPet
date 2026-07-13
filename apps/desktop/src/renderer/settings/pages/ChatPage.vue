@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ChatView, isEmptyReply, type ChatMessage } from '../../overlay/chat-view';
+import { ChatView, explodeSegments, isEmptyReply, type ChatMessage } from '../../overlay/chat-view';
 import ReasoningSidebar from '../../components/chat/ReasoningSidebar.vue';
 import ToolCallCard from '../../components/chat/ToolCallCard.vue';
 import ChatInput from '../../components/chat/ChatInput.vue';
@@ -28,6 +28,8 @@ type ToolCall = {
 };
 
 const messages = ref<ChatMessage[]>([]);
+/** ⑭ 显示列表：带 newBubble 分段点的消息拆多气泡（display-only）。 */
+const displayMessages = computed(() => explodeSegments(messages.value));
 const streaming = ref(false);
 const ready = ref(false);
 const draft = ref('');
@@ -189,7 +191,7 @@ function isTyping(m: ChatMessage): boolean {
       </div>
       <div ref="scroller" class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         <div
-          v-for="(m, i) in messages"
+          v-for="(m, i) in displayMessages"
           :key="i"
           class="flex items-start gap-2"
           :class="m.role === 'user' ? 'flex-row-reverse' : ''"

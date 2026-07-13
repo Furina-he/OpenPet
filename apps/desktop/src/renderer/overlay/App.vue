@@ -5,7 +5,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { Bookmark, History, Loader2, Mic, Paperclip, Send, Settings, Square, X } from 'lucide-vue-next';
 import { useI18n } from 'vue-i18n';
-import { ChatView } from './chat-view';
+import { ChatView, explodeSegments } from './chat-view';
 import type { ChatMessage } from './chat-view';
 import { groupMessages } from './bubble-view';
 import Bubble from './components/Bubble.vue';
@@ -172,9 +172,10 @@ async function onAction(a: ErrorAction): Promise<void> {
   }
   openHub(); // switchModel / changeKey → Hub D3
 }
-// 情绪 chip 只挂在「最后一条、流式中的 assistant」气泡。
+// 情绪 chip 只挂在「最后一条、流式中的 assistant」气泡（⑭ 分段后以显示列表末条判定）。
+const displayMessages = computed(() => explodeSegments(messages.value));
 function emotionFor(m: ChatMessage): string {
-  const last = messages.value[messages.value.length - 1];
+  const last = displayMessages.value[displayMessages.value.length - 1];
   return streaming.value && m === last && m.role === 'assistant' ? emotion.value : '';
 }
 
@@ -254,7 +255,7 @@ const recordLabel = computed(() => {
     <!-- 消息列表：按 role 分组，组内共享头像 -->
     <main class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
       <div
-        v-for="(g, gi) in groupMessages(messages)"
+        v-for="(g, gi) in groupMessages(displayMessages)"
         :key="gi"
         class="flex items-start gap-2"
         :class="g.role === 'user' ? 'flex-row-reverse' : ''"
