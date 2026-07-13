@@ -22,15 +22,23 @@
  * wires `notify` to `webContents.send`.
  */
 import {
+  applyRegexRules,
   BehaviorParser,
+  splitCompleteSegments,
+  typingDelayMs,
   type BehaviorEvent,
   type ChatEvent,
   type BehaviorWarnReason,
   type ErrorKind,
+  type RegexRule,
 } from '@openpet/protocol';
 
 export type Notification =
-  | { channel: 'chat.stream'; sessionId: string; params: { sessionId: string; text: string } }
+  | {
+      channel: 'chat.stream';
+      sessionId: string;
+      params: { sessionId: string; text: string; newBubble?: boolean };
+    }
   | {
       channel: 'chat.done';
       sessionId: string;
@@ -80,6 +88,17 @@ export interface ConversationCoreOptions {
    * 改发领域事件由 InteractionService 查 cue 表决定表现。缺省 no-op（纯双轨拆分）。
    */
   cue?: (event: 'chat.reasoning' | 'chat.tool', sessionId: string) => void;
+  /** ⑭ 自然节奏供给（每次发段时读取，prefs 实时生效）；null/enabled:false = 直通零回归。 */
+  rhythm?: () => RhythmConfig | null;
+}
+
+/** ⑭ 自然节奏配置（ipc-router 读 prefs 供给；测试注入小延迟）。 */
+export interface RhythmConfig {
+  enabled: boolean;
+  charMs: number;
+  minMs: number;
+  maxMs: number;
+  rules: readonly RegexRule[];
 }
 
 interface SessionState {
@@ -92,6 +111,9 @@ interface SessionState {
   endAfterDrain: boolean;
   /** C′：本轮是否已发过"思考中"桌宠线索（每轮首块 reasoning 一次；done 删 state 即重置）。 */
   reasoningCued: boolean;
+  /** ⑭ 自然节奏：句缓冲（凑齐句边界才发段）+ 已发段计数（第 2 段起延迟 + newBubble）。 */
+  rhythmBuf: string;
+  segIndex: number;
 }
 
 type GateEntry = { kind: 'notify'; n: Notification } | { kind: 'delay'; ms: number };
@@ -102,6 +124,8 @@ export class ConversationCore {
   private readonly cancelling = new Set<string>();
   private readonly warnOut: (sessionId: string, reason: string, raw: string) => void;
   private readonly cue: ((event: 'chat.reasoning' | 'chat.tool', sessionId: string) => void) | undefined;
+  /** ⑭ 自然节奏供给（每段读取一次，prefs 实时生效）。 */
+  private readonly rhythm: (() => RhythmConfig | null) | undefined;
 
   constructor(
     private readonly notify: (n: Notification) => void,
@@ -110,6 +134,7 @@ export class ConversationCore {
     this.warnOut =
       opts.warn ?? ((sid, reason, raw) => console.warn(`[behavior:${sid}] ${reason}: ${raw}`));
     this.cue = opts.cue;
+    this.rhythm = opts.rhythm;
   }
 
   /**
@@ -198,6 +223,12 @@ export class ConversationCore {
     }
     this.clearStaleTimer(state);
     for (const be of state.parser.flush()) this.emitBehavior(sessionId, be);
+    // ⑭ 残段冲洗：done 前把句缓冲里凑不齐边界的尾巴发出去（UI 永远先文本再 done）。
+    const rhythmCfg = this.rhythm?.();
+    if (rhythmCfg?.enabled && state.rhythmBuf.trim().length > 0) {
+      this.emitSegment(sessionId, state, state.rhythmBuf, rhythmCfg);
+    }
+    state.rhythmBuf = '';
     this.send(sessionId, doneNotification);
     if (state.gateTimer === null) this.sessions.delete(sessionId);
     else state.endAfterDrain = true;
@@ -221,6 +252,8 @@ export class ConversationCore {
         gatePending: [],
         endAfterDrain: false,
         reasoningCued: false,
+        rhythmBuf: '',
+        segIndex: 0,
       };
       this.sessions.set(sessionId, s);
     }
@@ -302,13 +335,25 @@ export class ConversationCore {
 
   private emitBehavior(sessionId: string, be: BehaviorEvent): void {
     switch (be.type) {
-      case 'text':
-        this.send(sessionId, {
-          channel: 'chat.stream',
-          sessionId,
-          params: { sessionId, text: be.text },
-        });
+      case 'text': {
+        // ⑭ 自然节奏：开 → 干净文本进句缓冲，凑齐段才发（段级正则 + 打字延迟 + newBubble）；
+        // 关/null → 逐 delta 直通（现状零回归）。
+        const cfg = this.rhythm?.();
+        if (!cfg?.enabled) {
+          this.send(sessionId, {
+            channel: 'chat.stream',
+            sessionId,
+            params: { sessionId, text: be.text },
+          });
+          break;
+        }
+        const state = this.stateFor(sessionId);
+        state.rhythmBuf += be.text;
+        const { segments, rest } = splitCompleteSegments(state.rhythmBuf);
+        state.rhythmBuf = rest;
+        for (const seg of segments) this.emitSegment(sessionId, state, seg, cfg);
         break;
+      }
       case 'emotion':
         this.send(sessionId, {
           channel: 'behavior.applyEmotion',
@@ -338,5 +383,26 @@ export class ConversationCore {
         if (be.ms > 0) this.addDelay(sessionId, be.ms);
         break;
     }
+  }
+
+  /** ⑭ 发一段：段级正则 → 空段丢弃 → 第 2 段起先压打字延迟（±20% jitter）再发（newBubble 标记）。 */
+  private emitSegment(
+    sessionId: string,
+    state: SessionState,
+    raw: string,
+    cfg: RhythmConfig,
+  ): void {
+    const text = applyRegexRules(raw, cfg.rules);
+    if (text.length === 0) return;
+    if (state.segIndex > 0) {
+      const jitter = 0.8 + Math.random() * 0.4;
+      this.addDelay(sessionId, Math.round(typingDelayMs(text.length, cfg) * jitter));
+    }
+    this.send(sessionId, {
+      channel: 'chat.stream',
+      sessionId,
+      params: { sessionId, text, ...(state.segIndex > 0 ? { newBubble: true } : {}) },
+    });
+    state.segIndex += 1;
   }
 }

@@ -466,6 +466,8 @@ export const Methods = {
       // 每 session 单调递增；快照重建时渲染端丢弃 seq <= snapshot.seq 的事件。
       // 背压队列合并相邻 deltas 时取后者的 seq（文本已拼接，语义等价）。
       seq: z.number().int().nonnegative(),
+      // ⑭ 自然节奏：true = 本段起开新气泡（display-only；存储仍单条 assistant 消息）。
+      newBubble: z.boolean().optional(),
     }),
     result: z.null(),
   },

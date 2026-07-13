@@ -5,6 +5,7 @@ import {
   type Notification,
 } from '../electron/main/conversation-core';
 import type { ChatEvent } from '@openpet/protocol';
+import { RegexRuleSchema } from '@openpet/protocol';
 
 /** Drive a sequence of provider events through a core and collect notifications. */
 function run(events: ChatEvent[], sessionId = 's1'): Notification[] {
@@ -420,5 +421,57 @@ describe('ConversationCore error kind (M5)', () => {
     ]);
     const done = out.find((n) => n.channel === 'chat.done');
     expect(done?.params).toEqual({ sessionId: 's1', finishReason: 'stop' });
+  });
+});
+
+describe('⑭ 自然节奏层', () => {
+  const RULES = [
+    RegexRuleSchema.parse({ id: 'r1', find: '作为(一个)?AI[^。！？!?]*[。！？!?]', replace: '' }),
+  ];
+  const CFG = { enabled: true, charMs: 1, minMs: 1, maxMs: 5, rules: RULES };
+  function rhythmCore(sent: Notification[]): ConversationCore {
+    return new ConversationCore((n) => sent.push(n), { rhythm: () => CFG });
+  }
+  const texts = (sent: Notification[]) =>
+    sent
+      .filter((n) => n.channel === 'chat.stream')
+      .map((n) => n.params as { sessionId: string; text: string; newBubble?: boolean });
+
+  it('凑齐句边界才发段；第 2 段起带 newBubble 且经门延迟；残段在 done 前冲洗', async () => {
+    const sent: Notification[] = [];
+    const core = rhythmCore(sent);
+    core.handleEvent('s', { type: 'delta', text: '你来啦！今天' });
+    expect(texts(sent)).toEqual([{ sessionId: 's', text: '你来啦！' }]); // 首段无延迟无标记
+    core.handleEvent('s', { type: 'delta', text: '怎么样？还有个没结尾' });
+    core.handleEvent('s', { type: 'done', finishReason: 'stop' });
+    await new Promise((r) => setTimeout(r, 40)); // 等发射门排空
+    expect(texts(sent)).toEqual([
+      { sessionId: 's', text: '你来啦！' },
+      { sessionId: 's', text: '今天怎么样？', newBubble: true },
+      { sessionId: 's', text: '还有个没结尾', newBubble: true },
+    ]);
+    const last = sent[sent.length - 1]!;
+    expect(last.channel).toBe('chat.done'); // done 永远在残段之后
+  });
+
+  it('段级口癖正则生效；被清空的段不发', async () => {
+    const sent: Notification[] = [];
+    const core = rhythmCore(sent);
+    core.handleEvent('s', { type: 'delta', text: '作为一个AI我没有情感。真的吗？' });
+    core.handleEvent('s', { type: 'done', finishReason: 'stop' });
+    await new Promise((r) => setTimeout(r, 40));
+    expect(texts(sent)).toEqual([{ sessionId: 's', text: '真的吗？' }]); // 首个非空段不带标记
+  });
+
+  it('取消丢弃缓冲；开关关 = 现有直通行为', () => {
+    const sent: Notification[] = [];
+    const core = rhythmCore(sent);
+    core.handleEvent('s', { type: 'delta', text: '还没到句边界' });
+    core.cancel('s');
+    expect(texts(sent)).toEqual([]);
+    const off: Notification[] = [];
+    const plain = new ConversationCore((n) => off.push(n), { rhythm: () => null });
+    plain.handleEvent('s', { type: 'delta', text: '逐字' });
+    expect(off[0]?.params).toMatchObject({ text: '逐字' }); // 立即透传
   });
 });
