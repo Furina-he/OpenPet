@@ -16,6 +16,7 @@ import { spawn as cpSpawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import {
   DEFAULT_CUES,
+  DEFAULT_EMOTIONS,
   mergeCues,
   parseImOrigin,
   resolveChatTarget,
@@ -43,6 +44,7 @@ import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { createMemoryExtractor } from './memory-extractor.js';
+import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
 import { createRouter, RpcError } from './router.js';
@@ -443,6 +445,17 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     resolveTarget: chatTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
+  // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（manifest.emotions 键 ?? DEFAULT_EMOTIONS）。
+  const emotionFallbackSvc = createEmotionFallback({
+    fetchImpl: voiceFetch,
+    resolveTarget: chatTargetWithKey,
+    getPrefs: () => prefsStore.getAll(),
+    emotions: () => {
+      const m = characters.current().manifest;
+      return m.emotions ? Object.keys(m.emotions) : DEFAULT_EMOTIONS;
+    },
+    broadcast,
+  });
   // 批次⑥ F-AI-08：本地时区自然月起点（用量聚合月界 + 预算门共用）。
   const monthStart = (): number => {
     const d = new Date();
@@ -511,6 +524,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
     onTurnEnd: (sid) => {
       if (imService?.shouldExtractMemory(sid) ?? true) void memoryExtractor.onTurnEnd(sid);
+    },
+    // ⑬ 表情分类兜底：IM 轮桌面不演（线 B-1 隔离口径），只对桌面会话生效。
+    emotionFallback: (sid, text) => {
+      if (sid.startsWith('im:')) return;
+      void emotionFallbackSvc.onTurnEnd(sid, text);
     },
     // F-AI-08 超限门：budget.enabled 且 onExceed=pause 且 本月已用 ≥ 上限（口径 = 万 tokens，spec §5）。
     budgetGate: () => {
