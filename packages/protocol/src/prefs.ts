@@ -41,6 +41,8 @@ export const PrefsSchema = z.object({
   'general.desktopNotifications': z.boolean().default(true),
   'general.proactiveSpeech': z.boolean().default(false),
   'general.proactiveFreq': z.number().min(0).max(100).default(30),
+  // ⑬ 表情分类兜底（SillyTavern 融合③）：模型整轮无 <emo:/> 时轮末轻量分类驱动表情。
+  'general.emotionFallback': z.boolean().default(true),
   'general.dndStart': z.string().default('23:00'),
   'general.dndEnd': z.string().default('08:00'),
   // display（D4 显示与窗口）
