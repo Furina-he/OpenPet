@@ -567,6 +567,12 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         (p['chat.styleAnchorText'].trim() || DEFAULT_STYLE_ANCHOR)
       );
     },
+    // ⑭ 自然节奏：core 句缓冲分段+打字延迟+段级口癖正则（关 = null 直通零回归）。
+    rhythm: () => {
+      const p = prefsStore.getAll();
+      if (!p['chat.naturalRhythm']) return null;
+      return { enabled: true, charMs: 45, minMs: 350, maxMs: 2200, rules: p['chat.regexRules'] };
+    },
     trace,
   });
   chatRef = chat;

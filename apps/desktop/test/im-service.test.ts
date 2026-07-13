@@ -16,7 +16,10 @@ const P1 = {
   apiBase: 'x',
 } as const;
 
-function harness(prefsOverride: Record<string, unknown> = {}) {
+function harness(
+  prefsOverride: Record<string, unknown> = {},
+  opts: { imDelayMs?: (chars: number) => number } = {},
+) {
   const sent: Array<{ kind: string; chatId: string; text: string }> = [];
   const chatCalls: Array<{ sessionId: string; text: string }> = [];
   const broadcasts: Array<{ ch: string; p: unknown }> = [];
@@ -32,6 +35,7 @@ function harness(prefsOverride: Record<string, unknown> = {}) {
       },
     },
     broadcast: (ch, p) => broadcasts.push({ ch, p }),
+    ...(opts.imDelayMs ? { imDelayMs: opts.imDelayMs } : {}),
     adapterFactory: () => ({
       start: () => {},
       stop: async () => {},
@@ -154,6 +158,38 @@ describe('im-service 回复捕获/串行化/到桌提示', () => {
     const h2 = harness({ 'im.notifyDesktop': false });
     h2.svc.handleIncoming(h2.incoming({}));
     expect(h2.broadcasts.some((b) => b.ch === 'im.activity')).toBe(false);
+  });
+  it('⑭ 自然节奏开：newBubble 分段多条回发且段间延迟，全发完才放行队列', async () => {
+    const h = harness({}, { imDelayMs: () => 30 });
+    h.svc.handleIncoming(h.incoming({}));
+    h.svc.handleIncoming(h.incoming({ text: '排队消息' })); // 在途 → 入队
+    const sid = imOrigin('p1', 'private', '42');
+    h.svc.handleNotify('chat.stream', { sessionId: sid, text: '第一段。' });
+    h.svc.handleNotify('chat.stream', { sessionId: sid, text: '第二段。', newBubble: true });
+    h.done();
+    h.svc.handleNotify('chat.done', { sessionId: sid, finishReason: 'stop' });
+    // 第一段立发；第二段 30ms 延迟中；busy 未解 → 排队消息不 dispatch
+    expect(h.sent).toEqual([{ kind: 'private', chatId: '42', text: '第一段。' }]);
+    expect(h.chatCalls.length).toBe(1);
+    await vi.waitFor(() =>
+      expect(h.sent).toEqual([
+        { kind: 'private', chatId: '42', text: '第一段。' },
+        { kind: 'private', chatId: '42', text: '第二段。' },
+      ]),
+    );
+    await vi.waitFor(() => expect(h.chatCalls.length).toBe(2)); // 全发完才放行
+  });
+  it('⑭ 自然节奏关：newBubble 段 join 单条回发', async () => {
+    const h = harness({ 'chat.naturalRhythm': false });
+    h.svc.handleIncoming(h.incoming({}));
+    const sid = imOrigin('p1', 'private', '42');
+    h.svc.handleNotify('chat.stream', { sessionId: sid, text: '第一段。' });
+    h.svc.handleNotify('chat.stream', { sessionId: sid, text: '第二段。', newBubble: true });
+    h.done();
+    h.svc.handleNotify('chat.done', { sessionId: sid, finishReason: 'stop' });
+    await vi.waitFor(() =>
+      expect(h.sent).toEqual([{ kind: 'private', chatId: '42', text: '第一段。\n第二段。' }]),
+    );
   });
   it('shouldExtractMemory：私聊 true，群聊默认 false、开关放开 true', () => {
     const h = harness();

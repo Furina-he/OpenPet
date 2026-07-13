@@ -106,6 +106,8 @@ export interface ChatServiceOptions {
   macroUser?: () => { user: string; locale?: string; hour12?: boolean };
   /** ⑭ 风格锚（包锚>全局>内置；总闸关 = null）；缺省不注入。ipc-router 注入。 */
   styleAnchor?: () => string | null;
+  /** ⑭ 自然节奏供给（core 句缓冲分段+打字延迟+段级正则）；缺省 null 直通零回归。ipc-router 注入。 */
+  rhythm?: () => import('./conversation-core.js').RhythmConfig | null;
   /** §7：诊断时间线采集器；缺省不埋点。ipc-router 注入。 */
   trace?: import('./trace-collector.js').TraceCollector;
   /**
@@ -214,6 +216,7 @@ export class ChatService {
         this.interactions.trigger(e);
         if (e === 'chat.tool') this.interactions.markToolStart(sid);
       },
+      ...(opts.rhythm ? { rhythm: opts.rhythm } : {}),
     });
     const fetchGateway = opts.fetch ? createFetchGateway(opts.fetch) : null;
     this.host = new ProviderHost(

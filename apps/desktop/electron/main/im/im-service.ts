@@ -1,5 +1,5 @@
 // IM 编排：唤醒(照 AstrBot waking_check)→ 白名单(whitelist_check)→
-// 会话串行化(ChatService busy 规避)→ 回复捕获整段回发。
+// 会话串行化(ChatService busy 规避)→ 回复捕获回发（⑭ 自然节奏开 = newBubble 分段多条 + 段间打字延迟；关 = 整段单条）。
 // 适配器经 adapterFactory 注入（测试假体）；缺省按 type 建真适配器。
 import {
   imOrigin,
@@ -21,16 +21,24 @@ export interface ImServiceDeps {
   /** 测试注入；缺省按 type 建真适配器。 */
   adapterFactory?: (p: ImPlatform, cb: ImAdapterCallbacks) => ImAdapter;
   log?: (msg: string) => void;
+  /** ⑭ 段间打字延迟（测试注入定值）；缺省 clamp(字数×80ms, 800, 3000) ±20% jitter。 */
+  imDelayMs?: (chars: number) => number;
 }
 
 const QUEUE_CAP = 3;
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** IM 打字比桌面慢更像人（spec §2）：clamp(字数×80ms, 800, 3000) ±20%。 */
+const defaultImDelayMs = (chars: number) =>
+  Math.round(Math.min(3000, Math.max(800, chars * 80)) * (0.8 + Math.random() * 0.4));
+
 export function createImService(deps: ImServiceDeps) {
   const log = deps.log ?? ((m) => console.info(`[im] ${m}`));
+  const imDelay = deps.imDelayMs ?? defaultImDelayMs;
   const adapters = new Map<string, { adapter: ImAdapter; cfg: ImPlatform }>();
   const statuses = new Map<string, ImStatus>();
-  /** origin → 回复累积缓冲（chat.stream 已被 conversation-core 剥完行为标签，是干净台词）。 */
-  const replyBuf = new Map<string, string>();
+  /** origin → 回复分段缓冲（chat.stream 已被 conversation-core 剥完行为标签；newBubble 开新元素）。 */
+  const replyBuf = new Map<string, string[]>();
   /** origin → 待发队列 + 在途标记（同 origin 一次一轮，避开 ChatService busy -32001）。 */
   const pending = new Map<string, { queue: string[]; busy: boolean }>();
 
@@ -72,7 +80,7 @@ export function createImService(deps: ImServiceDeps) {
     const text = p.queue.shift();
     if (text === undefined) return;
     p.busy = true;
-    replyBuf.set(origin, '');
+    replyBuf.set(origin, []);
     deps.chat.send(origin, text).catch((e) => {
       log(`send failed for ${origin}: ${String(e)}`);
       p.busy = false;
@@ -125,14 +133,32 @@ export function createImService(deps: ImServiceDeps) {
       const sid = (params as { sessionId?: string }).sessionId;
       if (!sid || !isImSession(sid)) return false;
       if (channel === 'chat.stream') {
-        replyBuf.set(sid, (replyBuf.get(sid) ?? '') + (params as { text: string }).text);
+        const q = params as { text: string; newBubble?: boolean };
+        const arr = replyBuf.get(sid) ?? [];
+        if (arr.length === 0 || q.newBubble) arr.push(q.text);
+        else arr[arr.length - 1] += q.text;
+        replyBuf.set(sid, arr);
       } else if (channel === 'chat.done') {
-        const text = (replyBuf.get(sid) ?? '').trim();
+        const parts = (replyBuf.get(sid) ?? []).map((s) => s.trim()).filter((s) => s.length > 0);
         replyBuf.delete(sid);
         const p = pending.get(sid);
+        const finish = (params as { finishReason: string }).finishReason;
+        if (finish === 'stop' && parts.length > 0) {
+          if (deps.getPrefs()['chat.naturalRhythm'] && parts.length > 1) {
+            // ⑭ 多条回发：段间打字延迟；全发完才解 busy → 串行化语义不变。
+            void (async () => {
+              for (let i = 0; i < parts.length; i++) {
+                if (i > 0) await sleep(imDelay(parts[i]!.length));
+                sendReply(sid, parts[i]!);
+              }
+              if (p) p.busy = false;
+              dispatch(sid);
+            })();
+            return true;
+          }
+          sendReply(sid, parts.join('\n'));
+        }
         if (p) p.busy = false;
-        if ((params as { finishReason: string }).finishReason === 'stop' && text)
-          sendReply(sid, text);
         dispatch(sid);
       }
       return true;
