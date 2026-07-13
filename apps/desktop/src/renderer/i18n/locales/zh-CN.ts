@@ -118,6 +118,8 @@ export const zhCN = {
       proactiveFreq: '主动发言频率',
       freqLow: '低',
       freqHigh: '高',
+      emotionFallback: '表情兜底分类',
+      emotionFallbackDesc: '模型没有输出表情标签时，回复结束后用一次轻量分类推断情绪并驱动表情（消耗少量 token）',
       secVoice: '语音',
       autoSpeak: '自动朗读回复',
       autoSpeakDesc: '回复完成后由桌宠朗读（需先在模型 API 配置默认 TTS）',

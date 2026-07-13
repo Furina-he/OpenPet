@@ -120,6 +120,8 @@ export const en: LocaleMessages = {
       proactiveFreq: 'Proactive frequency',
       freqLow: 'Low',
       freqHigh: 'High',
+      emotionFallback: 'Expression fallback',
+      emotionFallbackDesc: 'When the model emits no emotion tags, classify the finished reply once to drive the expression (uses a few tokens)',
       secVoice: 'Voice',
       autoSpeak: 'Auto-read replies',
       autoSpeakDesc:

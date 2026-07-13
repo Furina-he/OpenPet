@@ -138,6 +138,12 @@ const THINKING = computed(() => [
           @update:model-value="(v) => set('general.proactiveFreq', v)"
         />
       </SettingCard>
+      <SettingCard :label="t('settings.general.emotionFallback')" :description="t('settings.general.emotionFallbackDesc')">
+        <Switch
+          :model-value="prefs['general.emotionFallback']"
+          @update:model-value="(v) => set('general.emotionFallback', v)"
+        />
+      </SettingCard>
     </SettingSection>
 
     <SettingSection :title="t('settings.general.secVoice')">
