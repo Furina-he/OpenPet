@@ -112,6 +112,12 @@ export interface ChatServiceOptions {
    * ipc-router 注入 starHost.tryHandle 闭包；实现方须自行兜底超时（绝不阻塞聊天）。
    */
   intercept?: (sessionId: string, text: string) => Promise<string | null>;
+  /**
+   * ⑬ 表情分类兜底钩子：整轮（stop 收尾）零 behavior.applyEmotion 且非拦截轮时，
+   * 以本轮干净文本调用（fire-and-forget，实现方自行静默失败）。ipc-router 注入
+   * emotion-fallback 模块（含 im: 会话门与 pref 门）。
+   */
+  emotionFallback?: (sessionId: string, cleanText: string) => void;
 }
 
 /** ChatService 对 McpManager 的最小需求（§4）。 */
@@ -166,6 +172,14 @@ export class ChatService {
    * persona 静默丢基调。故由 onNotification(chat.done) 负责删（见下）。
    */
   private readonly lastIntent = new Map<string, { mood: string; energy: string }>();
+  /** ⑬ 本轮兜底追踪：saw=模型吐过 emo；text=干净文本累积（capped）；intercepted=Star 命令轮。 */
+  private readonly fallbackTurn = new Map<
+    string,
+    { saw: boolean; text: string; intercepted: boolean }
+  >();
+  private readonly emotionFallback:
+    | ((sessionId: string, cleanText: string) => void)
+    | undefined;
   /** §7 Trace：collector + 本轮 span（生命周期同 lastIntent——绑通知流，chat.done 时封口删除）。 */
   private readonly traceC: import('./trace-collector.js').TraceCollector | undefined;
   private readonly traceSpans = new Map<string, import('./trace-collector.js').TraceSpanHandle>();
@@ -226,6 +240,7 @@ export class ChatService {
     });
     this.onTurnEnd = opts.onTurnEnd;
     this.budgetGate = opts.budgetGate;
+    this.emotionFallback = opts.emotionFallback;
     this.orchestrator = new TurnOrchestrator({
       host: this.host,
       plugins: this.plugins,
@@ -291,6 +306,7 @@ export class ChatService {
     const intercepted = (await this.intercept?.(sessionId, text)) ?? null;
     if (intercepted !== null) {
       span?.record('turn.intercepted', { by: 'star' });
+      this.trackTurn(sessionId).intercepted = true; // ⑬ 命令输出不做表情分类
       this.session.appendUser(sessionId, text);
       this.session.beginAssistant(sessionId);
       this.core.handleEvent(sessionId, { type: 'delta', text: intercepted });
@@ -377,13 +393,27 @@ export class ChatService {
   }
 
   /** 每通道记账副作用（seq 注入 / intent 记录 / 轮封口），返回最终下发 params。 */
+  private trackTurn(sessionId: string): { saw: boolean; text: string; intercepted: boolean } {
+    let t = this.fallbackTurn.get(sessionId);
+    if (!t) {
+      t = { saw: false, text: '', intercepted: false };
+      this.fallbackTurn.set(sessionId, t);
+    }
+    return t;
+  }
+
   private bookkeep(n: Notification): unknown {
     switch (n.channel) {
       case 'chat.stream': {
         // 先入账拿 seq 再入队：保证 snapshot.seq ≥ 一切已广播/待广播的 seq
         const seq = this.session.appendDelta(n.sessionId, n.params.text);
+        const turn = this.trackTurn(n.sessionId);
+        if (turn.text.length < 800) turn.text += n.params.text; // ⑬ 分类只需开头 800 字符
         return { ...n.params, seq };
       }
+      case 'behavior.applyEmotion':
+        this.trackTurn(n.sessionId).saw = true; // ⑬ 模型合作，本轮不需兜底
+        return n.params;
       case 'behavior.setIntent':
         // 记录本轮基调，done(stop) 时演进 persona；同时照常下发渲染端。
         this.lastIntent.set(n.sessionId, { mood: n.params.mood, energy: n.params.energy });
@@ -395,12 +425,20 @@ export class ChatService {
           this.updatePersona(n.sessionId);
           this.interactions.trigger('chat.done'); // mood 累积（无 cue 表项，不发表现）
           this.onTurnEnd?.(n.sessionId); // 批次⑥：轮末记忆提炼（fire-and-forget，不 await）
+          const fb = this.fallbackTurn.get(n.sessionId);
+          if (fb && !fb.saw && !fb.intercepted && fb.text.trim().length > 0 && this.emotionFallback) {
+            this.traceSpans
+              .get(n.sessionId)
+              ?.record('turn.emotionFallback', { textLen: fb.text.length });
+            this.emotionFallback(n.sessionId, fb.text); // ⑬ fire-and-forget，不延迟 done
+          }
         }
         if (n.params.finishReason === 'error') {
           // J3：错误时驱动角色"歪头"——领域事件经 cue 表（confused + droop）。
           this.interactions.trigger('chat.error');
         }
         this.lastIntent.delete(n.sessionId);
+        this.fallbackTurn.delete(n.sessionId);
         this.traceSpans.get(n.sessionId)?.record('turn.done', {
           finishReason: n.params.finishReason,
           ...(n.params.errorKind ? { errorKind: n.params.errorKind } : {}),

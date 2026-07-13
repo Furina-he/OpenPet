@@ -12,6 +12,7 @@ const PROVIDER_ENTRY = require.resolve('@openpet/sidecar/dist/workers/provider-w
 const WEDGED_ENTRY = path.join(__dirname, 'fixtures/wedged-worker.mjs');
 const CRASH_ENTRY = path.join(__dirname, 'fixtures/crash-worker.mjs');
 const PLUGIN_ENTRY = path.join(__dirname, 'fixtures/plugin-worker.mjs');
+const PLAIN_ENTRY = path.join(__dirname, 'fixtures/plain-worker.mjs');
 
 type Sent = { channel: string; params: any };
 
@@ -665,5 +666,68 @@ describe('ChatService · §7 Trace 埋点', () => {
     expect(actions[0]).toBe('turn.start');
     expect(actions).toContain('context.assembled');
     expect(actions.at(-1)).toBe('turn.done');
+  });
+});
+
+describe('ChatService · ⑬ 表情分类兜底钩子', () => {
+  it('纯文本回复（零标签）→ done(stop) 后以干净全文触发一次', async () => {
+    const calls: Array<[string, string]> = [];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PLAIN_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      emotionFallback: (sid, text) => calls.push([sid, text]),
+    });
+    svc.send('s1', '你好');
+    await until(() => !!doneOf(sent, 's1'), 'chat.done');
+    expect(calls).toEqual([['s1', '今天也要加油哦。']]);
+  });
+  it('mock 回复带 <emo:/>（applyEmotion 在场）→ 钩子不触发', async () => {
+    const calls: Array<[string, string]> = [];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      emotionFallback: (sid, text) => calls.push([sid, text]),
+    });
+    svc.send('s1', '你好');
+    await until(() => !!doneOf(sent, 's1'), 'chat.done');
+    expect(sent.some((s) => s.channel === 'behavior.applyEmotion')).toBe(true);
+    expect(calls).toEqual([]);
+  });
+  it('Star 拦截轮（合成 delta+done）→ 钩子不触发', async () => {
+    const calls: Array<[string, string]> = [];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PLAIN_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      intercept: async () => '/help 的命令输出，这是一段没有任何标签的长文本。',
+      emotionFallback: (sid, text) => calls.push([sid, text]),
+    });
+    await svc.send('s1', '/help');
+    await until(() => !!doneOf(sent, 's1'), 'chat.done');
+    expect(calls).toEqual([]);
+  });
+  it('取消轮（done cancel）→ 钩子不触发', async () => {
+    const calls: Array<[string, string]> = [];
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: WEDGED_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+      emotionFallback: (sid, text) => calls.push([sid, text]),
+    });
+    svc.send('s1', 'hi');
+    await until(() => sent.some((s) => s.channel === 'chat.stream'), 'first delta');
+    svc.cancel('s1');
+    await until(() => !!doneOf(sent, 's1'), 'done after cancel');
+    expect(calls).toEqual([]);
   });
 });
