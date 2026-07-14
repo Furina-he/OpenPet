@@ -738,6 +738,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { cancelled: false as const, path: out };
     },
     'chat.setActiveSession': (p) => {
+      void memoryExtractor.flush(); // ⑮ 会话切换前收尾未提炼的轮（防抖内跳过）
       writeActiveSession(
         {
           getMap: () => prefsStore.getAll()['chat.activeSessions'],
@@ -892,6 +893,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       };
     },
     'character.switch': (p) => {
+      void memoryExtractor.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
       characters.switch(p.id);
       broadcast('character.changed', { characterId: p.id });
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
@@ -1049,6 +1051,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       if (fullscreen) interactions.trigger('desktop.fullscreen');
     },
     dispose: async () => {
+      const memoryFlush = memoryExtractor.flush(); // ⑮ 退出前收尾（store.close 前 await）
       ipcMain.removeHandler('openpet:rpc');
       scheduler.stop();
       interactions.dispose();
@@ -1057,6 +1060,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       await starHost.stop();
       await chat.dispose();
       await mcpManager.disconnectAll();
+      await memoryFlush;
       store.close();
       prefsStore.close();
     },
