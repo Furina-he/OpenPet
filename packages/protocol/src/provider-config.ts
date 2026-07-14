@@ -285,6 +285,22 @@ export function resolveRerankTarget(
   return resolveChatTarget(sources, models, rerankModelId);
 }
 
+/**
+ * ⑮ 杂务模型（记忆提炼/表情分类/会话摘要共用的单发通道）：utilityModelId 设置且可解析
+ * → 用该模型；空串/悬挂（模型被删/禁用）→ 回落默认 chat 目标（与未配置时行为一致）。
+ */
+export function resolveUtilityTarget(
+  sources: ProviderSource[],
+  models: ModelEntry[],
+  utilityModelId: string,
+  defaultChatModelId: string,
+): ChatTarget | null {
+  return (
+    resolveChatTarget(sources, models, utilityModelId) ??
+    resolveChatTarget(sources, models, defaultChatModelId)
+  );
+}
+
 /** 某 adapter 的 source 高级配置字段 metadata（喂 ConfigSectionRenderer，§2）。 */
 export function sourceAdvancedMeta(adapter: Adapter): ConfigItemMeta[] {
   const base = [

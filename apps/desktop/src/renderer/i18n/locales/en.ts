@@ -248,6 +248,12 @@ export const en: LocaleMessages = {
       emptySourcesChat: 'No provider sources for this capability yet — click "＋ Add source" on the left to start',
       emptySources: 'No providers for this capability yet — click "＋ Add provider" at the top right to start',
       budgetTitle: 'Usage & budget',
+      utilityTitle: 'Utility model',
+      utilityDesc:
+        'Model for background tasks (memory extraction, emotion classification, session summaries). A cheap fast model works well; OpenAI-compatible API required.',
+      utilityModel: 'Utility model',
+      utilityModelDesc: 'Follows the default chat model when unset',
+      utilityFollow: 'Follow default chat model',
       usedThisMonth: 'Used this month:',
       usageDetail: '(in {tin} / out {tout}, {n} turns)',
       nearBudget: '⚠ Near budget',

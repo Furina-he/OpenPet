@@ -21,6 +21,7 @@ import {
   mergeCues,
   parseImOrigin,
   resolveChatTarget,
+  resolveUtilityTarget,
   resolveEmbeddingTarget,
   resolveRerankTarget,
   validateImPlatform,
@@ -439,12 +440,27 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
     return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
   };
+  // ⑮ 杂务模型（记忆提炼/表情兜底/会话摘要）：model.utilityModelId 可解析 → 用之；否则
+  // 回落默认 chat（主模型 anthropic 时配个 openai 兼容小模型即可全功能自救）。testGreeting
+  // 是「试主模型」语义，不换。
+  const utilityTargetWithKey = () => {
+    const p = prefsStore.getAll();
+    const t = resolveUtilityTarget(
+      p['model.providerSources'],
+      p['model.models'],
+      p['model.utilityModelId'],
+      p['model.defaultChatModelId'],
+    );
+    if (!t) return null;
+    const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
+    return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
+  };
   const memoryExtractor = createMemoryExtractor({
     store,
     embed: memoryEmbed,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
-    resolveTarget: chatTargetWithKey,
+    resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
   // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
@@ -452,13 +468,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     store,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
-    resolveTarget: chatTargetWithKey,
+    resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
   // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（manifest.emotions 键 ?? DEFAULT_EMOTIONS）。
   const emotionFallbackSvc = createEmotionFallback({
     fetchImpl: voiceFetch,
-    resolveTarget: chatTargetWithKey,
+    resolveTarget: utilityTargetWithKey,
     getPrefs: () => prefsStore.getAll(),
     emotions: () => {
       const m = characters.current().manifest;

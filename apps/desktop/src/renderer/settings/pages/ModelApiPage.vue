@@ -378,6 +378,19 @@ const ON_EXCEED = computed(() => [
   { value: 'warn', label: t('settings.model.exceedWarn') },
   { value: 'pause', label: t('settings.model.exceedPause') },
 ]);
+
+// ⑮ 杂务模型（记忆提炼/表情分类/会话摘要）：列所有已配 chat 模型 + 首项跟随默认。
+const utilityOptions = computed(() => {
+  const chatSourceIds = new Set(
+    sources.value.filter((s) => s.capability === 'chat' && s.enabled).map((s) => s.id),
+  );
+  return [
+    { value: '', label: t('settings.model.utilityFollow') },
+    ...models.value
+      .filter((m) => chatSourceIds.has(m.sourceId) && m.enabled)
+      .map((m) => ({ value: m.id, label: m.model })),
+  ];
+});
 </script>
 
 <template>
@@ -509,6 +522,25 @@ const ON_EXCEED = computed(() => [
     />
 
     <div class="grid gap-4">
+      <!-- ⑮ 杂务模型 -->
+      <section class="ds-glass rounded-panel p-5">
+        <h2 class="text-md font-semibold text-text-main">{{ t('settings.model.utilityTitle') }}</h2>
+        <p class="mt-2 text-base text-text-sub">{{ t('settings.model.utilityDesc') }}</p>
+        <div class="mt-4 rounded-card border border-glass-border">
+          <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <div class="font-semibold text-text-main">{{ t('settings.model.utilityModel') }}</div>
+              <div class="mt-1 text-sm text-text-sub">{{ t('settings.model.utilityModelDesc') }}</div>
+            </div>
+            <Select
+              :model-value="prefs['model.utilityModelId']"
+              :options="utilityOptions"
+              @update:model-value="(v) => set('model.utilityModelId', v)"
+            />
+          </div>
+        </div>
+      </section>
+
       <!-- 批次⑥ F-AI-08：用量与预算（照 ui-design 8.3 预算告警卡） -->
       <section class="ds-glass rounded-panel p-5">
         <h2 class="text-md font-semibold text-text-main">{{ t('settings.model.budgetTitle') }}</h2>
