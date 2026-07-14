@@ -34,6 +34,8 @@ export interface AssembleInput {
   beginDialogs?: string[];
   /** ⑫ Lorebook 命中内容（loreStage 产物）；注入 base 之后的「世界设定」块。 */
   loreHits?: string[];
+  /** ⑮ 会话滚动摘要（summaryStage 产物）；「早前对话摘要」块排 lore 后、长期记忆前（更贴会话语境）。 */
+  sessionSummary?: string;
   /** ⑫ 宏展开上下文（{{char}}/{{user}}/{{time}}/{{date}}/{{random}}）；缺省不展开（向后兼容）。 */
   macroCtx?: { user: string; locale?: string; hour12?: boolean };
   /** ⑭ 风格锚：以 system 消息插在 history 之后、当前 user 之前（近生成点服从度最高，spec §1）。 */
@@ -88,7 +90,11 @@ export function assembleContext(input: AssembleInput): ChatRequest {
     input.loreHits && input.loreHits.length > 0
       ? `\n\n## 世界设定（背景资料，自然运用，勿逐条复述）\n${input.loreHits.map((t) => ex(t)).join('\n\n')}`
       : '';
-  const system = base + loreBlock + memoryBlock + kbBlock;
+  // ⑮ 早前对话摘要（本会话窗口外内容的压缩视图）。
+  const summaryBlock = input.sessionSummary
+    ? `\n\n## 早前对话摘要（本会话更早的内容，供参考，自然衔接勿复述）\n${input.sessionSummary}`
+    : '';
+  const system = base + loreBlock + summaryBlock + memoryBlock + kbBlock;
   const history = rows
     .filter((r) => r.text.length > 0)
     .map((r) => ({ role: r.role, content: r.text }));

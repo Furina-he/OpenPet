@@ -392,7 +392,7 @@ export class MemoryStore implements ConversationStore {
     sessionId: string,
     afterId: number,
     beforeOrEqId: number,
-  ): StoredRow[] {
+  ): Array<StoredRow & { id: number }> {
     return this.rows
       .filter(
         (r) =>
@@ -402,6 +402,7 @@ export class MemoryStore implements ConversationStore {
           r.id <= beforeOrEqId,
       )
       .map((r) => ({
+        id: r.id,
         role: r.role,
         text: r.text,
         finishReason: r.finishReason,

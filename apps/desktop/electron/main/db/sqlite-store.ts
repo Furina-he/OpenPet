@@ -474,14 +474,14 @@ export class SqliteStore implements ConversationStore {
     sessionId: string,
     afterId: number,
     beforeOrEqId: number,
-  ): StoredRow[] {
+  ): Array<StoredRow & { id: number }> {
     return this.db
       .prepare(
-        `SELECT role, text, finish_reason AS finishReason, ts, tokens_in AS tokensIn, tokens_out AS tokensOut
+        `SELECT id, role, text, finish_reason AS finishReason, ts, tokens_in AS tokensIn, tokens_out AS tokensOut
          FROM messages WHERE character_id = ? AND session_id = ? AND id > ? AND id <= ?
          ORDER BY id ASC`,
       )
-      .all(characterId, sessionId, afterId, beforeOrEqId) as StoredRow[];
+      .all(characterId, sessionId, afterId, beforeOrEqId) as Array<StoredRow & { id: number }>;
   }
 
   messageStats(sessionId: string): { count: number; lastId: number } {

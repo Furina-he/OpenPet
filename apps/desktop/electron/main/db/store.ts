@@ -104,13 +104,13 @@ export interface ConversationStore {
   sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null };
   /** upto 缺省不动（用户手动编辑路径以现有水位为底稿继续合并）；summary=null 清除。 */
   sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void;
-  /** (afterId, beforeOrEqId] 半开区间消息，id 升序（摘要器取「窗口外未摘要」段）。 */
+  /** (afterId, beforeOrEqId] 半开区间消息，id 升序（摘要器取「窗口外未摘要」段并推进水位）。 */
   messagesBetween(
     characterId: string,
     sessionId: string,
     afterId: number,
     beforeOrEqId: number,
-  ): StoredRow[];
+  ): Array<StoredRow & { id: number }>;
   /** 会话消息总数与最大行 id（空会话 lastId=0）。 */
   messageStats(sessionId: string): { count: number; lastId: number };
 

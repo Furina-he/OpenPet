@@ -46,6 +46,32 @@ describe('context-pipeline', () => {
 });
 
 
+describe('⑮ summaryStage', () => {
+  it('sessionSummary 供给命中 → 注入「早前对话摘要」块 + trace；返回 null / 缺省不注入', async () => {
+    const trace: Array<[string, unknown]> = [];
+    const pipeline = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'c', name: '小灵' }),
+      sessionSummary: (sid) => (sid === 's' ? '之前聊了工作压力' : null),
+    });
+    const req = await pipeline.build({
+      sessionId: 's',
+      userText: 'hi',
+      trace: (a, f) => trace.push([a, f]),
+    });
+    expect(req.messages[0]!.content).toContain('之前聊了工作压力');
+    expect(trace.some(([a]) => a === 'context.summary')).toBe(true);
+
+    const off = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'c', name: '小灵' }),
+      sessionSummary: () => null,
+    });
+    const req2 = await off.build({ sessionId: 's', userText: 'hi' });
+    expect(req2.messages[0]!.content).not.toContain('早前对话摘要');
+  });
+});
+
 describe('⑫ loreStage', () => {
   it('命中注入 + trace context.lore；无 lorebook 供给不触发', async () => {
     const store = new MemoryStore();

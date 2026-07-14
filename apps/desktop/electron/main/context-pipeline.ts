@@ -32,6 +32,8 @@ export interface ContextPipelineDeps {
   lorebook?: (() => PackLorebook | null) | undefined;
   /** ⑫ 宏上下文供给（chat.userName / 语言 / 12 小时制）；缺省组装侧不展开宏。 */
   macroUser?: (() => { user: string; locale?: string; hour12?: boolean }) | undefined;
+  /** ⑮ 会话滚动摘要供给（纯 store 读 + 开关门，ipc-router 注入）；null = 无摘要/开关关。 */
+  sessionSummary?: ((sessionId: string) => string | null) | undefined;
   /** ⑭ 风格锚供给（包锚 > 全局文案 > 内置；总闸关 = null）。ipc-router 注入。 */
   styleAnchor?: (() => string | null) | undefined;
 }
@@ -51,6 +53,7 @@ interface StageBag {
   kbHits: { text: string }[];
   memories: string[];
   loreHits: string[];
+  sessionSummary: string;
   tools: ChatTool[];
 }
 
@@ -107,16 +110,23 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
     input.trace?.('context.lore', { hits: bag.loreHits.length });
   };
 
+  const summaryStage = async (input: BuildInput, bag: StageBag): Promise<void> => {
+    // ⑮ 会话滚动摘要：纯 store 读（无 LLM、无超时竞速），开关门在供给侧。
+    if (!deps.sessionSummary) return;
+    bag.sessionSummary = deps.sessionSummary(input.sessionId) ?? '';
+    input.trace?.('context.summary', { present: bag.sessionSummary.length > 0 });
+  };
+
   const toolsStage = async (_input: BuildInput, bag: StageBag): Promise<void> => {
     // §4：注入 active MCP 工具定义（worker buildBody 映射成 provider tools）。
     bag.tools = deps.mcp?.activeToolDefs(() => true) ?? [];
   };
 
-  const stages = [kbStage, memoryStage, loreStage, toolsStage];
+  const stages = [kbStage, memoryStage, loreStage, summaryStage, toolsStage];
 
   return {
     async build(input: BuildInput): Promise<ChatRequest> {
-      const bag: StageBag = { kbHits: [], memories: [], loreHits: [], tools: [] };
+      const bag: StageBag = { kbHits: [], memories: [], loreHits: [], sessionSummary: '', tools: [] };
       for (const stage of stages) await stage(input, bag);
       // ContextAssembler：system prompt(人设+persona+行为标签规约 + §5 参考资料) + 最近 20 轮 + 当前 user。
       const personaSel = deps.persona?.() ?? null;
@@ -131,6 +141,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(bag.kbHits.length > 0 ? { kbHits: bag.kbHits } : {}),
         ...(bag.memories.length > 0 ? { memories: bag.memories } : {}),
         ...(bag.loreHits.length > 0 ? { loreHits: bag.loreHits } : {}),
+        ...(bag.sessionSummary ? { sessionSummary: bag.sessionSummary } : {}),
         ...(mc ? { macroCtx: mc } : {}),
         ...(anchor ? { styleAnchor: anchor } : {}),
         ...(personaSel

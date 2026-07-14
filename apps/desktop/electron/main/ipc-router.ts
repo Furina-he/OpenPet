@@ -45,6 +45,7 @@ import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { createMemoryExtractor } from './memory-extractor.js';
+import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
@@ -446,6 +447,14 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     resolveTarget: chatTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
+  // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
+  const sessionSummarizer = createSessionSummarizer({
+    store,
+    fetchImpl: voiceFetch,
+    getPrefs: () => prefsStore.getAll(),
+    resolveTarget: chatTargetWithKey,
+    character: () => ({ id: characters.current().characterId }),
+  });
   // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（manifest.emotions 键 ?? DEFAULT_EMOTIONS）。
   const emotionFallbackSvc = createEmotionFallback({
     fetchImpl: voiceFetch,
@@ -525,6 +534,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
     onTurnEnd: (sid) => {
       if (imService?.shouldExtractMemory(sid) ?? true) void memoryExtractor.onTurnEnd(sid);
+      // ⑮ 滚动摘要不受 im 门限制（只摘要本会话，无群聊污染问题，spec §2）。
+      void sessionSummarizer.onTurnEnd(sid);
     },
     // ⑬ 表情分类兜底：IM 轮桌面不演（线 B-1 隔离口径），只对桌面会话生效。
     emotionFallback: (sid, text) => {
@@ -566,6 +577,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         characters.current().manifest.persona?.styleAnchor ??
         (p['chat.styleAnchorText'].trim() || DEFAULT_STYLE_ANCHOR)
       );
+    },
+    // ⑮ 会话滚动摘要注入供给（summaryStage 纯 store 读；开关关 = null 块消失）。
+    sessionSummary: (sid) => {
+      if (!prefsStore.getAll()['chat.sessionSummary']) return null;
+      return store.sessionSummaryGet(sid).summary;
     },
     // ⑭ 自然节奏：core 句缓冲分段+打字延迟+段级口癖正则（关 = null 直通零回归）。
     rhythm: () => {
@@ -694,6 +710,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'chat.sessionRename': (p) => {
       assertNotImSession(p.id);
       store.sessionSetTitle(p.id, characters.current().characterId, p.title);
+      return { ok: true as const };
+    },
+    // --- ⑮ 记忆域：会话摘要读写（B3 详情编辑；IM 会话同样适用不设门）---
+    'session.summaryGet': (p) => ({ summary: store.sessionSummaryGet(p.id).summary }),
+    'session.summarySet': (p) => {
+      const text = p.summary.trim();
+      store.sessionSummarySet(p.id, text ? text : null); // 空 = 清除；upto 不动
       return { ok: true as const };
     },
     'chat.sessionPin': (p) => {

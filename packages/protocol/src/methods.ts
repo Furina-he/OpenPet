@@ -115,6 +115,16 @@ export const Methods = {
     params: z.object({ sessionId: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
+  // --- ⑮ 记忆域：会话滚动摘要用户可编辑面（B3 详情；upto 水位 Main 侧管理不外露）---
+  'session.summaryGet': {
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ summary: z.string().nullable() }),
+  },
+  'session.summarySet': {
+    // 手动编辑：summary 全空白 = 清除；upto 不动（后续触发以用户版为底稿合并）。
+    params: z.object({ id: z.string().min(1), summary: z.string().max(2000) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
 
   // --- request/response: Renderer → Main（窗口自操作；Main 端以 sender 定位窗口）---
   'app.window.setClickThrough': {
