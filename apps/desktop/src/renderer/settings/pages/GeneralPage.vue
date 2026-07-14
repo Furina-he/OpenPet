@@ -178,6 +178,12 @@ const THINKING = computed(() => [
           @update:model-value="(v) => set('chat.naturalRhythm', v)"
         />
       </SettingCard>
+      <SettingCard :label="t('settings.general.sessionSummary')" :description="t('settings.general.sessionSummaryDesc')">
+        <Switch
+          :model-value="prefs['chat.sessionSummary']"
+          @update:model-value="(v) => set('chat.sessionSummary', v)"
+        />
+      </SettingCard>
       <SettingCard :label="t('settings.general.styleAnchor')" :description="t('settings.general.styleAnchorDesc')">
         <Switch
           :model-value="prefs['chat.styleAnchorEnabled']"

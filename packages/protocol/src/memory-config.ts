@@ -10,5 +10,7 @@ export const MemoryFactSchema = z.object({
   text: z.string().min(1),
   pinned: z.boolean(),
   createdAt: z.number(),
+  // ⑮ 生命周期 v2：update 操作落点；null = 从未更新（以 createdAt 为准）
+  updatedAt: z.number().nullable(),
 });
 export type MemoryFact = z.infer<typeof MemoryFactSchema>;

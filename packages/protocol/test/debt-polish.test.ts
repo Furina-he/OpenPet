@@ -9,11 +9,29 @@ import {
 } from '../src/index.js';
 
 describe('批次⑥ protocol', () => {
-  it('MemoryFactSchema 解析', () => {
+  it('MemoryFactSchema 解析（⑮ updatedAt：null=从未更新）', () => {
     expect(
-      MemoryFactSchema.safeParse({ id: 1, text: '用户喜欢猫', pinned: false, createdAt: 1 }).success,
+      MemoryFactSchema.safeParse({
+        id: 1,
+        text: '用户喜欢猫',
+        pinned: false,
+        createdAt: 1,
+        updatedAt: null,
+      }).success,
     ).toBe(true);
-    expect(MemoryFactSchema.safeParse({ id: 1, text: '', pinned: false, createdAt: 1 }).success).toBe(false);
+    expect(
+      MemoryFactSchema.safeParse({
+        id: 1,
+        text: '用户喜欢猫',
+        pinned: false,
+        createdAt: 1,
+        updatedAt: 5,
+      }).success,
+    ).toBe(true);
+    expect(
+      MemoryFactSchema.safeParse({ id: 1, text: '', pinned: false, createdAt: 1, updatedAt: null })
+        .success,
+    ).toBe(false);
   });
   it('KbSchema rerank 默认 false（旧数据兼容）', () => {
     const kb = KbSchema.parse({ id: 'k', name: 'n' });

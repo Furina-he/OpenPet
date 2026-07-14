@@ -125,6 +125,9 @@ export const en: LocaleMessages = {
       humanize: 'Humanized chat',
       naturalRhythm: 'Natural rhythm',
       naturalRhythmDesc: 'Replies arrive as short bubbles with typing pauses, with speech-tic fixes applied; IM messages are sent in parts too',
+      sessionSummary: 'Rolling session summary',
+      sessionSummaryDesc:
+        'Long conversations beyond the memory window are compressed into a summary injected into context (extra utility-model calls); view and edit it on the History page',
       styleAnchor: 'Speaking-style anchor',
       styleAnchorDesc: 'Keeps reminding the model to stay casual and short, never claiming to be an AI; a character pack anchor takes priority',
       styleAnchorPlaceholder: 'Leave empty to use the built-in reminder',
@@ -214,12 +217,16 @@ export const en: LocaleMessages = {
       menuPin: 'Pin',
       menuUnpin: 'Unpin',
       menuRename: 'Rename',
+      menuSummary: 'Session summary',
       menuExport: 'Export Markdown',
       menuDelete: 'Delete',
       deletedToast: 'Deleted "{title}"',
       undo: 'Undo',
       exportedToast: 'Exported to {path}',
       renamePrompt: 'New session name',
+      summaryTitle: 'Session summary',
+      summaryPlaceholder:
+        'No summary yet — generated automatically as long chats accumulate, or write your own; save empty to delete',
     },
     model: {
       tabChat: 'Chat',
@@ -520,6 +527,8 @@ export const en: LocaleMessages = {
       pin: 'Pin (always injected into chats)',
       pinned: 'Pinned',
       deleteOne: 'Delete this memory',
+      timeAgo: '{dur} ago',
+      updatedAt: 'updated {rel}',
       confirmClearTitle: 'Clear all long-term memory?',
       confirmClearDetail:
         "Deletes all of this character's memory entries (including pinned). Cannot be undone.",

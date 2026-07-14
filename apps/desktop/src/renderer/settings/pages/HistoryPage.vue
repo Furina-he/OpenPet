@@ -67,13 +67,17 @@ function timeLabel(ts: number): string {
 
 const menuItems = (s: SessionVm): Array<{ key: string; label: string; danger?: boolean }> =>
   s.origin === 'im'
-    ? [{ key: 'export', label: t('settings.history.menuExport') }]
+    ? [
+        { key: 'summary', label: t('settings.history.menuSummary') },
+        { key: 'export', label: t('settings.history.menuExport') },
+      ]
     : [
         {
           key: 'pin',
           label: t(s.pinned ? 'settings.history.menuUnpin' : 'settings.history.menuPin'),
         },
         { key: 'rename', label: t('settings.history.menuRename') },
+        { key: 'summary', label: t('settings.history.menuSummary') },
         { key: 'export', label: t('settings.history.menuExport') },
         { key: 'delete', label: t('settings.history.menuDelete'), danger: true },
       ];
@@ -98,6 +102,15 @@ async function onMenu(s: SessionVm, key: string): Promise<void> {
     const r = await window.openpet.rpc('chat.sessionExport', { id: s.id });
     if (!r.cancelled)
       toastHost.value?.show('float', t('settings.history.exportedToast', { path: r.path }));
+  } else if (key === 'summary') {
+    // ⑮ 会话滚动摘要：查看/编辑（空 = 清除；upto 水位 Main 侧不动，用户版为底稿继续合并）。
+    if (summaryId.value === s.id) {
+      summaryId.value = null;
+      return;
+    }
+    const r = await window.openpet.rpc('session.summaryGet', { id: s.id });
+    summaryDraft.value = r.summary ?? '';
+    summaryId.value = s.id;
   } else if (key === 'delete') {
     hiddenIds.value = new Set([...hiddenIds.value, s.id]);
     pendingUndo.value = { id: s.id, title: s.title };
@@ -114,6 +127,18 @@ function undoDelete(): void {
   undo.cancel(p.id);
   hiddenIds.value = new Set([...hiddenIds.value].filter((x) => x !== p.id));
   pendingUndo.value = null;
+}
+
+// ⑮ 会话摘要内联编辑（B3 详情）
+const summaryId = ref<string | null>(null);
+const summaryDraft = ref('');
+async function saveSummary(): Promise<void> {
+  if (!summaryId.value) return;
+  await window.openpet.rpc('session.summarySet', {
+    id: summaryId.value,
+    summary: summaryDraft.value,
+  });
+  summaryId.value = null;
 }
 
 async function confirmRename(): Promise<void> {
@@ -157,48 +182,74 @@ async function confirmRename(): Promise<void> {
         <div
           v-for="s in group[1]"
           :key="s.id"
-          class="ds-glass flex h-16 cursor-pointer items-center gap-3 rounded-panel border px-4 transition ease-ds hover:-translate-y-0.5"
-          :class="s.id === activeId ? '' : 'border-glass-border'"
-          :style="s.id === activeId ? { borderColor: 'var(--ds-brand-from)' } : {}"
-          @click="openSession(s)"
         >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <template v-if="renamingId === s.id">
-                <input
-                  v-model="renameDraft"
-                  class="ds-control h-7 rounded-input px-2 text-sm"
-                  :placeholder="t('settings.history.renamePrompt')"
-                  @click.stop
-                  @keyup.enter="confirmRename"
-                  @blur="confirmRename"
-                />
-              </template>
-              <template v-else>
-                <span class="truncate text-base font-semibold text-text-main">{{ s.title }}</span>
-                <span
-                  v-if="s.origin === 'im'"
-                  class="shrink-0 rounded-full border border-glass-border px-1.5 text-xs text-text-sub"
-                >
-                  {{ t('settings.history.imChip') }}
-                </span>
-                <span
-                  v-if="s.id === activeId"
-                  class="shrink-0 rounded-full px-1.5 text-xs text-white"
-                  :style="{ background: 'linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))' }"
-                >
-                  {{ t('settings.history.current') }}
-                </span>
-              </template>
+          <div
+            class="ds-glass flex h-16 cursor-pointer items-center gap-3 rounded-panel border px-4 transition ease-ds hover:-translate-y-0.5"
+            :class="s.id === activeId ? '' : 'border-glass-border'"
+            :style="s.id === activeId ? { borderColor: 'var(--ds-brand-from)' } : {}"
+            @click="openSession(s)"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <template v-if="renamingId === s.id">
+                  <input
+                    v-model="renameDraft"
+                    class="ds-control h-7 rounded-input px-2 text-sm"
+                    :placeholder="t('settings.history.renamePrompt')"
+                    @click.stop
+                    @keyup.enter="confirmRename"
+                    @blur="confirmRename"
+                  />
+                </template>
+                <template v-else>
+                  <span class="truncate text-base font-semibold text-text-main">{{ s.title }}</span>
+                  <span
+                    v-if="s.origin === 'im'"
+                    class="shrink-0 rounded-full border border-glass-border px-1.5 text-xs text-text-sub"
+                  >
+                    {{ t('settings.history.imChip') }}
+                  </span>
+                  <span
+                    v-if="s.id === activeId"
+                    class="shrink-0 rounded-full px-1.5 text-xs text-white"
+                    :style="{ background: 'linear-gradient(90deg, var(--ds-brand-from), var(--ds-brand-to))' }"
+                  >
+                    {{ t('settings.history.current') }}
+                  </span>
+                </template>
+              </div>
+              <div class="truncate text-sm text-text-sub">{{ s.lastText }}</div>
             </div>
-            <div class="truncate text-sm text-text-sub">{{ s.lastText }}</div>
+            <div class="shrink-0 text-right text-xs text-text-sub">
+              <div>{{ timeLabel(s.lastTs) }}</div>
+              <div>{{ t('settings.history.msgCount', { n: s.count }) }}</div>
+            </div>
+            <div class="shrink-0" @click.stop>
+              <RowMenu :items="menuItems(s)" @select="(k) => onMenu(s, k)" />
+            </div>
           </div>
-          <div class="shrink-0 text-right text-xs text-text-sub">
-            <div>{{ timeLabel(s.lastTs) }}</div>
-            <div>{{ t('settings.history.msgCount', { n: s.count }) }}</div>
-          </div>
-          <div class="shrink-0" @click.stop>
-            <RowMenu :items="menuItems(s)" @select="(k) => onMenu(s, k)" />
+          <!-- ⑮ 会话摘要内联编辑卡（B3 详情；空 = 清除） -->
+          <div
+            v-if="summaryId === s.id"
+            class="ds-glass mt-1 rounded-panel border border-glass-border p-4"
+          >
+            <div class="mb-2 text-sm font-medium text-text-main">
+              {{ t('settings.history.summaryTitle') }}
+            </div>
+            <textarea
+              v-model="summaryDraft"
+              rows="4"
+              :placeholder="t('settings.history.summaryPlaceholder')"
+              class="ds-control w-full rounded-input p-2 text-sm text-text-main"
+            />
+            <div class="mt-2 flex justify-end gap-2">
+              <button class="text-sm text-text-sub hover:text-text-main" @click="summaryId = null">
+                {{ t('common.cancel') }}
+              </button>
+              <button class="text-sm font-semibold" style="color: var(--ds-brand-to)" @click="saveSummary">
+                {{ t('common.save') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>

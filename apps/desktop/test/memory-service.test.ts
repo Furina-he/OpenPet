@@ -38,4 +38,26 @@ describe('memory-service（F3 RPC + 检索注入）', () => {
     expect(got.length).toBeLessThanOrEqual(4); // pinned(1) + top3
     expect(await makeSvc(store, false).retrieveForChat('aa')).toEqual([]);
   });
+
+  it('⑮ 注入带时间标注：≥1 天「（记于 X前）」（updatedAt 优先）；<1 天不标', async () => {
+    const DAY = 86_400_000;
+    const nowMs = 100 * DAY;
+    const store = new MemoryStore();
+    const oldId = store.memoryInsert('default', '用户养了只猫', [2, 1], nowMs - 3 * DAY);
+    store.memoryInsert('default', '用户刚说的事', [2, 1], nowMs - 1000);
+    const updatedId = store.memoryInsert('default', '旧内容', [2, 1], nowMs - 30 * DAY);
+    store.memoryUpdate(updatedId, '用户考完试了', [2, 1], nowMs - 2 * DAY);
+    store.memorySetPinned(oldId, true);
+    const svc = createMemoryService({
+      store,
+      embed,
+      getPrefs: () => ({ 'privacy.longTermMemory': true }) as unknown as Prefs,
+      character: () => ({ id: 'default' }),
+      now: () => nowMs,
+    });
+    const got = await svc.retrieveForChat('aa');
+    expect(got).toContain('用户养了只猫（记于 3 天前）');
+    expect(got).toContain('用户刚说的事'); // <1 天不标注
+    expect(got).toContain('用户考完试了（记于 2 天前）'); // updatedAt 优先于 createdAt
+  });
 });
