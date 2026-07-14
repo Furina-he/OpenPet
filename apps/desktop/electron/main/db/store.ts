@@ -79,15 +79,40 @@ export interface ConversationStore {
 
   /** 批次⑥ 长期记忆（memory_fact；向量 Float32 BLOB，按 characterId 隔离）。 */
   memoryInsert(characterId: string, text: string, vector: number[], createdAt: number): number;
-  memoryList(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; createdAt: number }>;
-  memoryVectors(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; vector: number[] }>;
+  /** ⑮ 记忆域：update 操作替换 text + vector + updated_at（created_at 不动）。 */
+  memoryUpdate(id: number, text: string, vector: number[], updatedAt: number): void;
+  memoryList(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    createdAt: number;
+    updatedAt: number | null;
+  }>;
+  memoryVectors(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    vector: number[];
+    createdAt: number;
+    updatedAt: number | null;
+  }>;
   memoryDelete(id: number): void;
   memorySetPinned(id: number, pinned: boolean): void;
   memoryClear(characterId: string): void;
+
+  // --- ⑮ 记忆域：会话滚动摘要（session_meta.summary/summary_upto）与区间读取 ---
+  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null };
+  /** upto 缺省不动（用户手动编辑路径以现有水位为底稿继续合并）；summary=null 清除。 */
+  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void;
+  /** (afterId, beforeOrEqId] 半开区间消息，id 升序（摘要器取「窗口外未摘要」段）。 */
+  messagesBetween(
+    characterId: string,
+    sessionId: string,
+    afterId: number,
+    beforeOrEqId: number,
+  ): StoredRow[];
+  /** 会话消息总数与最大行 id（空会话 lastId=0）。 */
+  messageStats(sessionId: string): { count: number; lastId: number };
 
   storageUsage(): StorageUsage;
   /**

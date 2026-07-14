@@ -8,7 +8,7 @@ import type {
   KbDocRow,
   StoredRow,
 } from './store.js';
-import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
+import { MIGRATE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
 
 const require = createRequire(import.meta.url);
 
@@ -45,6 +45,13 @@ export class SqliteStore implements ConversationStore {
     this.db = nativeBinding ? new Database(dbPath, { nativeBinding }) : new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(SCHEMA_SQL);
+    // CREATE IF NOT EXISTS 不改旧表：缺列的旧库按 table_info 条件 ALTER（⑮ 记忆域起）。
+    for (const m of MIGRATE_COLUMNS) {
+      const cols = this.db.pragma(`table_info(${m.table})`) as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === m.column)) {
+        this.db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
+      }
+    }
     this.db
       .prepare('INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)')
       .run('schema_version', String(SCHEMA_VERSION));
@@ -182,24 +189,56 @@ export class SqliteStore implements ConversationStore {
     return Number(info.lastInsertRowid);
   }
 
-  memoryList(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; createdAt: number }> {
+  memoryUpdate(id: number, text: string, vector: number[], updatedAt: number): void {
+    const buf = vector.length > 0 ? Buffer.from(new Float32Array(vector).buffer) : null;
+    this.db
+      .prepare('UPDATE memory_fact SET text = ?, vector = ?, updated_at = ? WHERE id = ?')
+      .run(text, buf, updatedAt, id);
+  }
+
+  memoryList(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    createdAt: number;
+    updatedAt: number | null;
+  }> {
     const rows = this.db
       .prepare(
-        `SELECT id, text, pinned, created_at AS createdAt
+        `SELECT id, text, pinned, created_at AS createdAt, updated_at AS updatedAt
          FROM memory_fact WHERE character_id = ? ORDER BY id ASC`,
       )
-      .all(characterId) as Array<{ id: number; text: string; pinned: number; createdAt: number }>;
+      .all(characterId) as Array<{
+      id: number;
+      text: string;
+      pinned: number;
+      createdAt: number;
+      updatedAt: number | null;
+    }>;
     return rows.map((r) => ({ ...r, pinned: r.pinned === 1 }));
   }
 
-  memoryVectors(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; vector: number[] }> {
+  memoryVectors(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    vector: number[];
+    createdAt: number;
+    updatedAt: number | null;
+  }> {
     const rows = this.db
-      .prepare('SELECT id, text, pinned, vector FROM memory_fact WHERE character_id = ?')
-      .all(characterId) as Array<{ id: number; text: string; pinned: number; vector: Buffer | null }>;
+      .prepare(
+        `SELECT id, text, pinned, vector, created_at AS createdAt, updated_at AS updatedAt
+         FROM memory_fact WHERE character_id = ?`,
+      )
+      .all(characterId) as Array<{
+      id: number;
+      text: string;
+      pinned: number;
+      vector: Buffer | null;
+      createdAt: number;
+      updatedAt: number | null;
+    }>;
     return rows.map((r) => ({
       id: r.id,
       text: r.text,
@@ -207,6 +246,8 @@ export class SqliteStore implements ConversationStore {
       vector: r.vector
         ? Array.from(new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4))
         : [],
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
     }));
   }
 
@@ -391,6 +432,64 @@ export class SqliteStore implements ConversationStore {
          FROM messages WHERE character_id = ? AND session_id = ? ORDER BY ts ASC, id ASC`,
       )
       .all(characterId, sessionId) as StoredRow[];
+  }
+
+  // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---
+  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
+    const row = this.db
+      .prepare('SELECT summary, summary_upto AS upto FROM session_meta WHERE session_id = ?')
+      .get(sessionId) as { summary: string | null; upto: number | null } | undefined;
+    return { summary: row?.summary ?? null, upto: row?.upto ?? null };
+  }
+
+  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
+    // meta 行可能尚不存在：character_id 从消息表回查（session_meta 列 NOT NULL）。
+    const characterId =
+      (
+        this.db
+          .prepare('SELECT character_id AS cid FROM messages WHERE session_id = ? LIMIT 1')
+          .get(sessionId) as { cid: string } | undefined
+      )?.cid ?? '';
+    if (upto === undefined) {
+      this.db
+        .prepare(
+          `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary)
+           VALUES (?, ?, NULL, 0, ?, ?)
+           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary`,
+        )
+        .run(sessionId, characterId, Date.now(), summary);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
+           VALUES (?, ?, NULL, 0, ?, ?, ?)
+           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, summary_upto = excluded.summary_upto`,
+        )
+        .run(sessionId, characterId, Date.now(), summary, upto);
+    }
+  }
+
+  messagesBetween(
+    characterId: string,
+    sessionId: string,
+    afterId: number,
+    beforeOrEqId: number,
+  ): StoredRow[] {
+    return this.db
+      .prepare(
+        `SELECT role, text, finish_reason AS finishReason, ts, tokens_in AS tokensIn, tokens_out AS tokensOut
+         FROM messages WHERE character_id = ? AND session_id = ? AND id > ? AND id <= ?
+         ORDER BY id ASC`,
+      )
+      .all(characterId, sessionId, afterId, beforeOrEqId) as StoredRow[];
+  }
+
+  messageStats(sessionId: string): { count: number; lastId: number } {
+    return this.db
+      .prepare(
+        'SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS lastId FROM messages WHERE session_id = ?',
+      )
+      .get(sessionId) as { count: number; lastId: number };
   }
 
   async backupTo(dbPath: string): Promise<void> {
