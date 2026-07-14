@@ -5,6 +5,7 @@
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MemoryFact } from '@openpet/protocol';
+import { formatIdleDuration } from '@openpet/protocol';
 import Button from '../../components/Button.vue';
 import Input from '../../components/Input.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
@@ -17,7 +18,9 @@ const clearing = ref(false); // ConfirmDialog
 async function load(): Promise<void> {
   const r = (await window.openpet.rpc('memory.list', {})) as { facts: MemoryFact[] };
   facts.value = [...r.facts].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt - a.createdAt,
+    (a, b) =>
+      Number(b.pinned) - Number(a.pinned) ||
+      (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt),
   );
 }
 onMounted(load);
@@ -44,6 +47,13 @@ async function clearAll(): Promise<void> {
 }
 function fmtTime(ts: number): string {
   return new Date(ts).toLocaleString();
+}
+// ⑮ 相对时间（复用 protocol formatIdleDuration，前端本地算）；updatedAt 优先。
+function relTime(f: MemoryFact): string {
+  const base = f.updatedAt ?? f.createdAt;
+  const dur = formatIdleDuration(Math.max(0, Date.now() - base));
+  const rel = dur === '刚刚' ? dur : t('settings.memory.timeAgo', { dur });
+  return f.updatedAt !== null ? t('settings.memory.updatedAt', { rel }) : rel;
 }
 </script>
 
@@ -95,8 +105,8 @@ function fmtTime(ts: number): string {
         </button>
         <div class="min-w-0 flex-1">
           <div class="text-base text-text-main">{{ f.text }}</div>
-          <div class="mt-0.5 text-sm text-text-sub">
-            {{ fmtTime(f.createdAt) }}<span v-if="f.pinned"> · {{ t('settings.memory.pinned') }}</span>
+          <div class="mt-0.5 text-sm text-text-sub" :title="fmtTime(f.updatedAt ?? f.createdAt)">
+            {{ relTime(f) }}<span v-if="f.pinned"> · {{ t('settings.memory.pinned') }}</span>
           </div>
         </div>
         <button

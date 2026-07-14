@@ -79,6 +79,8 @@ export const PrefsSchema = z.object({
   'model.defaultTtsModelId': z.string().default(''),
   'model.defaultRerankModelId': z.string().default(''),
   'model.defaultAgentModelId': z.string().default(''),
+  // ⑮ 杂务模型（记忆提炼/表情分类/会话摘要）；'' = 跟随默认对话模型
+  'model.utilityModelId': z.string().default(''),
 
   // mcp（§4 MCP 接入 + 工具安全门）
   'mcp.servers': z.array(McpServerSchema).default([]),
@@ -121,6 +123,8 @@ export const PrefsSchema = z.object({
   'chat.styleAnchorEnabled': z.boolean().default(true),
   'chat.styleAnchorText': z.string().max(2000).default(''), // 空 = 用内置 DEFAULT_STYLE_ANCHOR
   'chat.regexRules': z.array(RegexRuleSchema).default(REGEX_PRESETS),
+  // ⑮ 记忆域：会话滚动摘要总闸（窗口外轮末合并 ≤300 字，会额外调用杂务模型）
+  'chat.sessionSummary': z.boolean().default(true),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
   // voice（F-VC 语音运行时 + ⑩.6 音色工坊）

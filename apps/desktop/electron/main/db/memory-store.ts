@@ -8,6 +8,7 @@ import type {
 } from './store.js';
 
 interface Row extends StoredRow {
+  id: number;
   characterId: string;
   sessionId: string;
   model: string | null;
@@ -28,7 +29,9 @@ export class MemoryStore implements ConversationStore {
   private clock = 0;
 
   appendMessage(input: AppendMessageInput): number {
+    const id = ++this.seq;
     this.rows.push({
+      id,
       characterId: input.characterId,
       sessionId: input.sessionId,
       role: input.role,
@@ -39,7 +42,7 @@ export class MemoryStore implements ConversationStore {
       tokensOut: input.tokensOut ?? null,
       model: input.model ?? null,
     });
-    return ++this.seq;
+    return id;
   }
 
   recentMessages(characterId: string, sessionId: string, limit: number): StoredRow[] {
@@ -116,29 +119,68 @@ export class MemoryStore implements ConversationStore {
     vector: number[];
     pinned: boolean;
     createdAt: number;
+    updatedAt: number | null;
   }> = [];
   private memorySeq = 0;
 
   memoryInsert(characterId: string, text: string, vector: number[], createdAt: number): number {
     const id = ++this.memorySeq;
-    this.memoryRows.push({ id, characterId, text, vector: [...vector], pinned: false, createdAt });
+    this.memoryRows.push({
+      id,
+      characterId,
+      text,
+      vector: [...vector],
+      pinned: false,
+      createdAt,
+      updatedAt: null,
+    });
     return id;
   }
 
-  memoryList(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; createdAt: number }> {
-    return this.memoryRows
-      .filter((r) => r.characterId === characterId)
-      .map((r) => ({ id: r.id, text: r.text, pinned: r.pinned, createdAt: r.createdAt }));
+  memoryUpdate(id: number, text: string, vector: number[], updatedAt: number): void {
+    const row = this.memoryRows.find((r) => r.id === id);
+    if (!row) return;
+    row.text = text;
+    row.vector = [...vector];
+    row.updatedAt = updatedAt;
   }
 
-  memoryVectors(
-    characterId: string,
-  ): Array<{ id: number; text: string; pinned: boolean; vector: number[] }> {
+  memoryList(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    createdAt: number;
+    updatedAt: number | null;
+  }> {
     return this.memoryRows
       .filter((r) => r.characterId === characterId)
-      .map((r) => ({ id: r.id, text: r.text, pinned: r.pinned, vector: [...r.vector] }));
+      .map((r) => ({
+        id: r.id,
+        text: r.text,
+        pinned: r.pinned,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }));
+  }
+
+  memoryVectors(characterId: string): Array<{
+    id: number;
+    text: string;
+    pinned: boolean;
+    vector: number[];
+    createdAt: number;
+    updatedAt: number | null;
+  }> {
+    return this.memoryRows
+      .filter((r) => r.characterId === characterId)
+      .map((r) => ({
+        id: r.id,
+        text: r.text,
+        pinned: r.pinned,
+        vector: [...r.vector],
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      }));
   }
 
   memoryDelete(id: number): void {
@@ -235,19 +277,33 @@ export class MemoryStore implements ConversationStore {
   // --- 会话管理（session_meta 等价内存表；语义与 SqliteStore SQL 对齐）---
   private readonly sessionMeta = new Map<
     string,
-    { characterId: string; title: string | null; pinned: boolean; createdAt: number }
+    {
+      characterId: string;
+      title: string | null;
+      pinned: boolean;
+      createdAt: number;
+      summary: string | null;
+      summaryUpto: number | null;
+    }
   >();
 
   private metaUpsert(
     sessionId: string,
     characterId: string,
-    patch: Partial<{ title: string | null; pinned: boolean }>,
+    patch: Partial<{
+      title: string | null;
+      pinned: boolean;
+      summary: string | null;
+      summaryUpto: number | null;
+    }>,
   ): void {
     const cur = this.sessionMeta.get(sessionId) ?? {
       characterId,
       title: null as string | null,
       pinned: false,
       createdAt: ++this.clock,
+      summary: null as string | null,
+      summaryUpto: null as number | null,
     };
     this.sessionMeta.set(sessionId, { ...cur, ...patch });
   }
@@ -311,6 +367,54 @@ export class MemoryStore implements ConversationStore {
         tokensIn: r.tokensIn,
         tokensOut: r.tokensOut,
       }));
+  }
+
+  // --- ⑮ 记忆域：会话滚动摘要 + 区间读取（语义与 SqliteStore 对齐）---
+  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
+    const meta = this.sessionMeta.get(sessionId);
+    return { summary: meta?.summary ?? null, upto: meta?.summaryUpto ?? null };
+  }
+
+  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
+    const characterId =
+      this.sessionMeta.get(sessionId)?.characterId ??
+      this.rows.find((r) => r.sessionId === sessionId)?.characterId ??
+      '';
+    this.metaUpsert(
+      sessionId,
+      characterId,
+      upto === undefined ? { summary } : { summary, summaryUpto: upto },
+    );
+  }
+
+  messagesBetween(
+    characterId: string,
+    sessionId: string,
+    afterId: number,
+    beforeOrEqId: number,
+  ): Array<StoredRow & { id: number }> {
+    return this.rows
+      .filter(
+        (r) =>
+          r.characterId === characterId &&
+          r.sessionId === sessionId &&
+          r.id > afterId &&
+          r.id <= beforeOrEqId,
+      )
+      .map((r) => ({
+        id: r.id,
+        role: r.role,
+        text: r.text,
+        finishReason: r.finishReason,
+        ts: r.ts,
+        tokensIn: r.tokensIn,
+        tokensOut: r.tokensOut,
+      }));
+  }
+
+  messageStats(sessionId: string): { count: number; lastId: number } {
+    const hit = this.rows.filter((r) => r.sessionId === sessionId);
+    return { count: hit.length, lastId: hit.length ? Math.max(...hit.map((r) => r.id)) : 0 };
   }
 
   async backupTo(): Promise<void> {

@@ -128,6 +128,30 @@ describe('assembleContext', () => {
     expect(req.messages.at(-1)).toEqual({ role: 'user', content: 'hi' });
     expect(req.messages).toHaveLength(2);
   });
+
+  it('⑮ sessionSummary 注入「早前对话摘要」块，排 lore 后、长期记忆前；缺省无块', () => {
+    const req = assembleContext({
+      store: new MemoryStore(),
+      character: { id: 'c', name: '小灵' },
+      sessionId: 's',
+      userText: 'hi',
+      sessionSummary: '之前聊了工作压力，约好周末去爬山',
+      memories: ['用户在深圳工作'],
+      loreHits: ['城建在悬崖上'],
+    });
+    const sys = req.messages[0]!.content;
+    expect(sys).toContain('早前对话摘要');
+    expect(sys).toContain('去爬山');
+    expect(sys.indexOf('世界设定')).toBeLessThan(sys.indexOf('早前对话摘要'));
+    expect(sys.indexOf('早前对话摘要')).toBeLessThan(sys.indexOf('关于用户的长期记忆'));
+    const bare = assembleContext({
+      store: new MemoryStore(),
+      character: { id: 'c', name: '小灵' },
+      sessionId: 's',
+      userText: 'hi',
+    });
+    expect(bare.messages[0]!.content).not.toContain('早前对话摘要');
+  });
 });
 
 

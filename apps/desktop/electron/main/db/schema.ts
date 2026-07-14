@@ -13,8 +13,13 @@
  * 批次⑥：memory_fact 长期记忆（自由文本+向量+pinned，F-AI-06），additive → 3。
  *
  * 会话管理批次：session_meta（标题/置顶元数据；标题 NULL=派生），additive → 4。
+ *
+ * ⑮ 记忆域：memory_fact 加 `updated_at`（事实生命周期 update 落点；NULL=以 created_at 为准）；
+ * session_meta 加 `summary`/`summary_upto`（会话滚动摘要 + 已覆盖消息 id 水位）。首次出现
+ * **对既有表加列**——CREATE IF NOT EXISTS 不改旧表，旧库由 SqliteStore 构造时按
+ * pragma table_info 条件 ALTER（见 sqlite-store.ts MIGRATE_COLUMNS），additive → 5。
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS messages (
@@ -92,7 +97,8 @@ CREATE TABLE IF NOT EXISTS memory_fact (
   text         TEXT NOT NULL,
   vector       BLOB,
   pinned       INTEGER NOT NULL DEFAULT 0,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_memory_char ON memory_fact(character_id, pinned);
 
@@ -101,6 +107,15 @@ CREATE TABLE IF NOT EXISTS session_meta (
   character_id TEXT NOT NULL,
   title        TEXT,
   pinned       INTEGER NOT NULL DEFAULT 0,
-  created_at   INTEGER NOT NULL
+  created_at   INTEGER NOT NULL,
+  summary      TEXT,
+  summary_upto INTEGER
 );
 `;
+
+/** ⑮ 记忆域旧库迁移：v4 及以前的表缺这些列，打开时按 table_info 条件 ALTER。 */
+export const MIGRATE_COLUMNS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: 'memory_fact', column: 'updated_at', ddl: 'INTEGER' },
+  { table: 'session_meta', column: 'summary', ddl: 'TEXT' },
+  { table: 'session_meta', column: 'summary_upto', ddl: 'INTEGER' },
+];

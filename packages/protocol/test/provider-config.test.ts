@@ -9,6 +9,7 @@ import {
   modelEntryId,
   getModelsUrlForAdapter,
   resolveChatTarget,
+  resolveUtilityTarget,
 } from '../src/provider-config.js';
 import type { ProviderSource, ModelEntry } from '../src/provider-config.js';
 
@@ -142,5 +143,27 @@ describe('resolveChatTarget', () => {
     expect(
       resolveChatTarget([{ ...sources[0]!, enabled: false }], models, 'openai-main/gpt-4o'),
     ).toBeNull();
+  });
+
+  it('⑮ resolveUtilityTarget：设置且可解析→指定模型；空串/悬挂 id→回落默认 chat', () => {
+    const two: ModelEntry[] = [
+      ...models,
+      {
+        id: 'openai-main/gpt-4o-mini',
+        sourceId: 'openai-main',
+        model: 'gpt-4o-mini',
+        enabled: true,
+        caps: {},
+      },
+    ];
+    expect(
+      resolveUtilityTarget(sources, two, 'openai-main/gpt-4o-mini', 'openai-main/gpt-4o')?.model,
+    ).toBe('gpt-4o-mini');
+    expect(resolveUtilityTarget(sources, two, '', 'openai-main/gpt-4o')?.model).toBe('gpt-4o');
+    // 指向已删除的模型 → 回落默认（防悬挂）
+    expect(resolveUtilityTarget(sources, two, 'gone/model', 'openai-main/gpt-4o')?.model).toBe(
+      'gpt-4o',
+    );
+    expect(resolveUtilityTarget(sources, two, '', '')).toBeNull();
   });
 });

@@ -115,6 +115,63 @@ describe('总览统计查询（spec 2026-07-09）', () => {
   });
 });
 
+describe('记忆域 T1（spec 2026-07-14-memory-domain）', () => {
+  it('memoryUpdate 替换 text+vector+updatedAt；list/vectors 行带 createdAt/updatedAt', () => {
+    const s = new MemoryStore();
+    const id = s.memoryInsert('c', '用户在准备考试', [1, 0], 100);
+    expect(s.memoryList('c')[0]).toMatchObject({ id, createdAt: 100, updatedAt: null });
+    expect(s.memoryVectors('c')[0]).toMatchObject({ id, createdAt: 100, updatedAt: null });
+    s.memoryUpdate(id, '用户考完试了', [0, 1], 200);
+    const row = s.memoryList('c')[0]!;
+    expect(row.text).toBe('用户考完试了');
+    expect(row.updatedAt).toBe(200);
+    expect(row.createdAt).toBe(100); // created_at 不动
+    expect(s.memoryVectors('c')[0]!.vector).toEqual([0, 1]);
+  });
+
+  it('sessionSummary：默认空；set 带 upto 推进；不带 upto 保留（手动编辑）；null 清除', () => {
+    const s = new MemoryStore();
+    expect(s.sessionSummaryGet('s')).toEqual({ summary: null, upto: null });
+    s.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: 'x', ts: 1 });
+    s.sessionSummarySet('s', '聊了猫', 5);
+    expect(s.sessionSummaryGet('s')).toEqual({ summary: '聊了猫', upto: 5 });
+    s.sessionSummarySet('s', '用户改写的摘要'); // 手动编辑：upto 不动
+    expect(s.sessionSummaryGet('s')).toEqual({ summary: '用户改写的摘要', upto: 5 });
+    s.sessionSummarySet('s', null);
+    expect(s.sessionSummaryGet('s').summary).toBeNull();
+  });
+
+  it('sessionSummarySet 不冲掉已有 title/pinned；sessionSetTitle 不冲掉 summary', () => {
+    const s = new MemoryStore();
+    s.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: 'x', ts: 1 });
+    s.sessionSetTitle('s', 'c', '标题');
+    s.sessionSetPinned('s', 'c', true);
+    s.sessionSummarySet('s', '摘要', 3);
+    const meta = s.sessionList('c').find((x) => x.id === 's')!;
+    expect(meta.title).toBe('标题');
+    expect(meta.pinned).toBe(true);
+    s.sessionSetTitle('s', 'c', '新标题');
+    expect(s.sessionSummaryGet('s')).toEqual({ summary: '摘要', upto: 3 });
+  });
+
+  it('messageStats/messagesBetween：计数+lastId；(afterId, beforeOrEqId] 半开区间', () => {
+    const s = new MemoryStore();
+    expect(s.messageStats('s')).toEqual({ count: 0, lastId: 0 });
+    const ids: number[] = [];
+    for (let i = 1; i <= 5; i++) {
+      ids.push(
+        s.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: `m${i}`, ts: i }),
+      );
+    }
+    s.appendMessage({ characterId: 'c', sessionId: 'other', role: 'user', text: 'z', ts: 9 });
+    expect(s.messageStats('s')).toEqual({ count: 5, lastId: ids[4]! });
+    expect(
+      s.messagesBetween('c', 's', ids[1]!, ids[3]!).map((m) => m.text),
+    ).toEqual(['m3', 'm4']); // afterId 不含、beforeOrEqId 含
+    expect(s.messagesBetween('c', 's', 0, ids[0]!).map((m) => m.text)).toEqual(['m1']);
+  });
+});
+
 describe('会话管理查询（spec 2026-07-09-session-management）', () => {
   function seed(s: MemoryStore): void {
     s.appendMessage({ characterId: 'c', sessionId: 'a', role: 'user', text: '第一句话题', ts: 10 });

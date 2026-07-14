@@ -21,6 +21,7 @@ import {
   mergeCues,
   parseImOrigin,
   resolveChatTarget,
+  resolveUtilityTarget,
   resolveEmbeddingTarget,
   resolveRerankTarget,
   validateImPlatform,
@@ -45,6 +46,7 @@ import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { createMemoryExtractor } from './memory-extractor.js';
+import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
@@ -438,18 +440,41 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
     return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
   };
+  // ⑮ 杂务模型（记忆提炼/表情兜底/会话摘要）：model.utilityModelId 可解析 → 用之；否则
+  // 回落默认 chat（主模型 anthropic 时配个 openai 兼容小模型即可全功能自救）。testGreeting
+  // 是「试主模型」语义，不换。
+  const utilityTargetWithKey = () => {
+    const p = prefsStore.getAll();
+    const t = resolveUtilityTarget(
+      p['model.providerSources'],
+      p['model.models'],
+      p['model.utilityModelId'],
+      p['model.defaultChatModelId'],
+    );
+    if (!t) return null;
+    const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
+    return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
+  };
   const memoryExtractor = createMemoryExtractor({
     store,
     embed: memoryEmbed,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
-    resolveTarget: chatTargetWithKey,
+    resolveTarget: utilityTargetWithKey,
+    character: () => ({ id: characters.current().characterId }),
+  });
+  // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
+  const sessionSummarizer = createSessionSummarizer({
+    store,
+    fetchImpl: voiceFetch,
+    getPrefs: () => prefsStore.getAll(),
+    resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
   // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（manifest.emotions 键 ?? DEFAULT_EMOTIONS）。
   const emotionFallbackSvc = createEmotionFallback({
     fetchImpl: voiceFetch,
-    resolveTarget: chatTargetWithKey,
+    resolveTarget: utilityTargetWithKey,
     getPrefs: () => prefsStore.getAll(),
     emotions: () => {
       const m = characters.current().manifest;
@@ -525,6 +550,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
     onTurnEnd: (sid) => {
       if (imService?.shouldExtractMemory(sid) ?? true) void memoryExtractor.onTurnEnd(sid);
+      // ⑮ 滚动摘要不受 im 门限制（只摘要本会话，无群聊污染问题，spec §2）。
+      void sessionSummarizer.onTurnEnd(sid);
     },
     // ⑬ 表情分类兜底：IM 轮桌面不演（线 B-1 隔离口径），只对桌面会话生效。
     emotionFallback: (sid, text) => {
@@ -566,6 +593,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         characters.current().manifest.persona?.styleAnchor ??
         (p['chat.styleAnchorText'].trim() || DEFAULT_STYLE_ANCHOR)
       );
+    },
+    // ⑮ 会话滚动摘要注入供给（summaryStage 纯 store 读；开关关 = null 块消失）。
+    sessionSummary: (sid) => {
+      if (!prefsStore.getAll()['chat.sessionSummary']) return null;
+      return store.sessionSummaryGet(sid).summary;
     },
     // ⑭ 自然节奏：core 句缓冲分段+打字延迟+段级口癖正则（关 = null 直通零回归）。
     rhythm: () => {
@@ -696,6 +728,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       store.sessionSetTitle(p.id, characters.current().characterId, p.title);
       return { ok: true as const };
     },
+    // --- ⑮ 记忆域：会话摘要读写（B3 详情编辑；IM 会话同样适用不设门）---
+    'session.summaryGet': (p) => ({ summary: store.sessionSummaryGet(p.id).summary }),
+    'session.summarySet': (p) => {
+      const text = p.summary.trim();
+      store.sessionSummarySet(p.id, text ? text : null); // 空 = 清除；upto 不动
+      return { ok: true as const };
+    },
     'chat.sessionPin': (p) => {
       assertNotImSession(p.id);
       store.sessionSetPinned(p.id, characters.current().characterId, p.pinned);
@@ -738,6 +777,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { cancelled: false as const, path: out };
     },
     'chat.setActiveSession': (p) => {
+      void memoryExtractor.flush(); // ⑮ 会话切换前收尾未提炼的轮（防抖内跳过）
       writeActiveSession(
         {
           getMap: () => prefsStore.getAll()['chat.activeSessions'],
@@ -892,6 +932,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       };
     },
     'character.switch': (p) => {
+      void memoryExtractor.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
       characters.switch(p.id);
       broadcast('character.changed', { characterId: p.id });
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
@@ -1049,6 +1090,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       if (fullscreen) interactions.trigger('desktop.fullscreen');
     },
     dispose: async () => {
+      const memoryFlush = memoryExtractor.flush(); // ⑮ 退出前收尾（store.close 前 await）
       ipcMain.removeHandler('openpet:rpc');
       scheduler.stop();
       interactions.dispose();
@@ -1057,6 +1099,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       await starHost.stop();
       await chat.dispose();
       await mcpManager.disconnectAll();
+      await memoryFlush;
       store.close();
       prefsStore.close();
     },

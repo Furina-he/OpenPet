@@ -177,6 +177,92 @@ describe('resolveNativeBinding（Electron ABI 双版共存，spec: 债表 ABI �
   });
 });
 
+describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义对齐 + 旧库迁移）', () => {
+  it('memoryUpdate/sessionSummary/messageStats/messagesBetween 全链路（跨重开持久化）', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-memdomain-'));
+    const path = join(dir, 'sessions.db');
+    const s1 = new SqliteStore(path);
+    const factId = s1.memoryInsert('c', '用户在准备考试', [1, 0], 100);
+    expect(s1.memoryList('c')[0]).toMatchObject({ id: factId, createdAt: 100, updatedAt: null });
+    s1.memoryUpdate(factId, '用户考完试了', [0, 1], 200);
+
+    const ids: number[] = [];
+    for (let i = 1; i <= 5; i++) {
+      ids.push(
+        s1.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: `m${i}`, ts: i }),
+      );
+    }
+    s1.sessionSetTitle('s', 'c', '标题');
+    s1.sessionSummarySet('s', '聊了猫', ids[2]!);
+    s1.close();
+
+    const s2 = new SqliteStore(path); // 重开：全部持久化
+    try {
+      const fact = s2.memoryList('c')[0]!;
+      expect(fact.text).toBe('用户考完试了');
+      expect(fact.createdAt).toBe(100);
+      expect(fact.updatedAt).toBe(200);
+      expect(s2.memoryVectors('c')[0]).toMatchObject({ createdAt: 100, updatedAt: 200 });
+      expect(s2.memoryVectors('c')[0]!.vector).toEqual([0, 1]);
+
+      expect(s2.sessionSummaryGet('s')).toEqual({ summary: '聊了猫', upto: ids[2]! });
+      s2.sessionSummarySet('s', '手动改'); // upto 不动
+      expect(s2.sessionSummaryGet('s')).toEqual({ summary: '手动改', upto: ids[2]! });
+      expect(s2.sessionList('c')[0]!.title).toBe('标题'); // summary 写入不冲 title
+      s2.sessionSummarySet('s', null);
+      expect(s2.sessionSummaryGet('s').summary).toBeNull();
+
+      expect(s2.messageStats('s')).toEqual({ count: 5, lastId: ids[4]! });
+      expect(s2.messageStats('nope')).toEqual({ count: 0, lastId: 0 });
+      expect(s2.messagesBetween('c', 's', ids[1]!, ids[3]!).map((m) => m.text)).toEqual([
+        'm3',
+        'm4',
+      ]);
+    } finally {
+      s2.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('v4 旧库（无 updated_at/summary 列）打开即迁移，旧数据保留', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-migrate-'));
+    const path = join(dir, 'sessions.db');
+    const Database = loadBetterSqlite();
+    const raw = new Database(path);
+    raw.exec(`
+      CREATE TABLE memory_fact (
+        id INTEGER PRIMARY KEY, character_id TEXT NOT NULL, text TEXT NOT NULL,
+        vector BLOB, pinned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE session_meta (
+        session_id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+      );
+    `);
+    raw
+      .prepare('INSERT INTO memory_fact(character_id, text, vector, pinned, created_at) VALUES (?, ?, NULL, 1, ?)')
+      .run('c', '旧事实', 42);
+    raw
+      .prepare('INSERT INTO session_meta(session_id, character_id, title, pinned, created_at) VALUES (?, ?, ?, 0, 1)')
+      .run('s', 'c', '旧标题');
+    raw.close();
+
+    const s = new SqliteStore(path); // 打开旧库 → ALTER 迁移
+    try {
+      const fact = s.memoryList('c')[0]!;
+      expect(fact).toMatchObject({ text: '旧事实', pinned: true, createdAt: 42, updatedAt: null });
+      s.memoryUpdate(fact.id, '新事实', [1], 99);
+      expect(s.memoryList('c')[0]).toMatchObject({ text: '新事实', updatedAt: 99 });
+      expect(s.sessionSummaryGet('s')).toEqual({ summary: null, upto: null });
+      s.sessionSummarySet('s', '迁移后可写', 7);
+      expect(s.sessionSummaryGet('s')).toEqual({ summary: '迁移后可写', upto: 7 });
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(!available)('SqliteStore 会话管理查询（与 MemoryStore 语义对齐）', () => {
   it('sessionList/SetTitle/SetPinned/Delete/Messages 全链路', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-session-'));
