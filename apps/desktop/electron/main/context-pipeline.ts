@@ -1,8 +1,9 @@
 /**
  * ContextPipeline —— chat.send 的前置上下文管道（arch-evolution #2 拆分产物）。
  *
- * 有序 stage 数组（照 AstrBot STAGES_ORDER 声明式）：kbStage → toolsStage 收集
- * { kbHits, tools } 后 assembleContext。§6 Persona 等后续能力只加 stage，不动 ChatService。
+ * 有序 stage 数组（照 AstrBot STAGES_ORDER 声明式）：kb/memory/lore/summary 四个检索
+ * stage **并行**（⑮ spec §5，互不依赖各写 bag 槽位，延迟 ≈ 最慢单项）→ toolsStage →
+ * assembleContext。§6 Persona 等后续能力只加 stage，不动 ChatService。
  *
  * kbStage 带 1.5s 超时兜底（arch-evolution #5）：检索超时/异常 → 空 hits，不阻断对话。
  */
@@ -122,12 +123,15 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
     bag.tools = deps.mcp?.activeToolDefs(() => true) ?? [];
   };
 
-  const stages = [kbStage, memoryStage, loreStage, summaryStage, toolsStage];
+  // ⑮ 并行检索（spec §5）：四个检索 stage 互不依赖（各写 bag 自己的槽位），并行后
+  // 组装产物与串行逐字节一致；任一 stage 抛错吞掉（检索是增益，不阻断对话）。
+  const retrievalStages = [kbStage, memoryStage, loreStage, summaryStage];
 
   return {
     async build(input: BuildInput): Promise<ChatRequest> {
       const bag: StageBag = { kbHits: [], memories: [], loreHits: [], sessionSummary: '', tools: [] };
-      for (const stage of stages) await stage(input, bag);
+      await Promise.all(retrievalStages.map((stage) => stage(input, bag).catch(() => {})));
+      await toolsStage(input, bag); // 同步取定义，无 IO
       // ContextAssembler：system prompt(人设+persona+行为标签规约 + §5 参考资料) + 最近 20 轮 + 当前 user。
       const personaSel = deps.persona?.() ?? null;
       const mc = deps.macroUser?.();

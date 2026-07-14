@@ -72,6 +72,45 @@ describe('⑮ summaryStage', () => {
   });
 });
 
+describe('⑮ 并行检索（spec §5）', () => {
+  it('慢 kb 不阻塞 memory：两 stage 并发启动（串行则 kb 结束才轮到 memory）', async () => {
+    const events: string[] = [];
+    const pipeline = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'c', name: '小灵' }),
+      retrieveKb: async () => {
+        events.push('kb:start');
+        await new Promise((r) => setTimeout(r, 30));
+        events.push('kb:end');
+        return [{ text: 'kb 片段' }];
+      },
+      retrieveMemory: async () => {
+        events.push('memory:start');
+        return ['用户在深圳工作'];
+      },
+    });
+    const req = await pipeline.build({ sessionId: 's', userText: 'hi' });
+    expect(events.indexOf('memory:start')).toBeLessThan(events.indexOf('kb:end'));
+    // 组装产物与串行版一致：两块都注入且顺序不变（memory 在 kb 前）
+    const sys = req.messages[0]!.content;
+    expect(sys).toContain('kb 片段');
+    expect(sys.indexOf('深圳')).toBeLessThan(sys.indexOf('kb 片段'));
+  });
+
+  it('单 stage 抛错（lore 供给炸）→ 其余 stage 照常注入，对话不阻断', async () => {
+    const pipeline = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'c', name: '小灵' }),
+      retrieveMemory: async () => ['用户在深圳工作'],
+      lorebook: () => {
+        throw new Error('lore boom');
+      },
+    });
+    const req = await pipeline.build({ sessionId: 's', userText: 'hi' });
+    expect(req.messages[0]!.content).toContain('深圳');
+  });
+});
+
 describe('⑫ loreStage', () => {
   it('命中注入 + trace context.lore；无 lorebook 供给不触发', async () => {
     const store = new MemoryStore();
