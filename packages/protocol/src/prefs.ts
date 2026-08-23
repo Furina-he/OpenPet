@@ -6,6 +6,7 @@ import { PersonaSchema } from './persona-config.js';
 import { ImPlatformSchema } from './im-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
 import { RegexRuleSchema, REGEX_PRESETS } from './humanize.js';
+import { DEFAULT_MARKET_SOURCES } from './market.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
@@ -102,6 +103,8 @@ export const PrefsSchema = z.object({
   // plugins（线 B-2 Desktop 插件运行时）
   'plugins.disabled': z.array(z.string()).default([]),
   'plugins.marketSources': z.array(z.string()).default([]),
+  // market（⑯ 角色市场：静态索引多源；直连 GitHub 不通是硬约束 → 预置 CDN + raw 两条）
+  'market.sources': z.array(z.string()).default(() => [...DEFAULT_MARKET_SOURCES]),
   // star（线 B-2 AstrBot Star 兼容宿主）
   'star.disabled': z.array(z.string()).default([]),
   'star.pipIndexUrl': z.string().default('https://pypi.tuna.tsinghua.edu.cn/simple'),
