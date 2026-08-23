@@ -9,6 +9,7 @@ export const en: LocaleMessages = {
     close: 'Close',
     open: 'Open',
     add: 'Add',
+    refresh: 'Refresh',
     edit: 'Edit',
     enabled: 'Enabled',
     disabled: 'Disabled',
@@ -606,6 +607,58 @@ export const en: LocaleMessages = {
       confirmResetTitle: 'Reset emotion mapping?',
       confirmResetDetail:
         'Clears this pack’s emotion mapping override and restores the built-in runtime defaults.',
+      // ⑯ character market v1
+      tab: {
+        mine: 'My characters',
+        market: 'Market',
+      },
+      market: {
+        title: 'Character market',
+        searchPlaceholder: 'Search name / tags / author',
+        types: {
+          all: 'All types',
+          soul: 'Soul pack',
+          full: 'Full pack',
+          ref: 'External model',
+        },
+        typeLabel: 'Type',
+        loading: 'Loading…',
+        empty: 'No matching characters. Try another keyword, or add a source under “Manage sources”.',
+        allSourcesFailed:
+          'Every market source failed. Check your network, or switch sources under “Manage sources”.',
+        manageSources: 'Manage sources',
+        sourcePlaceholder: 'https://…/index.json',
+        sourcesHint:
+          'Two official sources are preset (jsDelivr and GitHub raw); add your own mirror if neither is reachable. Source maintainers are responsible for their listings — downloads are still sha256-verified.',
+        noSources: 'No market sources yet. Add one, or click “Restore defaults”.',
+        restoreDefaults: 'Restore defaults',
+        sourceInvalid: 'Invalid source URL (http/https only)',
+        sourceCount: '{n} items',
+        sourceFailed: 'fetch failed',
+        sourceErrorTitle: 'Market source failed',
+        sourceErrorHint:
+          'Other sources are unaffected. If it keeps failing, remove the source or use a mirror.',
+        droppedHint: '{n} malformed entries ignored',
+        fetchFailed: 'Market fetch failed: {detail}',
+        downloadFailed: 'Download failed: {detail}',
+        state: {
+          new: 'Install',
+          installed: 'Installed',
+          updatable: 'Update',
+          needsUpgrade: 'App upgrade required',
+        },
+        confirmTitle: 'Install this character?',
+        licenseHint:
+          'Content and licensing are the uploader’s responsibility — check the terms cover your use before installing.',
+        modelSourceTitle: 'Where to get the model',
+        openModelSource: 'Open model page',
+        refHint:
+          'This listing ships no model files. Get the model yourself, import it as a character pack, then pick it under “Appearance source” below.',
+        confirmUpdateTitle: 'Update to the new version?',
+        confirmUpdateDetail:
+          '“{name}” (v{from}) will be uninstalled first, then v{to} installed. Any customisations you made to this character will be lost.',
+        updateLabel: 'Uninstall and update',
+      },
     },
     editor: {
       emptyTitle: 'No editable characters yet',
