@@ -23,6 +23,7 @@ import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
 import { UpdateStatusSchema } from './update-config.js';
+import { MarketItemSchema, MarketItemTypeSchema } from './market.js';
 
 /**
  * Method registry — single source of truth for IPC contracts.
@@ -425,6 +426,11 @@ export const Methods = {
     params: z.object({ path: z.string().min(1), donorId: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), id: z.string() }),
   },
+  'character.importSoulApply': {
+    // ⑯ 灵魂包（.dssoul）安装：灵魂来自包 + 形象复制自 donorId 所指已装包（复用 ⑫ 合成路径）。
+    params: z.object({ path: z.string().min(1), donorId: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
   'character.remove': {
     // 仅导入包可卸；卸当前角色 → 先切回 default。
     params: z.object({ id: z.string().min(1) }),
@@ -780,6 +786,48 @@ export const Methods = {
       lastError: z.string().optional(),
     }),
     result: z.null(),
+  },
+
+  // --- request/response: Renderer → Main（⑯ 角色市场：静态索引浏览 + 校验下载）---
+  'market.fetchIndex': {
+    // 多源并发拉取 + 逐条 Zod 校验（坏条目丢弃）+ 按 id 合并去重（先出现的源优先）。
+    params: z.object({}),
+    result: z.object({
+      items: z.array(MarketItemSchema),
+      sources: z.array(
+        z.object({
+          url: z.string(),
+          ok: z.boolean(),
+          count: z.number().int().nonnegative(),
+          error: z.string().optional(),
+        }),
+      ),
+      /** 全部源合计被丢弃的坏条目数（UI 提示用）。 */
+      dropped: z.number().int().nonnegative(),
+    }),
+  },
+  'market.download': {
+    // 下载到临时文件 + sha256 校验（不符即删并 -32602）+ 按 type 解析摘要。**不安装**。
+    params: z.object({
+      url: z.string().url(),
+      sha256: z.string().min(1),
+      type: MarketItemTypeSchema,
+    }),
+    result: z.object({
+      path: z.string(),
+      /** 落位路径：pack=character.importApply，soul=character.importSoulApply。 */
+      kind: z.enum(['pack', 'soul']),
+      summary: z.object({
+        id: z.string(),
+        name: z.string(),
+        version: z.string(),
+        engine: z.string().optional(),
+        author: z.string().optional(),
+        license: z.string().optional(),
+        greetingCount: z.number().int().optional(),
+        lorebookCount: z.number().int().optional(),
+      }),
+    }),
   },
 
   // --- request/response: Renderer → Main（§5 知识库 / 自动 RAG）---

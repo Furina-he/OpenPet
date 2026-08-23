@@ -59,6 +59,8 @@ import { createCharacterService } from './character-service.js';
 import { runTestGreeting, pickGreeting } from './character-greeting.js';
 import { inspectPack, installPack } from './pack-import.js';
 import { inspectStCard, installStCard } from './st-card-import.js';
+import { installSoulPack } from './soul-compose.js';
+import { createMarketService } from './market-service.js';
 import { removeCharacter } from './character-ops.js';
 import { DesktopPluginHost } from './plugins/desktop-plugin-host.js';
 import { mergeToolPorts } from './plugins/tool-port-merge.js';
@@ -655,6 +657,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   const { resolveFor: _personaResolve, ...personaHandlers } = personaService;
   // 线 B-2：startAll 是启动期内部 API，非 RPC handler —— 同款剔除。
   const { startAll: _pluginStartAll, ...pluginHandlers } = pluginService;
+  // ⑯ 角色市场：静态索引多源拉取 + sha256 校验下载（fetch 走与插件市场同款网关句柄）。
+  const marketService = createMarketService({
+    fetchImpl: (url) => pluginFetch(url),
+    getSources: () => prefsStore.getAll()['market.sources'],
+  });
   // 嵌入维度「自动检测」/ 源级检测（照 AstrBot）：embed 一段探针读向量维度 + 延迟。源需已保存（key 经 fetch 网关注入）。
   const detectEmbeddingDim = async (p: { sourceId: string; model: string }) => {
     const all = prefsStore.getAll();
@@ -685,6 +692,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     ...memoryHandlers,
     ...personaHandlers,
     ...pluginHandlers,
+    ...marketService,
     ...prefsService,
     'provider.detectEmbeddingDim': detectEmbeddingDim,
     ...(deps.appService ?? {}),
@@ -976,6 +984,25 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         importedRoot,
         exists: (x) => characters.rootOf(x) !== null,
       });
+      characters.invalidate();
+      return { ok: true as const, id };
+    },
+    // ⑯ 灵魂包安装（市场 soul/ref 型的落位路径；与 ST 卡导入共用 composeFromDonor）。
+    'character.importSoulApply': (p) => {
+      const donorRoot = characters.rootOf(p.donorId);
+      if (!donorRoot) throw new RpcError(-32602, `形象来源角色不存在: ${p.donorId}`);
+      let id: string;
+      try {
+        ({ id } = installSoulPack({
+          soulPath: p.path,
+          donorId: p.donorId,
+          donorRoot,
+          importedRoot,
+          exists: (x) => characters.rootOf(x) !== null,
+        }));
+      } catch (e) {
+        throw new RpcError(-32602, `灵魂包安装失败：${e instanceof Error ? e.message : String(e)}`);
+      }
       characters.invalidate();
       return { ok: true as const, id };
     },
