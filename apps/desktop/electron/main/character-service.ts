@@ -95,6 +95,7 @@ export function createCharacterService(deps: CharacterServiceDeps): CharacterSer
     const out: Array<LoadedCharacter & { builtin: boolean }> = [];
     for (const ent of readdirSync(root, { withFileTypes: true })) {
       if (!ent.isDirectory()) continue;
+      if (ent.name.endsWith('.bak')) continue; // ⑰ 换形象备份目录不是角色包
       try {
         out.push({ ...load(ent.name), builtin });
       } catch (e) {

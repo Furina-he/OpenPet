@@ -58,9 +58,15 @@ import { assembleDiag } from './crash-payload.js';
 import { createCharacterService } from './character-service.js';
 import { runTestGreeting, pickGreeting } from './character-greeting.js';
 import { inspectPack, installPack } from './pack-import.js';
-import { inspectBody, installBody, listBodies, removeBody } from './body-pack.js';
+import {
+  inspectBody,
+  installBody,
+  listBodies,
+  readInstalledBody,
+  removeBody,
+} from './body-pack.js';
 import { inspectStCard, installStCard } from './st-card-import.js';
-import { installSoulPack } from './soul-compose.js';
+import { installSoulPack, swapBody } from './soul-compose.js';
 import { createMarketService } from './market-service.js';
 import { removeCharacter } from './character-ops.js';
 import { DesktopPluginHost } from './plugins/desktop-plugin-host.js';
@@ -1071,6 +1077,27 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'body.remove': (p) => {
       removeBody(bodiesRoot, p.id);
       return { ok: true as const };
+    },
+    // ⑰ 一键换形象：characterId 不变 ⇒ 记忆/会话/人设/音色原地保留（"换皮不换人"）。
+    'character.swapBody': (p) => {
+      let body;
+      try {
+        body = readInstalledBody(bodiesRoot, p.bodyId).body;
+      } catch (e) {
+        throw new RpcError(-32602, `形象不存在或已损坏：${e instanceof Error ? e.message : String(e)}`);
+      }
+      swapBody({
+        characterId: p.characterId,
+        characterRoot: characters.rootOf(p.characterId),
+        importedRoot,
+        body,
+        bodyDir: path.join(bodiesRoot, p.bodyId),
+      });
+      characters.invalidate();
+      if (characters.current().characterId === p.characterId) {
+        broadcast('character.changed', { characterId: p.characterId }); // 换当前角色 → 两渲染窗热重载
+      }
+      return { ok: true as const, id: p.characterId };
     },
     'character.testGreeting': async (p) => {
       const c = characters.list().find((x) => x.characterId === p.id);

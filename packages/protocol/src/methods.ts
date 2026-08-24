@@ -513,6 +513,12 @@ export const Methods = {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'character.swapBody': {
+    // ⑰ 一键换形象（本批核心）：characterId 不变 ⇒ 记忆/会话/人设/音色原地保留，
+    // 肉体字段整组换成形象包的。内置角色只读（-32602）；命中当前角色补发 character.changed。
+    params: z.object({ characterId: z.string().min(1), bodyId: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
   // --- notification: Main → character/overlay（角色已切换；两窗 location.reload()）---
   'character.changed': { params: z.object({ characterId: z.string() }), result: z.null() },
 

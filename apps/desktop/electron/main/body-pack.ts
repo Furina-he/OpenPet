@@ -90,8 +90,9 @@ function dirSize(dir: string): number {
   return total;
 }
 
-/** 读单个已装形象（目录名即 id；不符/坏包抛错）。 */
+/** 读单个已装形象（目录名即 id；id 形状强校验挡路径注入，不符/坏包抛错）。 */
 export function readInstalledBody(bodiesRoot: string, id: string): InstalledBody {
+  if (!CHARACTER_ID_RE.test(id)) throw new Error(`非法形象 id: ${id}`);
   const dir = path.join(bodiesRoot, id);
   const body = BodyPackSchema.parse(JSON.parse(readFileSync(path.join(dir, 'body.json'), 'utf8')));
   if (body.id !== id) throw new Error(`body id "${body.id}" mismatches directory "${id}"`);
