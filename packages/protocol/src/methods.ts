@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CharacterManifestSchema } from './character-manifest.js';
+import { BodyPackSchema, CharacterManifestSchema } from './character-manifest.js';
 import { ErrorKindSchema } from './schemas.js';
 import { PrefsSchema } from './prefs.js';
 import {
@@ -401,31 +401,6 @@ export const Methods = {
     params: z.object({ path: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), id: z.string() }),
   },
-  'character.importCardPick': {
-    // ⑫ ST 卡两段式①：系统选择框（png/charx/json）+ 解析摘要（不安装）；坏卡 -32602。
-    params: z.object({}),
-    result: z.union([
-      z.object({ cancelled: z.literal(true) }),
-      z.object({
-        cancelled: z.literal(false),
-        path: z.string(),
-        summary: z.object({
-          name: z.string(),
-          creator: z.string(),
-          version: z.string(),
-          greetingCount: z.number().int(),
-          lorebookCount: z.number().int(),
-          tags: z.array(z.string()),
-          hasAvatar: z.boolean(),
-        }),
-      }),
-    ]),
-  },
-  'character.importCardApply': {
-    // ⑫ ST 卡两段式②：灵魂来自卡 + 形象复制自 donorId 所指已装包（spec §3）。
-    params: z.object({ path: z.string().min(1), donorId: z.string().min(1) }),
-    result: z.object({ ok: z.literal(true), id: z.string() }),
-  },
   'character.importSoulApply': {
     // ⑯ 灵魂包（.dssoul）安装：灵魂来自包 + 形象复制自 donorId 所指已装包（复用 ⑫ 合成路径）。
     params: z.object({ path: z.string().min(1), donorId: z.string().min(1) }),
@@ -471,6 +446,53 @@ export const Methods = {
     // E4 外观 Tab preview 下拉数据源：包内文件相对路径列表（不含 manifest.json）。
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ files: z.array(z.string()) }),
+  },
+  // --- request/response: Renderer → Main（⑰ 形象库 = userData/bodies，与 characters 平行）---
+  'body.list': {
+    // 已装肉体包列表（E1「形象」tab 网格）；坏包跳过。
+    params: z.object({}),
+    result: z.object({
+      bodies: z.array(
+        z.object({
+          body: BodyPackSchema,
+          sizeBytes: z.number(),
+          installedAt: z.number(),
+        }),
+      ),
+    }),
+  },
+  'body.importPick': {
+    // ⑰ 两段式①：选 .dsbody + 解析 body.json 摘要（不安装）。
+    params: z.object({}),
+    result: z.union([
+      z.object({ cancelled: z.literal(true) }),
+      z.object({
+        cancelled: z.literal(false),
+        path: z.string(),
+        summary: z.object({
+          id: z.string(),
+          name: z.string(),
+          version: z.string(),
+          engine: z.string(),
+        }),
+      }),
+    ]),
+  },
+  'character.importBodyApply': {
+    // ⑰ 两段式②：装进 userData/bodies/<id>（市场 body 型与本地 .dsbody 共用）。
+    params: z.object({ path: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
+  'body.remove': {
+    // 删除形象包（不影响已用它换过形象的角色——形象是整目录复制进角色包的）。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'character.swapBody': {
+    // ⑰ 一键换形象（本批核心）：characterId 不变 ⇒ 记忆/会话/人设/音色原地保留，
+    // 肉体字段整组换成形象包的。内置角色只读（-32602）；命中当前角色补发 character.changed。
+    params: z.object({ characterId: z.string().min(1), bodyId: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
   },
   // --- notification: Main → character/overlay（角色已切换；两窗 location.reload()）---
   'character.changed': { params: z.object({ characterId: z.string() }), result: z.null() },
@@ -815,8 +837,8 @@ export const Methods = {
     }),
     result: z.object({
       path: z.string(),
-      /** 落位路径：pack=character.importApply，soul=character.importSoulApply。 */
-      kind: z.enum(['pack', 'soul']),
+      /** 落位路径：pack=character.importApply，soul=character.importSoulApply，body=character.importBodyApply。 */
+      kind: z.enum(['pack', 'soul', 'body']),
       summary: z.object({
         id: z.string(),
         name: z.string(),

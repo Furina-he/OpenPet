@@ -1,11 +1,14 @@
 /**
- * ⑯ 灵魂/肉体合成（spec §2）——「灵魂（人设文本）+ donor 形象目录 → 完整角色包」。
+ * ⑯ 灵魂/肉体合成（spec §2）——「灵魂（人设文本）+ donor 形象目录 → 完整角色包」，
+ * 以及 ⑰ 反向操作 `swapBody`（已装角色原地换形象，characterId 不变）。
  *
- * 本函数是 ⑫ ST 卡导入既有逻辑的抽取（行为不变，st-card-import 现调用它），
- * ⑯ 的 `.dssoul` 灵魂包安装复用同一条路径：`CharacterManifestSchema` 强制
+ * `.dssoul` 灵魂包安装走 composeFromDonor：`CharacterManifestSchema` 强制
  * `engine` + `model`，纯灵魂不是合法角色包，必须与已装包的肉体字段合成。
  *
- * 自包含裁定（承 ⑫）：整目录复制 donor，不做跨包引用，换来卸载/导出/复制零特例。
+ * 灵魂/肉体字段的切分线是 protocol 的 `BODY_FIELDS`/`SOUL_FIELDS`（唯一真源）：
+ * 合成与换形象读同一张表，谁也不许在本文件里再抄一份。
+ *
+ * 自包含裁定：整目录复制形象，不做跨包引用，换来卸载/导出/复制零特例。
  * staging（mkdtemp）→ rename 落位，跨盘 EXDEV 降级 cpSync（照 pack-import 模式）。
  */
 import AdmZip from 'adm-zip';
@@ -15,14 +18,18 @@ import path from 'node:path';
 import {
   CharacterManifestSchema,
   isSafeRelPath,
+  pickBodyFields,
+  pickSoulFields,
   SoulPackSchema,
+  type BodyPack,
   type CharacterManifest,
   type PackLorebook,
   type PackPersona,
   type SoulPack,
 } from '@openpet/protocol';
+import { RpcError } from './router.js';
 
-/** 灵魂层最小面（⑫ 的 StCardSoul 与 ⑯ 的 SoulPack 都满足）。 */
+/** 灵魂层最小面（`.dssoul` 的 SoulPack 满足；⑰ 起它是唯一灵魂来源）。 */
 export interface SoulLike {
   name: string;
   version: string;
@@ -36,13 +43,13 @@ export interface SoulLike {
 
 export interface ComposeFromDonorOpts {
   soul: SoulLike;
-  /** 新角色 id（调用方决定：ST 卡 = pickCharacterId 派生，灵魂包 = soul.id）。 */
+  /** 新角色 id（调用方决定；灵魂包 = soul.id）。 */
   id: string;
   donorId: string;
   /** rootOf(donorId) 结果（builtin 或 userData 根均可作形象来源）。 */
   donorRoot: string;
   importedRoot: string;
-  /** 额外写进包内的文件（ST 卡头像 / 灵魂包 preview）；相对路径已由调用方校验。 */
+  /** 额外写进包内的文件（灵魂包 preview 图）；相对路径已由调用方校验。 */
   extraFiles?: Array<{ relPath: string; data: Buffer }>;
   /** manifest.preview 覆盖；缺省承 donor.preview。 */
   preview?: string;
@@ -56,7 +63,7 @@ export function readDonorManifest(donorRoot: string, donorId: string): Character
 }
 
 /**
- * 合成落位：肉体承 donor（engine/model/词表/cues），灵魂来自 soul；
+ * 合成落位：肉体承 donor（BODY_FIELDS），灵魂来自 soul（SOUL_FIELDS）；
  * donor 的 id/voice/元数据不承（spec §3）。返回新角色 id。
  */
 export function composeFromDonor(opts: ComposeFromDonorOpts): { id: string } {
@@ -72,22 +79,10 @@ export function composeFromDonor(opts: ComposeFromDonorOpts): { id: string } {
     }
     const manifest: CharacterManifest = CharacterManifestSchema.parse({
       id,
-      name: soul.name,
-      version: soul.version,
-      engine: donor.engine,
-      model: donor.model,
-      ...(donor.emotions ? { emotions: donor.emotions } : {}),
-      ...(donor.actions ? { actions: donor.actions } : {}),
-      ...(donor.cues ? { cues: donor.cues } : {}),
-      ...(donor.live2dEmotions ? { live2dEmotions: donor.live2dEmotions } : {}),
-      ...(donor.live2dMotions ? { live2dMotions: donor.live2dMotions } : {}),
-      ...(opts.preview ? { preview: opts.preview } : donor.preview ? { preview: donor.preview } : {}),
-      persona: soul.persona,
-      ...(soul.lorebook ? { lorebook: soul.lorebook } : {}),
-      ...(soul.author ? { author: soul.author } : {}),
-      ...(soul.description ? { description: soul.description } : {}),
-      ...(soul.license ? { license: soul.license } : {}),
-      ...(soul.tags ? { tags: soul.tags } : {}),
+      ...pickBodyFields(donor),
+      ...pickSoulFields(soul),
+      // 灵魂包自带 preview 图 → 覆盖 donor 的（preview 属肉体字段，故必须排在 body 之后）
+      ...(opts.preview ? { preview: opts.preview } : {}),
     });
     writeFileSync(path.join(stagingPack, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     mkdirSync(opts.importedRoot, { recursive: true });
@@ -147,4 +142,83 @@ export function installSoulPack(opts: InstallSoulPackOpts): { id: string } {
     importedRoot: opts.importedRoot,
     ...(preview ? { extraFiles: [preview], preview: preview.relPath } : {}),
   });
+}
+
+// --- ⑰ 一键换形象（spec §2）---
+
+export interface SwapBodyOpts {
+  characterId: string;
+  /** `characters.rootOf(characterId)` 结果（null = 不存在）。 */
+  characterRoot: string | null;
+  /** 导入包根；目标角色必须在这里（内置角色只读）。 */
+  importedRoot: string;
+  /** 形象包 body.json（已过 BodyPackSchema）。 */
+  body: BodyPack;
+  /** 形象包目录（bodiesRoot/<bodyId>）。 */
+  bodyDir: string;
+  /** 落位提交；缺省 rename + 跨盘 EXDEV 降级 cpSync（测试注入故障点验回滚）。 */
+  commit?: (stagingPack: string, dest: string) => void;
+}
+
+function commitMove(stagingPack: string, dest: string): void {
+  try {
+    renameSync(stagingPack, dest);
+  } catch {
+    cpSync(stagingPack, dest, { recursive: true }); // 跨盘 EXDEV（照 pack-import）
+  }
+}
+
+/**
+ * 换形象 = 切分线的反向操作：**characterId 不变**，灵魂字段照抄旧 manifest，
+ * 肉体字段整组取自形象包 → 记忆/会话/人设/音色按 id 索引，全部原地保留（"换皮不换人"）。
+ *
+ * 先校验 + staging 备齐（失败时角色目录零改动），再原子替换：
+ * 旧目录 rename 成 `<id>.bak`（单份，下次换形象覆盖）→ staging 落位 → 失败 rename 回滚。
+ */
+export function swapBody(opts: SwapBodyOpts): { id: string } {
+  const { characterId, importedRoot, body } = opts;
+  if (!opts.characterRoot) throw new RpcError(-32602, `character not found: ${characterId}`);
+  if (path.resolve(opts.characterRoot) !== path.resolve(importedRoot)) {
+    throw new RpcError(-32602, '内置角色只读，请复制后编辑');
+  }
+  const dest = path.join(importedRoot, characterId);
+  const prev = CharacterManifestSchema.parse(
+    JSON.parse(readFileSync(path.join(dest, 'manifest.json'), 'utf8')),
+  );
+  const staging = mkdtempSync(path.join(tmpdir(), 'ds-swap-'));
+  const stagingPack = path.join(staging, characterId);
+  const bak = `${dest}.bak`;
+  try {
+    cpSync(opts.bodyDir, stagingPack, { recursive: true });
+    rmSync(path.join(stagingPack, 'body.json'), { force: true }); // 形象包描述文件不进角色包
+    const manifest: CharacterManifest = CharacterManifestSchema.parse({
+      id: characterId,
+      ...pickSoulFields(prev),
+      ...pickBodyFields(body),
+    });
+    writeFileSync(
+      path.join(stagingPack, 'manifest.json'),
+      JSON.stringify(manifest, null, 2),
+      'utf8',
+    );
+    rmSync(bak, { recursive: true, force: true });
+    renameSync(dest, bak);
+    try {
+      (opts.commit ?? commitMove)(stagingPack, dest);
+    } catch (e) {
+      rmSync(dest, { recursive: true, force: true }); // 半成品清掉再恢复
+      try {
+        renameSync(bak, dest);
+      } catch {
+        throw new RpcError(
+          -32603,
+          `换形象失败且回滚未完成：旧角色目录保留在 ${bak}，请手动改名回 ${characterId}`,
+        );
+      }
+      throw e;
+    }
+    return { id: characterId };
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 }

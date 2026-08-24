@@ -53,6 +53,17 @@ describe('⑯ MarketItemSchema', () => {
     expect(ok.success).toBe(true);
     expect(MarketItemSchema.safeParse({ ...base, type: 'full' }).success).toBe(true);
   });
+
+  it('⑰ body 型（.dsbody 肉体包）是合法商品型；未知型仍拒', () => {
+    const b = MarketItemSchema.safeParse({
+      ...base,
+      type: 'body',
+      downloadUrl: 'https://example.com/bodies/knight.dsbody',
+    });
+    expect(b.success).toBe(true);
+    // ST 卡等外部格式不流通（市场白名单 = .dspack/.dssoul/.dsbody，spec §5）
+    expect(MarketItemSchema.safeParse({ ...base, type: 'stcard' }).success).toBe(false);
+  });
 });
 
 describe('⑯ parseMarketIndex 容错', () => {

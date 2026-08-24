@@ -34,6 +34,14 @@ import {
   toMarketCard,
   type MarketCardVm,
 } from '../market-view.js';
+import {
+  bodiesAsInstalled,
+  isCrossEngine,
+  swapTargets,
+  toBodyCard,
+  type BodyCardVm,
+  type InstalledBodyLike,
+} from '../body-view.js';
 
 const { t } = useI18n();
 const emit = defineEmits<{ edit: [id: string] }>();
@@ -121,37 +129,6 @@ async function applyImport(): Promise<void> {
   }
 }
 
-// ⑫ ST 卡导入（两段式）：摘要确认 + 形象来源（donor）选择。
-const stImport = ref<{
-  path: string;
-  summary: { name: string; creator: string; version: string; greetingCount: number; lorebookCount: number; tags: string[]; hasAvatar: boolean };
-} | null>(null);
-const stDonor = ref('default');
-async function pickStCard(): Promise<void> {
-  try {
-    const r = await window.openpet.rpc('character.importCardPick', {});
-    if (!r.cancelled) {
-      stDonor.value = items.value.find((x) => x.characterId === 'default') ? 'default' : (items.value[0]?.characterId ?? 'default');
-      stImport.value = { path: r.path, summary: r.summary };
-    }
-  } catch (e) {
-    toast(t('settings.characters.importFailed', { detail: errText(e) }));
-  }
-}
-async function applyStCard(): Promise<void> {
-  if (!stImport.value) return;
-  importing.value = true;
-  try {
-    await window.openpet.rpc('character.importCardApply', { path: stImport.value.path, donorId: stDonor.value });
-    toast(t('settings.characters.stImportedToast', { name: stImport.value.summary.name }));
-    stImport.value = null;
-    await load();
-  } catch (e) {
-    toast(t('settings.characters.importFailed', { detail: errText(e) }));
-  } finally {
-    importing.value = false;
-  }
-}
 async function doRemove(): Promise<void> {
   if (!removing.value) return;
   await window.openpet.rpc('character.remove', { id: removing.value.id });
@@ -233,8 +210,8 @@ async function doResetEmotions(): Promise<void> {
   }
 }
 
-// --- ⑯ 市场 tab ---
-type Tab = 'mine' | 'market';
+// --- ⑯ 市场 tab / ⑰ 形象 tab ---
+type Tab = 'mine' | 'bodies' | 'market';
 const tab = ref<Tab>('mine');
 const appVersion = ref('');
 const marketLoading = ref(false);
@@ -243,7 +220,7 @@ const marketItems = ref<MarketItem[]>([]);
 const marketSources = ref<Array<{ url: string; ok: boolean; count: number; error?: string }>>([]);
 const marketDropped = ref(0);
 const marketQuery = ref('');
-const marketType = ref<'all' | 'soul' | 'full' | 'ref'>('all');
+const marketType = ref<'all' | 'soul' | 'full' | 'ref' | 'body'>('all');
 const sourceErrorDetail = ref<{ url: string; error: string } | null>(null);
 const showSources = ref(false);
 const sources = ref<string[]>([]);
@@ -252,7 +229,7 @@ const newSource = ref('');
 const pendingMarket = ref<{
   item: MarketItem;
   path: string;
-  kind: 'pack' | 'soul';
+  kind: 'pack' | 'soul' | 'body';
   summary: {
     id: string;
     name: string;
@@ -271,7 +248,9 @@ const updating = ref<MarketCardVm | null>(null);
 
 const marketCards = computed(() =>
   filterMarketCards(
-    marketItems.value.map((m) => toMarketCard(m, items.value, appVersion.value)),
+    marketItems.value.map((m) =>
+      toMarketCard(m, items.value, appVersion.value, bodiesAsInstalled(bodies.value)),
+    ),
     { query: marketQuery.value, type: marketType.value },
   ),
 );
@@ -352,6 +331,10 @@ async function applyMarketInstall(): Promise<void> {
   try {
     if (pending.kind === 'pack') {
       await window.openpet.rpc('character.importApply', { path: pending.path });
+    } else if (pending.kind === 'body') {
+      // ⑰ 肉体包装进形象库（不进角色列表，见「形象」tab）。
+      await window.openpet.rpc('character.importBodyApply', { path: pending.path });
+      await loadBodies();
     } else {
       await window.openpet.rpc('character.importSoulApply', {
         path: pending.path,
@@ -399,6 +382,90 @@ function hostOf(url: string): string {
   }
 }
 
+// --- ⑰ 形象库（.dsbody）+ 换形象 ---
+const bodies = ref<InstalledBodyLike[]>([]);
+const bodyCards = computed(() => bodies.value.map(toBodyCard));
+const bodyImport = ref<{
+  path: string;
+  summary: { id: string; name: string; version: string; engine: string };
+} | null>(null);
+const removingBody = ref<BodyCardVm | null>(null);
+/** 换形象弹窗（从形象卡片进 = 预选形象；从 E2 抽屉进 = 预选角色）。 */
+const swapping = ref<{ bodyId: string; targetId: string } | null>(null);
+const swapBusy = ref(false);
+
+const targets = computed(() => swapTargets(items.value));
+const swapTargetItem = computed(
+  () => items.value.find((x) => x.characterId === swapping.value?.targetId) ?? null,
+);
+const swapBodyCard = computed(
+  () => bodyCards.value.find((b) => b.id === swapping.value?.bodyId) ?? null,
+);
+const swapCrossEngine = computed(() => isCrossEngine(swapTargetItem.value, swapBodyCard.value));
+
+async function loadBodies(): Promise<void> {
+  bodies.value = (await window.openpet.rpc('body.list', {})).bodies;
+}
+onMounted(loadBodies);
+
+async function pickBodyImport(): Promise<void> {
+  try {
+    const r = await window.openpet.rpc('body.importPick', {});
+    if (!r.cancelled) bodyImport.value = { path: r.path, summary: r.summary };
+  } catch (e) {
+    toast(t('settings.characters.importFailed', { detail: errText(e) }));
+  }
+}
+async function applyBodyImport(): Promise<void> {
+  if (!bodyImport.value) return;
+  importing.value = true;
+  try {
+    await window.openpet.rpc('character.importBodyApply', { path: bodyImport.value.path });
+    toast(t('settings.characters.bodies.importedToast', { name: bodyImport.value.summary.name }));
+    bodyImport.value = null;
+    await loadBodies();
+  } catch (e) {
+    toast(t('settings.characters.importFailed', { detail: errText(e) }));
+  } finally {
+    importing.value = false;
+  }
+}
+async function doRemoveBody(): Promise<void> {
+  const card = removingBody.value;
+  removingBody.value = null;
+  if (!card) return;
+  try {
+    await window.openpet.rpc('body.remove', { id: card.id });
+    await loadBodies();
+  } catch (e) {
+    toast(t('settings.characters.opFailed', { detail: errText(e) }));
+  }
+}
+
+/** 打开换形象弹窗：缺的那一半取列表首项（两个下拉都可改）。 */
+function openSwap(opts: { bodyId?: string; targetId?: string }): void {
+  swapping.value = {
+    bodyId: opts.bodyId ?? bodyCards.value[0]?.id ?? '',
+    targetId: opts.targetId ?? targets.value[0]?.id ?? '',
+  };
+}
+async function applySwap(): Promise<void> {
+  const s = swapping.value;
+  if (!s || !s.bodyId || !s.targetId) return;
+  const name = swapBodyCard.value?.name ?? s.bodyId;
+  swapBusy.value = true;
+  try {
+    await window.openpet.rpc('character.swapBody', { characterId: s.targetId, bodyId: s.bodyId });
+    toast(t('settings.characters.swap.done', { name }));
+    swapping.value = null;
+    await load();
+  } catch (e) {
+    toast(t('settings.characters.swap.failed', { detail: errText(e) }));
+  } finally {
+    swapBusy.value = false;
+  }
+}
+
 function onMenu(key: CharacterMenuItem['key'], card: CharacterCardVm): void {  kebabOpen.value = false;
   ctxMenu.value = null;
   if (key === 'activate') void activate(card.id);
@@ -421,10 +488,10 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
 
 <template>
   <div class="space-y-6">
-    <!-- ⑯ 双 tab：我的角色 / 市场（形态照插件页） -->
+    <!-- ⑯ 双 tab + ⑰ 形象 tab：我的角色 / 形象 / 市场（形态照插件页） -->
     <div class="flex gap-2">
       <button
-        v-for="k in (['mine', 'market'] as const)"
+        v-for="k in (['mine', 'bodies', 'market'] as const)"
         :key="k"
         class="rounded-full px-4 py-1.5 text-sm transition ease-ds"
         :class="tab === k ? 'text-white' : 'text-text-sub hover:text-text-main'"
@@ -445,7 +512,6 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
         <div class="flex gap-2">
           <Button variant="primary" @click="pickImport('pack')">{{ t('settings.characters.importPack') }}</Button>
           <Button variant="secondary" @click="pickImport('folder')">{{ t('settings.characters.importFolder') }}</Button>
-          <Button variant="secondary" @click="pickStCard">{{ t('settings.characters.importStCard') }}</Button>
         </div>
       </div>
 
@@ -509,6 +575,74 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
       </div>
     </section>
 
+    <!-- ⑰ 形象 tab：已装肉体包网格（换形象 / 删除 / 导入本地 .dsbody） -->
+    <section v-if="tab === 'bodies'" class="ds-glass rounded-panel p-5">
+      <div class="mb-4 flex items-center justify-between">
+        <div>
+          <h2 class="text-md font-semibold text-text-main">
+            {{ t('settings.characters.bodies.title') }}
+          </h2>
+          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.bodies.hint') }}</p>
+        </div>
+        <div class="flex gap-2">
+          <Button variant="primary" @click="pickBodyImport">
+            {{ t('settings.characters.bodies.import') }}
+          </Button>
+          <Button variant="secondary" @click="switchTab('market')">
+            {{ t('settings.characters.bodies.goMarket') }}
+          </Button>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-4">
+        <div
+          v-for="b in bodyCards"
+          :key="b.id"
+          class="relative flex h-[320px] w-[220px] flex-col overflow-hidden rounded-card border border-glass-border"
+        >
+          <span
+            class="absolute left-2 top-2 z-10 rounded-btn border border-glass-border bg-white/60 px-1.5 py-0.5 text-xs uppercase text-text-sub"
+          >
+            {{ b.engine }}
+          </span>
+          <img
+            v-if="b.previewUrl"
+            :src="b.previewUrl"
+            :alt="b.name"
+            class="mx-auto mt-2.5 h-[160px] w-[200px] rounded-card object-cover"
+          />
+          <div
+            v-else
+            class="mx-auto mt-2.5 flex h-[160px] w-[200px] items-center justify-center rounded-card text-5xl font-semibold text-white"
+            :style="{
+              background: 'linear-gradient(135deg, var(--ds-brand-from), var(--ds-brand-to))',
+            }"
+          >
+            {{ b.name.slice(0, 1) }}
+          </div>
+          <div class="flex min-h-0 flex-1 flex-col px-3 py-2">
+            <div class="truncate font-semibold text-text-main">{{ b.name }}</div>
+            <div class="mt-0.5 truncate text-xs text-text-sub">
+              v{{ b.version }} · {{ formatBytes(b.sizeBytes) }}
+            </div>
+            <div class="mt-1 min-h-0 flex-1 truncate text-[11px] text-text-sub">
+              {{ b.license ?? '—' }}
+            </div>
+            <div class="mt-1 flex gap-2">
+              <Button class="flex-1" variant="primary" @click="openSwap({ bodyId: b.id })">
+                {{ t('settings.characters.bodies.applyTo') }}
+              </Button>
+              <Button variant="ghost" @click="removingBody = b">{{ t('common.delete') }}</Button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!bodyCards.length" class="w-full px-3 py-8 text-center text-sm text-text-sub">
+          {{ t('settings.characters.bodies.empty') }}
+        </div>
+      </div>
+    </section>
+
     <!-- ⑯ 市场 tab：静态索引浏览 + 搜索/类型过滤 + 源状态 chip + 安装 -->
     <template v-if="tab === 'market'">
       <section class="ds-glass rounded-panel p-5">
@@ -525,7 +659,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
             v-model="marketType"
             class="ds-control h-9 rounded-input px-2 text-sm text-text-main"
           >
-            <option v-for="k in (['all', 'soul', 'full', 'ref'] as const)" :key="k" :value="k">
+            <option v-for="k in (['all', 'soul', 'full', 'body', 'ref'] as const)" :key="k" :value="k">
               {{ t(`settings.characters.market.types.${k}`) }}
             </option>
           </select>
@@ -743,6 +877,14 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           <Button variant="secondary" @click="edit(selected)">
             {{ selected.builtin ? t('settings.characters.menu.editAsCopy') : t('settings.characters.menu.edit') }}
           </Button>
+          <Button
+            variant="secondary"
+            :disabled="selected.builtin"
+            :title="selected.builtin ? t('settings.characters.swap.noTargets') : ''"
+            @click="openSwap({ targetId: selected.id })"
+          >
+            {{ t('settings.characters.swap.entry') }}
+          </Button>
           <button
             class="ds-icon-button"
             :aria-label="t('settings.characters.moreActions')"
@@ -882,58 +1024,6 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
       </div>
     </div>
 
-    <!-- ⑫ ST 卡导入确认（摘要 + 形象来源选择；容器 class 与 confirmImport 弹窗同款） -->
-    <div
-      v-if="stImport"
-      class="fixed inset-0 z-[60] flex items-center justify-center"
-      style="background: rgba(0, 0, 0, 0.32)"
-    >
-      <div class="ds-glass w-[420px] rounded-panel p-5">
-        <div class="text-md text-text-main">{{ t('settings.characters.stImportTitle') }}</div>
-        <div class="mt-3 space-y-1.5 text-sm">
-          <div class="flex justify-between">
-            <span class="text-text-sub">{{ t('settings.persona.name') }}</span>
-            <span class="text-text-main">{{ stImport.summary.name }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-text-sub">{{ t('settings.characters.stCreator') }}</span>
-            <span class="text-text-main">{{ stImport.summary.creator || '—' }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-text-sub">{{ t('settings.characters.version') }}</span>
-            <span class="text-text-main">v{{ stImport.summary.version }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-text-sub">{{ t('settings.characters.stGreetings') }}</span>
-            <span class="text-text-main">{{ stImport.summary.greetingCount }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-text-sub">{{ t('settings.characters.stLorebook') }}</span>
-            <span class="text-text-main">{{ stImport.summary.lorebookCount }}</span>
-          </div>
-          <div v-if="!stImport.summary.hasAvatar" class="text-xs text-text-sub">{{ t('settings.characters.stNoAvatar') }}</div>
-        </div>
-        <div class="mt-4">
-          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.stBody') }}</p>
-          <select
-            v-model="stDonor"
-            class="ds-control h-9 w-full rounded-input px-2 text-sm text-text-main"
-          >
-            <option v-for="c in items" :key="c.characterId" :value="c.characterId">
-              {{ c.manifest.name }}（{{ c.characterId }}）
-            </option>
-          </select>
-          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.stBodyHint') }}</p>
-        </div>
-        <div class="mt-5 flex justify-end gap-2">
-          <Button variant="ghost" :disabled="importing" @click="stImport = null">{{ t('common.cancel') }}</Button>
-          <Button variant="primary" :disabled="importing" @click="applyStCard">
-            {{ importing ? t('settings.characters.importing') : t('settings.characters.importLabel') }}
-          </Button>
-        </div>
-      </div>
-    </div>
-
     <!-- ⑯ 市场安装确认（license 原文必展示；soul/ref 选形象来源；ref 附模型获取指引） -->
     <div
       v-if="pendingMarket"
@@ -1006,7 +1096,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
 
         <!-- soul/ref：形象来源（donor）下拉，照 ⑫ ST 卡导入 -->
         <div v-if="pendingMarket.kind === 'soul'" class="mt-4">
-          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.stBody') }}</p>
+          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.donorBody') }}</p>
           <select
             v-model="marketDonor"
             class="ds-control h-9 w-full rounded-input px-2 text-sm text-text-main"
@@ -1015,7 +1105,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
               {{ c.manifest.name }}（{{ c.characterId }}）
             </option>
           </select>
-          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.stBodyHint') }}</p>
+          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.donorBodyHint') }}</p>
         </div>
 
         <div class="mt-5 flex justify-end gap-2">
@@ -1024,6 +1114,114 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           }}</Button>
           <Button variant="primary" :disabled="marketBusy" @click="applyMarketInstall">
             {{ marketBusy ? t('settings.characters.importing') : t('settings.characters.importLabel') }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑰ 换形象弹窗（形象卡片 / E2 抽屉共用；灵魂·记忆·会话保留，词表随肉体变） -->
+    <div
+      v-if="swapping"
+      class="fixed inset-0 z-[60] flex items-center justify-center"
+      style="background: rgba(0, 0, 0, 0.32)"
+    >
+      <div class="ds-glass w-[460px] rounded-panel p-5">
+        <div class="text-md text-text-main">{{ t('settings.characters.swap.title') }}</div>
+
+        <div class="mt-4">
+          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.swap.target') }}</p>
+          <select
+            v-model="swapping.targetId"
+            class="ds-control h-9 w-full rounded-input px-2 text-sm text-text-main"
+            :disabled="!targets.length"
+          >
+            <option v-for="c in targets" :key="c.id" :value="c.id">
+              {{ c.name }}（{{ c.id }}）
+            </option>
+          </select>
+          <p v-if="!targets.length" class="mt-1 text-xs" :style="{ color: 'var(--ds-danger)' }">
+            {{ t('settings.characters.swap.noTargets') }}
+          </p>
+        </div>
+
+        <div class="mt-3">
+          <p class="mb-1 text-sm text-text-sub">{{ t('settings.characters.swap.body') }}</p>
+          <select
+            v-model="swapping.bodyId"
+            class="ds-control h-9 w-full rounded-input px-2 text-sm text-text-main"
+            :disabled="!bodyCards.length"
+          >
+            <option v-for="b in bodyCards" :key="b.id" :value="b.id">
+              {{ b.name }}（{{ b.engine }}）
+            </option>
+          </select>
+          <p v-if="!bodyCards.length" class="mt-1 text-xs" :style="{ color: 'var(--ds-danger)' }">
+            {{ t('settings.characters.swap.noBodies') }}
+          </p>
+        </div>
+
+        <div class="mt-3 rounded-card border border-glass-border p-2.5 text-sm">
+          <p class="text-text-main">{{ t('settings.characters.swap.keepHint') }}</p>
+          <p class="mt-1 text-xs text-text-sub">{{ t('settings.characters.swap.vocabHint') }}</p>
+          <p v-if="swapCrossEngine" class="mt-1 text-xs text-text-sub">
+            {{
+              t('settings.characters.swap.crossEngineHint', {
+                from: swapTargetItem?.manifest.engine ?? '',
+                to: swapBodyCard?.engine ?? '',
+              })
+            }}
+          </p>
+        </div>
+
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" :disabled="swapBusy" @click="swapping = null">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button
+            variant="primary"
+            :disabled="swapBusy || !swapping.targetId || !swapping.bodyId"
+            @click="applySwap"
+          >
+            {{ swapBusy ? t('settings.characters.swap.busy') : t('settings.characters.swap.confirm') }}
+          </Button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑰ 本地 .dsbody 导入确认（两段式②前的摘要确认） -->
+    <div
+      v-if="bodyImport"
+      class="fixed inset-0 z-[60] flex items-center justify-center"
+      style="background: rgba(0, 0, 0, 0.32)"
+    >
+      <div class="ds-glass w-[420px] rounded-panel p-5">
+        <div class="text-md text-text-main">
+          {{ t('settings.characters.bodies.confirmImportTitle') }}
+        </div>
+        <div class="mt-3 space-y-1.5 text-sm">
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.persona.name') }}</span>
+            <span class="text-text-main">{{ bodyImport.summary.name }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">ID</span>
+            <span class="text-text-main">{{ bodyImport.summary.id }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.version') }}</span>
+            <span class="text-text-main">v{{ bodyImport.summary.version }}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-text-sub">{{ t('settings.characters.engine') }}</span>
+            <span class="uppercase text-text-main">{{ bodyImport.summary.engine }}</span>
+          </div>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" :disabled="importing" @click="bodyImport = null">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button variant="primary" :disabled="importing" @click="applyBodyImport">
+            {{ importing ? t('settings.characters.importing') : t('settings.characters.importLabel') }}
           </Button>
         </div>
       </div>
@@ -1078,6 +1276,16 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
       :confirm-label="t('settings.characters.uninstall')"
       @confirm="doRemove"
       @cancel="removing = null"
+    />
+    <ConfirmDialog
+      :open="!!removingBody"
+      :title="t('settings.characters.bodies.confirmRemoveTitle')"
+      :detail="
+        removingBody ? t('settings.characters.bodies.confirmRemoveDetail', { name: removingBody.name }) : ''
+      "
+      :confirm-label="t('common.delete')"
+      @confirm="doRemoveBody"
+      @cancel="removingBody = null"
     />
     <ConfirmDialog
       :open="!!resetting"

@@ -541,15 +541,8 @@ export const en: LocaleMessages = {
       title: 'Character library',
       importPack: 'Import .dspack',
       importFolder: 'Import folder',
-      importStCard: 'Import SillyTavern card',
-      stImportTitle: 'Import SillyTavern character card',
-      stCreator: 'Creator',
-      stGreetings: 'Greetings',
-      stLorebook: 'Lorebook entries',
-      stBody: 'Body source',
-      stBodyHint: 'ST cards carry persona text only; the model, actions and emotion mappings are copied from the selected character pack.',
-      stNoAvatar: 'No embedded avatar; the selected body preview is kept',
-      stImportedToast: 'Imported "{name}". Fine-tune it in the character editor.',
+      donorBody: 'Body source',
+      donorBodyHint: 'Soul packs carry persona text only; the model, actions and emotion mappings are copied from the selected character pack.',
       currentBadge: '● Current',
       builtin: 'Built-in',
       empty: 'The library is empty. Import a .dspack character pack or a folder to start.',
@@ -610,7 +603,41 @@ export const en: LocaleMessages = {
       // ⑯ character market v1
       tab: {
         mine: 'My characters',
+        bodies: 'Bodies',
         market: 'Market',
+      },
+      // ⑰ body library (.dsbody packs) + one-click body swap
+      bodies: {
+        title: 'Body library',
+        hint: 'A body has no soul of its own: put it on an existing character and every memory stays.',
+        import: 'Import .dsbody',
+        goMarket: 'Find bodies in market',
+        empty: 'No bodies yet. Find one in the market, or import a local .dsbody file.',
+        applyTo: 'Apply to character…',
+        importedToast: '✓ Added to body library: {name}',
+        confirmImportTitle: 'Import this body pack?',
+        confirmRemoveTitle: 'Delete this body?',
+        confirmRemoveDetail:
+          'Deletes every file of body pack “{name}”. Characters already wearing it are unaffected (the body is copied into the character package).',
+      },
+      swap: {
+        entry: 'Swap body',
+        title: 'Swap body',
+        target: 'Target character',
+        body: 'New body',
+        keepHint:
+          'Soul, memories, chat history and voice are all kept — same character, new body.',
+        vocabHint:
+          'Emotion / action vocabularies follow the new body (unknown old tags degrade gracefully).',
+        crossEngineHint:
+          'Cross-engine swap ({from} → {to}): action and expression mappings are replaced wholesale.',
+        noTargets:
+          'Built-in characters are read-only. Duplicate one under “My characters” first, then swap its body.',
+        noBodies: 'No bodies installed yet. Find one in the market, or import a local .dsbody file.',
+        confirm: 'Swap body',
+        busy: 'Swapping…',
+        done: '✓ Now wearing “{name}”',
+        failed: 'Body swap failed: {detail}',
       },
       market: {
         title: 'Character market',
@@ -619,6 +646,7 @@ export const en: LocaleMessages = {
           all: 'All types',
           soul: 'Soul pack',
           full: 'Full pack',
+          body: 'Body pack',
           ref: 'External model',
         },
         typeLabel: 'Type',
@@ -688,7 +716,7 @@ export const en: LocaleMessages = {
       addGreeting: 'Add greeting',
       lorebook: 'Lorebook',
       lorebookHint: 'Keyword-triggered background lore, injected into the system prompt when mentioned (ordered, budget-capped). Greetings and lorebook support char/user macros.',
-      lorebookEmpty: 'No entries yet — import a SillyTavern card or add one manually',
+      lorebookEmpty: 'No entries yet — they can come with a soul pack, or add one manually',
       addLorebookEntry: 'Add entry',
       lorebookKeys: 'Trigger keywords (comma separated; empty = always on)',
       lorebookContent: 'Content',

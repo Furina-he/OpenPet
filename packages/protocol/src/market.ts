@@ -8,10 +8,11 @@ import { PackLorebookSchema } from './lorebook.js';
  * 零服务器：GitHub 仓 + `index.json`（AstrBot 插件市场同款形状）。索引不可信，
  * 逐条 safeParse 丢坏条目；下载物一律 sha256 校验后走既有 `pack-import` 安全门。
  *
- * 商品三型：
+ * 商品四型：
  *   - `full` —— 完整 .dspack（含模型文件；上架需声明模型可再分发）
  *   - `soul` —— .dssoul 灵魂包（纯文本人设/世界书），安装时与已装包的形象（donor）合成
- *   - `ref`  —— 灵魂包 + 推荐模型外链（模型不托管，规避 Live2D/Booth 再分发禁令）；
+ *   - `body` —— ⑰ .dsbody 肉体包（只有形象：模型 + 词表/cues），装进形象库供「换形象」使用
+ *   - `ref`  —— 灵魂或肉体的外链指引（模型不托管，规避 Live2D/Booth 再分发禁令）；
  *               安装路径与 soul 相同，额外展示 `modelSource` 指引让用户自备形象包
  */
 
@@ -25,7 +26,7 @@ export const MARKET_SOURCE_GITHUB_RAW =
   'https://raw.githubusercontent.com/Furina-he/openpet-market/main/index.json';
 export const DEFAULT_MARKET_SOURCES = [MARKET_SOURCE_JSDELIVR, MARKET_SOURCE_GITHUB_RAW] as const;
 
-export const MarketItemTypeSchema = z.enum(['soul', 'full', 'ref']);
+export const MarketItemTypeSchema = z.enum(['soul', 'full', 'ref', 'body']);
 export type MarketItemType = z.infer<typeof MarketItemTypeSchema>;
 
 /** ref 型的模型获取指引（不托管模型文件，UI 外链 + 说明）。 */

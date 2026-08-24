@@ -6,9 +6,8 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error —— 仓库根的零依赖 CLI 工具（.mjs，无类型声明；本测试只验产物契约）
 import { convertCard, mapCardToSoul, normalizeCard, pickId } from '../../../scripts/st-card-to-soul.mjs';
 import { installSoulPack, readSoulPack } from '../electron/main/soul-compose.js';
-import { installStCard } from '../electron/main/st-card-import.js';
 
-/** ST 卡 PNG 构造器（同 st-card-import.test.ts）。 */
+/** ST 卡 PNG 构造器（tEXt chunk 里塞 base64 的 chara JSON）。 */
 function pngWithText(pairs: Array<[string, string]>): Buffer {
   const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const chunk = (type: string, data: Buffer): Buffer => {
@@ -104,28 +103,22 @@ describe('st-card-to-soul.mjs（上架转换脚本）', () => {
     expect(existsSync(path.join(f.importedRoot, id, 'hero.vrm'))).toBe(true);
   });
 
-  it('映射结果与 app 内 ⑫ 卡导入一致（同一张卡两条路径同人设）', () => {
+  it('灵魂映射契约（⑰ 起脚本是唯一 ST 解析处，故在此自述锁死）', () => {
     const f = fixture();
-    const viaScript = convertCard(f.cardPath).soul;
-    const { id } = installStCard({
-      cardPath: f.cardPath,
-      donorId: 'hero',
-      donorRoot: f.donorRoot,
-      importedRoot: f.importedRoot,
-      exists: () => false,
-    });
-    const viaApp = CharacterManifestSchema.parse(
-      JSON.parse(readFileSync(path.join(f.importedRoot, id, 'manifest.json'), 'utf8')),
-    );
-    expect(viaScript.persona.systemPrompt).toBe(viaApp.persona?.systemPrompt);
-    expect(viaScript.persona.greetings).toEqual(viaApp.persona?.greetings);
-    expect(viaScript.version).toBe(viaApp.version);
-    expect(viaScript.author).toBe(viaApp.author);
-    expect(viaScript.tags).toEqual(viaApp.tags);
-    expect(viaScript.id).toBe(id); // id 派生规则同源
+    const soul = convertCard(f.cardPath).soul;
+    expect(soul.name).toBe('Aqua');
+    expect(soul.version).toBe('1.3');
+    expect(soul.author).toBe('painter');
+    expect(soul.tags).toEqual(['fantasy']);
+    // description / personality 进 systemPrompt；first_mes + alternate_greetings 进开场白
+    expect(soul.persona.systemPrompt).toContain('女神');
+    expect(soul.persona.systemPrompt).toContain('爱哭');
+    expect(soul.persona.greetings).toEqual(['来啦 {{user}}', '又是你']);
+    expect(soul.persona.styleAnchor).toBe('别写旁白'); // post_history_instructions = 风格锚
+    expect(soul.lorebook?.entries[0]?.content).toBe('城设定'); // character_book = 世界设定
   });
 
-  it('CJK 名 → st-<hash> id（与 app 内 pickCharacterId 同规则）；冲突自增', () => {
+  it('CJK 名 → st-<hash> id（脚本内 id 派生规则）；冲突自增', () => {
     expect(pickId('Aqua')).toBe('aqua');
     expect(pickId('芙宁娜')).toMatch(/^st-[0-9a-z]+$/);
     expect(pickId('Aqua', new Set(['aqua']))).toBe('aqua-2');
