@@ -6,8 +6,9 @@
  *      （可直接粘进索引仓 index.json 的 items 数组）。
  *
  * 零依赖（只用 node 内置 zlib/crypto）——内容维护者 clone 索引仓即可跑，无需装 npm 包。
- * 映射规则与 app 内 ⑫ 卡导入（`apps/desktop/electron/main/st-card.ts`）保持一致：
- * 同一张卡，脚本转换与 app 内导入产出的人设文本相同。
+ * ⑰ 起本脚本是全仓**唯一**解析 ST 格式处（app 内卡导入已删）：卡 → 维护者转换 → `.dssoul`
+ * 上架市场 → 用户只见灵魂包。映射规则自述在 `mapCardToSoul`，契约由
+ * `apps/desktop/test/st-card-to-soul-script.test.ts` 锁死。
  *
  * 用法（无 shebang：一律 `node` 起——单测经 vitest 直接 import 本文件，
  * `#!` 行不会被 vite 的 SSR transform 剥掉，会当场炸成 SyntaxError）：

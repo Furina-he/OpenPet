@@ -116,6 +116,25 @@ describe('market.fetchIndex（多源）', () => {
       dropped: 0,
     });
   });
+
+  it('⑰ 流通白名单：ST 卡等未知型条目逐条丢弃，同源其余条目照常', async () => {
+    const svc = createMarketService({
+      getSources: () => [A],
+      fetchImpl: fakeFetch({
+        [A]: JSON.stringify([
+          item(), // soul
+          item({ id: 'knight', type: 'body', downloadUrl: 'https://e.com/k.dsbody' }),
+          item({ id: 'carded', type: 'stcard', downloadUrl: 'https://e.com/x.png' }),
+          item({ id: 'weird', type: 'vrm' }),
+        ]),
+      }),
+      log: () => {},
+    });
+    const r = await svc['market.fetchIndex']();
+    expect(r.items.map((i) => i.id).sort()).toEqual(['knight', 'sage']);
+    expect(r.dropped).toBe(2);
+    expect(r.sources[0]?.ok).toBe(true);
+  });
 });
 
 /** 造一个合法 .dssoul / .dspack 字节流。 */

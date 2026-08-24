@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * ⑫ Lorebook（SillyTavern 融合②，最小子集）：关键词触发的条目注入。
  * 只做 keys + scanDepth + token 预算；递归/二级键/position/probability 明确不做（spec §1）。
- * 数据源 = ST 卡 character_book 导入或 E4 手编；注入点 = context-assembler「世界设定」块。
+ * 数据源 = 灵魂包随包带入或 E4 手编；注入点 = context-assembler「世界设定」块。
  */
 export const LorebookEntrySchema = z.object({
   /** 触发关键词（子串匹配）；空 keys 仅在 constant 时有意义。 */

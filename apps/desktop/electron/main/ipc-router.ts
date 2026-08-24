@@ -65,7 +65,6 @@ import {
   readInstalledBody,
   removeBody,
 } from './body-pack.js';
-import { inspectStCard, installStCard } from './st-card-import.js';
 import { installSoulPack, swapBody } from './soul-compose.js';
 import { createMarketService } from './market-service.js';
 import { removeCharacter } from './character-ops.js';
@@ -106,7 +105,7 @@ export interface IpcRouterDeps {
   /** ⑰ 形象库根（生产 userData/bodies）；缺省 charactersRoot/_bodies（测试）。 */
   bodiesRoot?: string;
   /** E3 系统选择框（index 注入 dialog.showOpenDialog）；缺省 null=取消。 */
-  pickCharacterPath?: (kind: 'pack' | 'folder' | 'stcard' | 'dsbody') => Promise<string | null>;
+  pickCharacterPath?: (kind: 'pack' | 'folder' | 'dsbody') => Promise<string | null>;
   /** ⑩.7 E4：导出 .dspack 保存框（index 注入 dialog.showSaveDialog）；缺省 null=取消。 */
   pickDspackSave?: (defaultName: string) => Promise<string | null>;
   /** ⑩.7 E2：在文件夹中显示（index 注入 shell.showItemInFolder）。 */
@@ -976,29 +975,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       characters.invalidate();
       return { ok: true as const, id: m.id };
     },
-    'character.importCardPick': async () => {
-      const picked = (await deps.pickCharacterPath?.('stcard')) ?? null;
-      if (!picked) return { cancelled: true as const };
-      try {
-        return { cancelled: false as const, path: picked, summary: inspectStCard(picked) };
-      } catch (e) {
-        throw new RpcError(-32602, `无法解析角色卡：${e instanceof Error ? e.message : String(e)}`);
-      }
-    },
-    'character.importCardApply': (p) => {
-      const donorRoot = characters.rootOf(p.donorId);
-      if (!donorRoot) throw new RpcError(-32602, `形象来源角色不存在: ${p.donorId}`);
-      const { id } = installStCard({
-        cardPath: p.path,
-        donorId: p.donorId,
-        donorRoot,
-        importedRoot,
-        exists: (x) => characters.rootOf(x) !== null,
-      });
-      characters.invalidate();
-      return { ok: true as const, id };
-    },
-    // ⑯ 灵魂包安装（市场 soul/ref 型的落位路径；与 ST 卡导入共用 composeFromDonor）。
+    // ⑯ 灵魂包安装（市场 soul/ref 型的落位路径；形象复制自选定的已装角色包）。
     'character.importSoulApply': (p) => {
       const donorRoot = characters.rootOf(p.donorId);
       if (!donorRoot) throw new RpcError(-32602, `形象来源角色不存在: ${p.donorId}`);

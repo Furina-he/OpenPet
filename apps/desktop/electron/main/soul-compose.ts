@@ -8,7 +8,7 @@
  * 灵魂/肉体字段的切分线是 protocol 的 `BODY_FIELDS`/`SOUL_FIELDS`（唯一真源）：
  * 合成与换形象读同一张表，谁也不许在本文件里再抄一份。
  *
- * 自包含裁定（承 ⑫）：整目录复制形象，不做跨包引用，换来卸载/导出/复制零特例。
+ * 自包含裁定：整目录复制形象，不做跨包引用，换来卸载/导出/复制零特例。
  * staging（mkdtemp）→ rename 落位，跨盘 EXDEV 降级 cpSync（照 pack-import 模式）。
  */
 import AdmZip from 'adm-zip';
@@ -29,7 +29,7 @@ import {
 } from '@openpet/protocol';
 import { RpcError } from './router.js';
 
-/** 灵魂层最小面（⑫ 的 StCardSoul 与 ⑯ 的 SoulPack 都满足）。 */
+/** 灵魂层最小面（`.dssoul` 的 SoulPack 满足；⑰ 起它是唯一灵魂来源）。 */
 export interface SoulLike {
   name: string;
   version: string;
@@ -43,13 +43,13 @@ export interface SoulLike {
 
 export interface ComposeFromDonorOpts {
   soul: SoulLike;
-  /** 新角色 id（调用方决定：ST 卡 = pickCharacterId 派生，灵魂包 = soul.id）。 */
+  /** 新角色 id（调用方决定；灵魂包 = soul.id）。 */
   id: string;
   donorId: string;
   /** rootOf(donorId) 结果（builtin 或 userData 根均可作形象来源）。 */
   donorRoot: string;
   importedRoot: string;
-  /** 额外写进包内的文件（ST 卡头像 / 灵魂包 preview）；相对路径已由调用方校验。 */
+  /** 额外写进包内的文件（灵魂包 preview 图）；相对路径已由调用方校验。 */
   extraFiles?: Array<{ relPath: string; data: Buffer }>;
   /** manifest.preview 覆盖；缺省承 donor.preview。 */
   preview?: string;

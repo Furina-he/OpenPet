@@ -193,9 +193,7 @@ app.whenReady().then(async () => {
           ? { filters: [{ name: 'openpet 角色包', extensions: ['dspack', 'zip'] }] }
           : kind === 'dsbody'
             ? { filters: [{ name: 'openpet 形象包', extensions: ['dsbody', 'zip'] }] }
-            : kind === 'stcard'
-              ? { filters: [{ name: 'SillyTavern 角色卡', extensions: ['png', 'charx', 'json'] }] }
-              : {}),
+            : {}),
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },
