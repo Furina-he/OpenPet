@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CharacterManifestSchema } from './character-manifest.js';
+import { BodyPackSchema, CharacterManifestSchema } from './character-manifest.js';
 import { ErrorKindSchema } from './schemas.js';
 import { PrefsSchema } from './prefs.js';
 import {
@@ -472,6 +472,47 @@ export const Methods = {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ files: z.array(z.string()) }),
   },
+  // --- request/response: Renderer → Main（⑰ 形象库 = userData/bodies，与 characters 平行）---
+  'body.list': {
+    // 已装肉体包列表（E1「形象」tab 网格）；坏包跳过。
+    params: z.object({}),
+    result: z.object({
+      bodies: z.array(
+        z.object({
+          body: BodyPackSchema,
+          sizeBytes: z.number(),
+          installedAt: z.number(),
+        }),
+      ),
+    }),
+  },
+  'body.importPick': {
+    // ⑰ 两段式①：选 .dsbody + 解析 body.json 摘要（不安装）。
+    params: z.object({}),
+    result: z.union([
+      z.object({ cancelled: z.literal(true) }),
+      z.object({
+        cancelled: z.literal(false),
+        path: z.string(),
+        summary: z.object({
+          id: z.string(),
+          name: z.string(),
+          version: z.string(),
+          engine: z.string(),
+        }),
+      }),
+    ]),
+  },
+  'character.importBodyApply': {
+    // ⑰ 两段式②：装进 userData/bodies/<id>（市场 body 型与本地 .dsbody 共用）。
+    params: z.object({ path: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true), id: z.string() }),
+  },
+  'body.remove': {
+    // 删除形象包（不影响已用它换过形象的角色——形象是整目录复制进角色包的）。
+    params: z.object({ id: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   // --- notification: Main → character/overlay（角色已切换；两窗 location.reload()）---
   'character.changed': { params: z.object({ characterId: z.string() }), result: z.null() },
 
@@ -815,8 +856,8 @@ export const Methods = {
     }),
     result: z.object({
       path: z.string(),
-      /** 落位路径：pack=character.importApply，soul=character.importSoulApply。 */
-      kind: z.enum(['pack', 'soul']),
+      /** 落位路径：pack=character.importApply，soul=character.importSoulApply，body=character.importBodyApply。 */
+      kind: z.enum(['pack', 'soul', 'body']),
       summary: z.object({
         id: z.string(),
         name: z.string(),

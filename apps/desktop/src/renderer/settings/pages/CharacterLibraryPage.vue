@@ -252,7 +252,7 @@ const newSource = ref('');
 const pendingMarket = ref<{
   item: MarketItem;
   path: string;
-  kind: 'pack' | 'soul';
+  kind: 'pack' | 'soul' | 'body';
   summary: {
     id: string;
     name: string;
@@ -352,6 +352,9 @@ async function applyMarketInstall(): Promise<void> {
   try {
     if (pending.kind === 'pack') {
       await window.openpet.rpc('character.importApply', { path: pending.path });
+    } else if (pending.kind === 'body') {
+      // ⑰ 肉体包装进形象库（不进角色列表，见「形象」tab）。
+      await window.openpet.rpc('character.importBodyApply', { path: pending.path });
     } else {
       await window.openpet.rpc('character.importSoulApply', {
         path: pending.path,

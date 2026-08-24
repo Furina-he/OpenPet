@@ -11,7 +11,7 @@
  * 业务编排全部下沉到纯模块——本文件只做 Electron 缝。
  */
 import { ipcMain, BrowserWindow, Menu, net, type WebContents } from 'electron';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn as cpSpawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import {
@@ -58,6 +58,7 @@ import { assembleDiag } from './crash-payload.js';
 import { createCharacterService } from './character-service.js';
 import { runTestGreeting, pickGreeting } from './character-greeting.js';
 import { inspectPack, installPack } from './pack-import.js';
+import { inspectBody, installBody, listBodies, removeBody } from './body-pack.js';
 import { inspectStCard, installStCard } from './st-card-import.js';
 import { installSoulPack } from './soul-compose.js';
 import { createMarketService } from './market-service.js';
@@ -96,8 +97,10 @@ export interface IpcRouterDeps {
   charactersRoot: string;
   /** 导入包根（生产 userData/characters）；缺省 charactersRoot/_imported（测试）。 */
   importedCharactersRoot?: string;
+  /** ⑰ 形象库根（生产 userData/bodies）；缺省 charactersRoot/_bodies（测试）。 */
+  bodiesRoot?: string;
   /** E3 系统选择框（index 注入 dialog.showOpenDialog）；缺省 null=取消。 */
-  pickCharacterPath?: (kind: 'pack' | 'folder' | 'stcard') => Promise<string | null>;
+  pickCharacterPath?: (kind: 'pack' | 'folder' | 'stcard' | 'dsbody') => Promise<string | null>;
   /** ⑩.7 E4：导出 .dspack 保存框（index 注入 dialog.showSaveDialog）；缺省 null=取消。 */
   pickDspackSave?: (defaultName: string) => Promise<string | null>;
   /** ⑩.7 E2：在文件夹中显示（index 注入 shell.showItemInFolder）。 */
@@ -203,6 +206,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   // 应用偏好（M7a）：单写者 PrefsStore。在 ChatService 之前声明，供 resolveModel 读当前 provider/model。
   const prefsStore = deps.prefsStore ?? createPrefsStore({});
   const importedRoot = deps.importedCharactersRoot ?? path.join(deps.charactersRoot, '_imported');
+  // ⑰ 形象库根（肉体包）：与 characters 平行，不进角色列表也不能被 character.switch 选中。
+  const bodiesRoot = deps.bodiesRoot ?? path.join(deps.charactersRoot, '_bodies');
   const characters = createCharacterService({
     builtinRoot: deps.charactersRoot,
     importedRoot,
@@ -1037,6 +1042,36 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { ok: true as const };
     },
     'character.listFiles': (p) => ({ files: characters.listFiles(p.id) }),
+    // --- ⑰ 形象库（.dsbody 肉体包）---
+    'body.list': () => ({ bodies: listBodies(bodiesRoot) }),
+    'body.importPick': async () => {
+      const picked = (await deps.pickCharacterPath?.('dsbody')) ?? null;
+      if (!picked) return { cancelled: true as const };
+      try {
+        const b = inspectBody(picked);
+        return {
+          cancelled: false as const,
+          path: picked,
+          summary: { id: b.id, name: b.name, version: b.version, engine: b.engine },
+        };
+      } catch (e) {
+        throw new RpcError(-32602, `无法解析形象包：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    'character.importBodyApply': (p) => {
+      try {
+        const b = installBody(p.path, bodiesRoot, (id) =>
+          existsSync(path.join(bodiesRoot, id, 'body.json')),
+        );
+        return { ok: true as const, id: b.id };
+      } catch (e) {
+        throw new RpcError(-32602, `形象包安装失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    'body.remove': (p) => {
+      removeBody(bodiesRoot, p.id);
+      return { ok: true as const };
+    },
     'character.testGreeting': async (p) => {
       const c = characters.list().find((x) => x.characterId === p.id);
       if (!c) throw new RpcError(-32602, `character not found: ${p.id}`);

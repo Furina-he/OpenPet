@@ -160,6 +160,27 @@ function packZip(): Buffer {
   return zip.toBuffer();
 }
 
+function bodyZip(): Buffer {
+  const zip = new AdmZip();
+  zip.addFile(
+    'body.json',
+    Buffer.from(
+      JSON.stringify({
+        id: 'knight',
+        name: 'Knight',
+        version: '3.0',
+        engine: 'vrm',
+        model: 'knight.vrm',
+        author: 'sculptor',
+        license: 'CC-BY-4.0',
+      }),
+      'utf8',
+    ),
+  );
+  zip.addFile('knight.vrm', Buffer.from('VRM'));
+  return zip.toBuffer();
+}
+
 const DL = 'https://example.com/dl';
 
 describe('market.download（sha256 门）', () => {
@@ -194,6 +215,36 @@ describe('market.download（sha256 门）', () => {
     const svc = createMarketService({ getSources: () => [], fetchImpl: fakeFetch({ [DL]: buf }) });
     const r = await svc['market.download']({ url: DL, sha256: sha(buf), type: 'ref' });
     expect(r.kind).toBe('soul');
+  });
+
+  it('⑰ body 型：走 inspectBody，kind=body + 形象面摘要', async () => {
+    const buf = bodyZip();
+    const svc = createMarketService({ getSources: () => [], fetchImpl: fakeFetch({ [DL]: buf }) });
+    const r = await svc['market.download']({ url: DL, sha256: sha(buf), type: 'body' });
+    expect(r.kind).toBe('body');
+    expect(r.path.endsWith('.dsbody')).toBe(true);
+    expect(r.summary).toEqual({
+      id: 'knight',
+      name: 'Knight',
+      version: '3.0',
+      engine: 'vrm',
+      author: 'sculptor',
+      license: 'CC-BY-4.0',
+    });
+  });
+
+  it('⑰ body 型下载物不是形象包（缺 body.json）→ -32602 且清理', async () => {
+    const buf = soulZip();
+    const tmpRoot = mkdtempSync(path.join(tmpdir(), 'mkt-'));
+    const svc = createMarketService({
+      getSources: () => [],
+      fetchImpl: fakeFetch({ [DL]: buf }),
+      tmpRoot,
+    });
+    await expect(
+      svc['market.download']({ url: DL, sha256: sha(buf), type: 'body' }),
+    ).rejects.toMatchObject({ code: -32602 });
+    expect(readdirSync(tmpRoot)).toHaveLength(0);
   });
 
   it('sha256 不符 → -32602 且临时文件被清理', async () => {

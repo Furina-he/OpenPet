@@ -72,6 +72,8 @@ app.whenReady().then(async () => {
     : path.join(__dirname, '../../characters');
   // 批次④ 导入包根（userData/characters）；asset:// 双根顺序与 character-service.rootOf 一致：内置优先。
   const importedCharactersRoot = path.join(app.getPath('userData'), 'characters');
+  // ⑰ 形象库根（userData/bodies）：肉体包（.dsbody）装这里，不进角色列表。
+  const bodiesRoot = path.join(app.getPath('userData'), 'bodies');
   // 线 B-2 Desktop 插件：worker entry 同 provider 手法（真实文件路径喂 new Worker）；安装根 userData/plugins。
   const pluginEntryPath = toUnpackedPath(require.resolve('@openpet/sidecar/dist/plugin-entry.js'));
   const pluginsRoot = path.join(app.getPath('userData'), 'plugins');
@@ -183,14 +185,17 @@ app.whenReady().then(async () => {
     overlayWindow,
     charactersRoot,
     importedCharactersRoot,
+    bodiesRoot,
     pickCharacterPath: async (kind) => {
       const r = await dialog.showOpenDialog({
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
         ...(kind === 'pack'
           ? { filters: [{ name: 'openpet 角色包', extensions: ['dspack', 'zip'] }] }
-          : kind === 'stcard'
-            ? { filters: [{ name: 'SillyTavern 角色卡', extensions: ['png', 'charx', 'json'] }] }
-            : {}),
+          : kind === 'dsbody'
+            ? { filters: [{ name: 'openpet 形象包', extensions: ['dsbody', 'zip'] }] }
+            : kind === 'stcard'
+              ? { filters: [{ name: 'SillyTavern 角色卡', extensions: ['png', 'charx', 'json'] }] }
+              : {}),
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },

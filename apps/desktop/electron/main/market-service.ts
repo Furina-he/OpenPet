@@ -6,13 +6,14 @@
  * Main 侧 fetch（renderer 无跨域能力）→ 临时文件 → **不安装**，返回摘要给 UI 确认。
  *
  * 安全：下载物一律 sha256 校验（不符即删文件 + -32602），随后走既有
- * `pack-import` / `soul-compose` 安全门——本服务不新增任何安全面。
+ * `pack-import` / `soul-compose` / `body-pack` 安全门——本服务不新增任何安全面。
  */
 import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseMarketIndex, type MarketItem, type MarketItemType } from '@openpet/protocol';
+import { inspectBody } from './body-pack.js';
 import { inspectPack } from './pack-import.js';
 import { readSoulPack } from './soul-compose.js';
 import { RpcError } from './router.js';
@@ -101,9 +102,10 @@ export function createMarketService(deps: MarketServiceDeps) {
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > maxBytes) throw new RpcError(-32602, '下载物超过 300MB 上限');
 
-      const kind: 'pack' | 'soul' = p.type === 'full' ? 'pack' : 'soul';
+      const kind: 'pack' | 'soul' | 'body' =
+        p.type === 'full' ? 'pack' : p.type === 'body' ? 'body' : 'soul';
       const staging = mkdtempSync(path.join(deps.tmpRoot ?? tmpdir(), 'ds-market-'));
-      const file = path.join(staging, kind === 'pack' ? 'download.dspack' : 'download.dssoul');
+      const file = path.join(staging, `download.${kind === 'pack' ? 'dspack' : kind === 'body' ? 'dsbody' : 'dssoul'}`);
       writeFileSync(file, buf);
       try {
         const digest = createHash('sha256').update(buf).digest('hex');
@@ -124,6 +126,22 @@ export function createMarketService(deps: MarketServiceDeps) {
               ...(m.license ? { license: m.license } : {}),
               ...(m.persona?.greetings ? { greetingCount: m.persona.greetings.length } : {}),
               ...(m.lorebook ? { lorebookCount: m.lorebook.entries.length } : {}),
+            },
+          };
+        }
+        if (kind === 'body') {
+          // ⑰ 肉体包：摘要只有形象面（引擎/词表数），无灵魂字段可报。
+          const b = inspectBody(file);
+          return {
+            path: file,
+            kind,
+            summary: {
+              id: b.id,
+              name: b.name,
+              version: b.version,
+              engine: b.engine,
+              ...(b.author ? { author: b.author } : {}),
+              ...(b.license ? { license: b.license } : {}),
             },
           };
         }
