@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * ST 角色卡 → openpet 灵魂包（`.dssoul`）批量转换器 —— 角色市场上架管线（⑯ T6）。
  *
@@ -10,7 +9,8 @@
  * 映射规则与 app 内 ⑫ 卡导入（`apps/desktop/electron/main/st-card.ts`）保持一致：
  * 同一张卡，脚本转换与 app 内导入产出的人设文本相同。
  *
- * 用法：
+ * 用法（无 shebang：一律 `node` 起——单测经 vitest 直接 import 本文件，
+ * `#!` 行不会被 vite 的 SSR transform 剥掉，会当场炸成 SyntaxError）：
  *   node scripts/st-card-to-soul.mjs <卡文件或目录>... --license "CC-BY-4.0" [选项]
  * 选项：
  *   --out <dir>        输出目录（默认 ./market-out）
