@@ -22,13 +22,16 @@ export interface InstalledLike {
 /**
  * 已装比对：id 命中 → 版本相同为「已安装」，索引更高为「可更新」；
  * `minAppVersion` 高于当前 app 版本 → 「需要升级」（安装按钮灰掉）。
+ * ⑰ `body` 型比的是形象库（`installedBodies`），不是角色库——两个库命名空间独立。
  */
 export function toMarketCard(
   item: MarketItem,
   installed: readonly InstalledLike[],
   appVersion: string,
+  installedBodies: readonly InstalledLike[] = [],
 ): MarketCardVm {
-  const local = installed.find((c) => c.characterId === item.id) ?? null;
+  const pool = item.type === 'body' ? installedBodies : installed;
+  const local = pool.find((c) => c.characterId === item.id) ?? null;
   const tags = item.tags ?? [];
   if (item.minAppVersion && appVersion && compareVersion(item.minAppVersion, appVersion) > 0) {
     return { item, state: 'needsUpgrade', localVersion: local?.manifest.version ?? null, tags };

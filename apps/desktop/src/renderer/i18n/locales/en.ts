@@ -610,7 +610,41 @@ export const en: LocaleMessages = {
       // ⑯ character market v1
       tab: {
         mine: 'My characters',
+        bodies: 'Bodies',
         market: 'Market',
+      },
+      // ⑰ body library (.dsbody packs) + one-click body swap
+      bodies: {
+        title: 'Body library',
+        hint: 'A body has no soul of its own: put it on an existing character and every memory stays.',
+        import: 'Import .dsbody',
+        goMarket: 'Find bodies in market',
+        empty: 'No bodies yet. Find one in the market, or import a local .dsbody file.',
+        applyTo: 'Apply to character…',
+        importedToast: '✓ Added to body library: {name}',
+        confirmImportTitle: 'Import this body pack?',
+        confirmRemoveTitle: 'Delete this body?',
+        confirmRemoveDetail:
+          'Deletes every file of body pack “{name}”. Characters already wearing it are unaffected (the body is copied into the character package).',
+      },
+      swap: {
+        entry: 'Swap body',
+        title: 'Swap body',
+        target: 'Target character',
+        body: 'New body',
+        keepHint:
+          'Soul, memories, chat history and voice are all kept — same character, new body.',
+        vocabHint:
+          'Emotion / action vocabularies follow the new body (unknown old tags degrade gracefully).',
+        crossEngineHint:
+          'Cross-engine swap ({from} → {to}): action and expression mappings are replaced wholesale.',
+        noTargets:
+          'Built-in characters are read-only. Duplicate one under “My characters” first, then swap its body.',
+        noBodies: 'No bodies installed yet. Find one in the market, or import a local .dsbody file.',
+        confirm: 'Swap body',
+        busy: 'Swapping…',
+        done: '✓ Now wearing “{name}”',
+        failed: 'Body swap failed: {detail}',
       },
       market: {
         title: 'Character market',
@@ -619,6 +653,7 @@ export const en: LocaleMessages = {
           all: 'All types',
           soul: 'Soul pack',
           full: 'Full pack',
+          body: 'Body pack',
           ref: 'External model',
         },
         typeLabel: 'Type',

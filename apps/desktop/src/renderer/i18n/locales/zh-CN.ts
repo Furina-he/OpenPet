@@ -594,7 +594,37 @@ export const zhCN = {
       // ⑯ 角色市场 v1
       tab: {
         mine: '我的角色',
+        bodies: '形象',
         market: '市场',
+      },
+      // ⑰ 形象库（.dsbody 肉体包）+ 一键换形象
+      bodies: {
+        title: '形象库',
+        hint: '形象只有身体没有灵魂：给已有角色换上它，记忆与对话都还在。',
+        import: '导入 .dsbody',
+        goMarket: '去市场找形象',
+        empty: '还没有形象包。到「市场」找一个形象，或导入本地 .dsbody 文件。',
+        applyTo: '应用到角色…',
+        importedToast: '✓ 已加入形象库：{name}',
+        confirmImportTitle: '导入形象包？',
+        confirmRemoveTitle: '删除这个形象？',
+        confirmRemoveDetail:
+          '将删除形象包「{name}」的全部文件。已经用它换过形象的角色不受影响（形象是复制进角色包的）。',
+      },
+      swap: {
+        entry: '换形象',
+        title: '换形象',
+        target: '目标角色',
+        body: '新形象',
+        keepHint: '灵魂、记忆、会话与音色都会保留——还是同一个角色，只是换了身体。',
+        vocabHint: '情绪 / 动作表会随新形象变化（旧标签不在新词表里时自动降级）。',
+        crossEngineHint: '跨引擎更换（{from} → {to}）：动作与表情映射整组换代。',
+        noTargets: '内置角色只读。先在「我的角色」里把角色复制一份，再来换形象。',
+        noBodies: '还没有已装形象。到「市场」找一个，或导入本地 .dsbody 文件。',
+        confirm: '换形象',
+        busy: '更换中…',
+        done: '✓ 已换上「{name}」',
+        failed: '换形象失败：{detail}',
       },
       market: {
         title: '角色市场',
@@ -603,6 +633,7 @@ export const zhCN = {
           all: '全部类型',
           soul: '灵魂包',
           full: '完整包',
+          body: '形象包',
           ref: '外链模型',
         },
         typeLabel: '类型',
