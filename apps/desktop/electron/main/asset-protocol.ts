@@ -3,7 +3,9 @@
  *
  * Renderer 只能引用 `asset://<characterId>/<相对路径>`；映射经 resolveAssetPath
  * 白名单解析（host=角色 id、段级校验、resolve 后前缀强校验），任何越级/跨包/
- * 非法形状一律 null → 404。注册分两步：
+ * 非法形状一律 null → 404。⑰ 起根列表为三根：内置角色 > 导入角色 > 形象库
+ * （`userData/bodies`，肉体包 preview 图；host 与角色 id 共享命名空间，同名时角色优先）。
+ * 注册分两步：
  *   - assetSchemePrivileges() 必须在 app ready 前经 registerSchemesAsPrivileged 注册
  *     （supportFetchAPI：GLTFLoader 走 fetch；corsEnabled + ACAO：renderer 的
  *     localhost/file 源对 asset:// 是跨源请求）。

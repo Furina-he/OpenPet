@@ -88,4 +88,26 @@ describe('resolveAssetPath', () => {
     expect(resolveAssetPath([ROOT], 'asset://cubism/a%5Cb.js', () => true, reserved)).toBeNull();
     expect(resolveAssetPath([ROOT], 'asset://cubism//x.js', () => true, reserved)).toBeNull();
   });
+
+  it('⑰ 形象库第三根：body id 命中 bodies/<id>/，角色同名时角色优先，越级仍拒', () => {
+    const roots = ['/builtin', '/chars', '/bodies'];
+    const hits = new Set(
+      ['/bodies/knight/preview.png', '/builtin/default/preview.png', '/chars/default/preview.png'].map(
+        (p) => p.split('/').join(path.sep),
+      ),
+    );
+    const exists = (p: string): boolean => hits.has(p.replace(/^([A-Za-z]:)?/, ''));
+    // 只有形象库里有 → 命中第三根
+    expect(
+      resolveAssetPath(roots, 'asset://knight/preview.png', exists)?.replace(/\\/g, '/'),
+    ).toContain('/bodies/knight/preview.png');
+    // 同名角色包存在 → 内置角色优先（根顺序即优先级）
+    expect(
+      resolveAssetPath(roots, 'asset://default/preview.png', exists)?.replace(/\\/g, '/'),
+    ).toContain('/builtin/default/preview.png');
+    // 形象库根同样吃段级校验与前缀强校验
+    expect(resolveAssetPath(roots, 'asset://knight/a%5Cb.png', exists)).toBeNull();
+    const r = resolveAssetPath(roots, 'asset://knight/sub/../../other/x.png', exists);
+    expect(r!.replace(/\\/g, '/')).toContain('/knight/other/x.png');
+  });
 });

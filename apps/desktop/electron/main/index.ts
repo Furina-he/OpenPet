@@ -84,7 +84,7 @@ app.whenReady().then(async () => {
   const starPluginsDir = path.join(app.getPath('userData'), 'star-plugins');
   const starVenvDir = path.join(app.getPath('userData'), 'star-host', 'venv');
 
-  registerAssetProtocol([charactersRoot, importedCharactersRoot], {
+  registerAssetProtocol([charactersRoot, importedCharactersRoot, bodiesRoot], {
     // Cubism Core 三级加载链后两级（⑪ 发布批次）：打包 resources/cubism → userData/cubism。
     // 专有许可不随包分发；用户自置 userData\cubism\live2dcubismcore.min.js（角色页/手册引导）。
     cubism: [
