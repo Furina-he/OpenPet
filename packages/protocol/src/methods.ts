@@ -634,6 +634,11 @@ export const Methods = {
     params: z.object({ entry: ModelEntrySchema }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'provider.updateModel': {
+    // 模型条目整体更新（启用 / 能力 / 上下文窗口；id 不变）——D3 模型配置弹窗。
+    params: z.object({ entry: ModelEntrySchema }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'provider.deleteModel': {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),

@@ -135,6 +135,14 @@ export function createProviderService(deps: ProviderServiceDeps) {
       return { ok: true as const };
     },
 
+    'provider.updateModel': async (p: { entry: ModelEntry }) => {
+      deps.setPref(
+        'model.models',
+        models().map((m) => (m.id === p.entry.id ? p.entry : m)),
+      );
+      return { ok: true as const };
+    },
+
     'provider.deleteModel': async (p: { id: string }) => {
       deps.setPref(
         'model.models',
