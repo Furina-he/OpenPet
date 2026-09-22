@@ -104,6 +104,8 @@ export interface IpcRouterDeps {
   importedCharactersRoot?: string;
   /** ⑰ 形象库根（生产 userData/bodies）；缺省 charactersRoot/_bodies（测试）。 */
   bodiesRoot?: string;
+  /** ⑲ 记忆 wiki 根（生产 userData/memory）；缺省 charactersRoot/_memory（测试）。 */
+  memoryRoot?: string;
   /** E3 系统选择框（index 注入 dialog.showOpenDialog）；缺省 null=取消。 */
   pickCharacterPath?: (kind: 'pack' | 'folder' | 'dsbody') => Promise<string | null>;
   /** ⑩.7 E4：导出 .dspack 保存框（index 注入 dialog.showSaveDialog）；缺省 null=取消。 */
@@ -213,6 +215,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   const importedRoot = deps.importedCharactersRoot ?? path.join(deps.charactersRoot, '_imported');
   // ⑰ 形象库根（肉体包）：与 characters 平行，不进角色列表也不能被 character.switch 选中。
   const bodiesRoot = deps.bodiesRoot ?? path.join(deps.charactersRoot, '_bodies');
+  const memoryRoot = deps.memoryRoot ?? path.join(deps.charactersRoot, '_memory');
   const characters = createCharacterService({
     builtinRoot: deps.charactersRoot,
     importedRoot,

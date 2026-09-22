@@ -74,6 +74,8 @@ app.whenReady().then(async () => {
   const importedCharactersRoot = path.join(app.getPath('userData'), 'characters');
   // ⑰ 形象库根（userData/bodies）：肉体包（.dsbody）装这里，不进角色列表。
   const bodiesRoot = path.join(app.getPath('userData'), 'bodies');
+  // ⑲ 记忆 wiki 根（userData/memory）：markdown 真源，用户可用 Obsidian 直接打开。
+  const memoryRoot = path.join(app.getPath('userData'), 'memory');
   // 线 B-2 Desktop 插件：worker entry 同 provider 手法（真实文件路径喂 new Worker）；安装根 userData/plugins。
   const pluginEntryPath = toUnpackedPath(require.resolve('@openpet/sidecar/dist/plugin-entry.js'));
   const pluginsRoot = path.join(app.getPath('userData'), 'plugins');
@@ -186,6 +188,7 @@ app.whenReady().then(async () => {
     charactersRoot,
     importedCharactersRoot,
     bodiesRoot,
+    memoryRoot,
     pickCharacterPath: async (kind) => {
       const r = await dialog.showOpenDialog({
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
