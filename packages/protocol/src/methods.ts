@@ -558,6 +558,12 @@ export const Methods = {
     params: z.object({ x: z.number(), y: z.number() }),
     result: z.null(),
   },
+  // ⑱ 节拍手势：⑭ 自然节奏每发一段，按段尾标点发一拍（仅 default 会话、仅 pet.beatGestures 开）。
+  // 渲染端把它当点缀：有活动作/间隔不足即丢弃，永不排队。
+  'behavior.beat': {
+    params: z.object({ sessionId: z.string(), kind: z.enum(['question', 'exclaim', 'period']) }),
+    result: z.null(),
+  },
 
   // --- request/response: Worker → Main（经 MessagePort 的 plugin.request 帧；
   //     身份来自通道（哪个 worker 的 port），不自报 pluginId —— M5 多 worker 时

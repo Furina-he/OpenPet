@@ -130,6 +130,34 @@ describe('灵魂 / 肉体切分线（唯一真源）', () => {
   });
 });
 
+describe('⑱ actionClips（VRMA 片段通道，归肉体）', () => {
+  const base = { id: 'miko', name: '巫女', version: '1', engine: 'vrm', model: 'miko.vrm' };
+
+  it('接受 动作名 → 包内 .vrma 相对路径', () => {
+    const m = CharacterManifestSchema.parse({
+      ...base,
+      actionClips: { wave: 'anim/wave.vrma', jump: 'jump.VRMA' },
+    });
+    expect(m.actionClips).toEqual({ wave: 'anim/wave.vrma', jump: 'jump.VRMA' });
+  });
+
+  it('拒绝非 .vrma 后缀 / 越界路径 / 非法动作名', () => {
+    expect(() => CharacterManifestSchema.parse({ ...base, actionClips: { wave: 'wave.glb' } })).toThrow();
+    expect(() =>
+      CharacterManifestSchema.parse({ ...base, actionClips: { wave: '../wave.vrma' } }),
+    ).toThrow();
+    expect(() =>
+      CharacterManifestSchema.parse({ ...base, actionClips: { 'bad name': 'wave.vrma' } }),
+    ).toThrow();
+  });
+
+  it('归入 BODY_FIELDS 且 .dsbody 自动携带', () => {
+    expect(BODY_FIELDS).toContain('actionClips');
+    const b = BodyPackSchema.parse({ ...base, actionClips: { wave: 'wave.vrma' } });
+    expect(b.actionClips).toEqual({ wave: 'wave.vrma' });
+  });
+});
+
 describe('BodyPackSchema（.dsbody 的 body.json）', () => {
   const body = { id: 'knight', name: 'Knight', version: '1.0', engine: 'vrm', model: 'k.vrm' };
 

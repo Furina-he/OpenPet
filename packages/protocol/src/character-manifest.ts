@@ -70,6 +70,21 @@ export const CharacterManifestObjectSchema = z
       .optional(),
     /** 动作词表；缺省 DEFAULT_ACTIONS（persona-prompt-template）（live2d 忽略）。 */
     actions: z.array(z.string().regex(NAME_RE)).optional(),
+    /**
+     * ⑱ VRMA 动画片段通道：动作名 → 包内 `.vrma` 相对路径。`playAction(name)` 命中则走
+     * AnimationMixer，否则程序化曲线（零回归）；文件缺失/解析失败 warn + 回退，永不崩。
+     */
+    actionClips: z
+      .record(
+        z.string().regex(NAME_RE),
+        z
+          .string()
+          .refine(isSafeRelPath, { message: 'actionClips entry must be a safe relative path' })
+          .refine((p) => p.toLowerCase().endsWith('.vrma'), {
+            message: 'actionClips entry must point to a .vrma file',
+          }),
+      )
+      .optional(),
     /** 交互 cue 覆盖表；按 on 与 DEFAULT_CUES 合并（包优先，F-IT-07）。 */
     cues: z.array(CueSchema).optional(),
     /** E1 卡片立绘（包内相对路径，asset:// 引用）；缺省首字占位。 */
@@ -115,6 +130,7 @@ export const BODY_FIELDS = [
   'model',
   'emotions',
   'actions',
+  'actionClips',
   'cues',
   'live2dEmotions',
   'live2dMotions',
@@ -185,6 +201,7 @@ export const BodyPackSchema = CharacterManifestObjectSchema.pick({
   model: true,
   emotions: true,
   actions: true,
+  actionClips: true,
   cues: true,
   live2dEmotions: true,
   live2dMotions: true,

@@ -45,6 +45,15 @@ describe('PrefsSchema D-series expansion', () => {
   });
 });
 
+describe('⑱ 生命感 v2 prefs', () => {
+  it('pet.lifeLayers / pet.beatGestures / pet.moodAffectsVoice 默认全开且为布尔', () => {
+    expect(DEFAULT_PREFS['pet.lifeLayers']).toBe(true);
+    expect(DEFAULT_PREFS['pet.beatGestures']).toBe(true);
+    expect(DEFAULT_PREFS['pet.moodAffectsVoice']).toBe(true);
+    expect(PrefsSchema.shape['pet.lifeLayers'].safeParse('yes').success).toBe(false);
+  });
+});
+
 describe('PrefsSchema onboarding flag (M7b-2)', () => {
   it('defaults onboarding.completed to false', () => {
     expect(DEFAULT_PREFS['onboarding.completed']).toBe(false);

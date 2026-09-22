@@ -184,6 +184,18 @@ describe('character.* + behavior.lookAt (M4)', () => {
     expect(Methods['behavior.lookAt'].params.safeParse({ x: 100, y: -3 }).success).toBe(true);
     expect(Methods['behavior.lookAt'].params.safeParse({ x: 'a', y: 0 }).success).toBe(false);
   });
+
+  it('⑱ behavior.beat：sessionId + kind ∈ question|exclaim|period', () => {
+    for (const kind of ['question', 'exclaim', 'period']) {
+      expect(Methods['behavior.beat'].params.safeParse({ sessionId: 'default', kind }).success).toBe(
+        true,
+      );
+    }
+    expect(Methods['behavior.beat'].params.safeParse({ sessionId: 'default', kind: 'nod' }).success).toBe(
+      false,
+    );
+    expect(Methods['behavior.beat'].params.safeParse({ kind: 'period' }).success).toBe(false);
+  });
 });
 
 describe('provider.* method registry (AstrBot 对齐)', () => {
