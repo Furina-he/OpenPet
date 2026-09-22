@@ -91,7 +91,7 @@ importers:
         specifier: 6.5.10
         version: 6.5.10(@pixi/constants@6.5.10)(@pixi/settings@6.5.10(@pixi/constants@6.5.10))
       '@pixiv/three-vrm':
-        specifier: ^3.4.0
+        specifier: ^3.5.3
         version: 3.5.3(three@0.180.0)
       '@pixiv/three-vrm-animation':
         specifier: ^3.5.3

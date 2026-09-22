@@ -36,7 +36,7 @@
     "@pixi/math": "6.5.10",
     "@pixi/sprite": "6.5.10",
     "@pixi/utils": "6.5.10",
-    "@pixiv/three-vrm": "^3.4.0",
+    "@pixiv/three-vrm": "^3.5.3",
     "@pixiv/three-vrm-animation": "^3.5.3",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7",
