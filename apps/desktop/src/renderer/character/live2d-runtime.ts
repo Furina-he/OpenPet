@@ -132,6 +132,9 @@ export async function createLive2dRuntime(
     setStreaming(_active) {
       // T8 接呼吸/视线。
     },
+    setLookAtPrefs(_enabled, _strength) {
+      // T8 接视线状态机。
+    },
     playAction(name) {
       // dur 由 motion 自带时长决定（durMs 参数忽略）
       const { group, index } = resolveMotion(manifest, name);

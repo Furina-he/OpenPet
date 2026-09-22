@@ -20,6 +20,8 @@ export interface CharacterRuntime {
   setLifeLayers(enabled: boolean): void;
   /** ⑱ chat.stream 活跃（说话中）：呼吸幅度 ×0.6、视线切 speaking。 */
   setStreaming(active: boolean): void;
+  /** ⑱ 接通 display.lookAt / display.lookAtStrength（false = 不追鼠标只游移；0–100 → 幅度 0.3–1.2）。 */
+  setLookAtPrefs(enabled: boolean, strength: number): void;
   playAction(name: string, durMs?: number | null): void;
   /** 屏幕坐标（DIP；Main 的 behavior.lookAt 直传）。 */
   setLookAt(x: number, y: number): void;

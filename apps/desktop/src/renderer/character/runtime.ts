@@ -6,7 +6,7 @@
  *   - load：GLTFLoader + VRMLoaderPlugin、性能三件套、预算测量
  *   - applyEmotion：manifest 词表（缺省内置表）→ expression 权重组合，⑱ 包络（快起慢退到心情基线）
  *   - playAction：程序化动作库单活动作播放（新顶旧、完毕回 idle）
- *   - setLookAt：屏幕坐标 → 阻尼平滑 → vrm.lookAt target
+ *   - setLookAt：屏幕坐标 → ⑱ 视线状态机（track/wander/thinking/speaking/sleepy）→ 阻尼 → vrm.lookAt target
  *   - setIdle：intent → idle 变体子集（眨眼/呼吸常驻）
  *   - setLipsync：V1+ stub（§7 接口完整性）
  * 业务状态（说什么/何时说）一概不持有。
@@ -24,6 +24,8 @@ import { FpsMeter } from './fps-meter';
 import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
 import { LifeLayer, addOffsets, asEnergy, nightEnergy, type Energy } from './life-layers';
 import { PostureLayer } from './posture';
+import { GazeMachine } from './gaze';
+import { BlinkScheduler } from './blink';
 import type { CharacterRuntime } from './runtime-types';
 
 export type { CharacterRuntime, HitSurface } from './runtime-types';
@@ -122,9 +124,11 @@ export async function createVrmRuntime(
   let speaking = false;
   envelope.setBaseline(baselineForMood(0), performance.now());
 
-  // ⑱ 底噪层 + 姿态层（spec §2.2 / §2.4）：纯逻辑模块，这里只装配。
+  // ⑱ 底噪层 + 姿态层（spec §2.2 / §2.4）+ 视线状态机 + 眨眼调度（§2.3）：纯逻辑模块，这里只装配。
   const life = new LifeLayer(performance.now());
   const posture = new PostureLayer();
+  const gaze = new GazeMachine(performance.now());
+  const blink = new BlinkScheduler(performance.now());
 
   function applyEmotion(name: string, weight = 1): void {
     const now = performance.now();
@@ -133,6 +137,8 @@ export async function createVrmRuntime(
     envelope.trigger(target, now);
     currentEmotion = emotions[name] && weight > 0 ? name : 'neutral';
     posture.set(currentEmotion, moodValue, now);
+    gaze.emotionChanged(currentEmotion);
+    blink.setEmotion(currentEmotion);
   }
 
   function releaseEmotion(): void {
@@ -140,6 +146,8 @@ export async function createVrmRuntime(
     envelope.release(now);
     currentEmotion = 'neutral';
     posture.set('neutral', moodValue, now);
+    gaze.emotionChanged('neutral');
+    blink.setEmotion('neutral');
   }
 
   function refreshBaseline(): void {
@@ -294,24 +302,14 @@ export async function createVrmRuntime(
     em.setValue('aa', mouthCurrent);
   }
 
-  // ---- idle：眨眼常驻 + 变体池调度 ----
-  let nextBlinkAt = performance.now() + 1500;
-  let blinkPhase = -1;
-
-  function updateBlink(now: number, delta: number): void {
+  // ---- idle：眨眼常驻（⑱ BlinkScheduler：间隔随情绪/双眨/扫视伴随/sleepy 地板）+ 变体池调度 ----
+  function updateBlink(now: number): void {
     const em = vrm.expressionManager;
     if (!em) return;
-    if (blinkPhase < 0 && now >= nextBlinkAt) blinkPhase = 0;
-    if (blinkPhase >= 0) {
-      blinkPhase += delta / 0.12;
-      const v = blinkPhase < 1 ? blinkPhase : 2 - blinkPhase;
-      em.setValue('blink', Math.max(0, Math.min(1, v)));
-      if (blinkPhase >= 2) {
-        blinkPhase = -1;
-        em.setValue('blink', 0);
-        nextBlinkAt = now + 2000 + Math.random() * 4000;
-      }
+    if (lifeLayers) {
+      for (let i = gaze.takeSaccades(); i > 0; i--) blink.onSaccade(now);
     }
+    em.setValue('blink', blink.sample(now, lifeLayers ? gaze.eyelidFloor(now) : 0));
   }
 
   let idleSubset: IdleVariant[] = selectIdleVariants({ mood: 'neutral', energy: 'mid' });
@@ -326,7 +324,7 @@ export async function createVrmRuntime(
     nextIdle = planNextIdle(now, idleSubset); // 被显式动作占用时顺延到下个窗口
   }
 
-  // ---- LookAt：阻尼平滑 + vrm.lookAt target ----
+  // ---- LookAt：⑱ 视线状态机 → 阻尼平滑 + vrm.lookAt target（总闸关 = 旧的直追鼠标）----
   const lookAtTarget = new THREE.Object3D();
   scene.add(lookAtTarget);
   if (vrm.lookAt) vrm.lookAt.target = lookAtTarget;
@@ -334,19 +332,29 @@ export async function createVrmRuntime(
   const smoothN: Normalized = { nx: 0, ny: 0 };
   const headWorld = new THREE.Vector3(0, 1.35, 0);
   head?.getWorldPosition(headWorld);
+  const windowRect = () => ({
+    x: window.screenX,
+    y: window.screenY,
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
   function setLookAt(x: number, y: number): void {
-    rawN = normalizedFromScreen(x, y, {
-      x: window.screenX,
-      y: window.screenY,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const win = windowRect();
+    rawN = normalizedFromScreen(x, y, win);
+    gaze.cursor(x, y, performance.now(), win);
   }
 
-  function updateLookAt(dt: number): void {
-    smoothN.nx = damp(smoothN.nx, rawN.nx, 8, dt);
-    smoothN.ny = damp(smoothN.ny, rawN.ny, 8, dt);
+  function updateLookAt(now: number, dt: number): void {
+    let target: Normalized = rawN;
+    let lambda = 8;
+    if (lifeLayers) {
+      const g = gaze.target(now);
+      target = g;
+      if (g.saccade) lambda = 30; // 扫视：80ms 内基本到位
+    }
+    smoothN.nx = damp(smoothN.nx, target.nx, lambda, dt);
+    smoothN.ny = damp(smoothN.ny, target.ny, lambda, dt);
     const t = lookAtWorldTarget(headWorld, smoothN);
     lookAtTarget.position.set(t.x, t.y, t.z);
   }
@@ -374,11 +382,11 @@ export async function createVrmRuntime(
     const delta = clock.getDelta();
     const now = performance.now();
     fps.tick(now);
-    updateBlink(now, delta);
+    updateBlink(now);
     updateIdleVariants(now);
     updateTransition(now);
     updateMouth();
-    updateLookAt(delta);
+    updateLookAt(now, delta);
     updateDragPhysics(delta * 1000);
     applyPose(now, composePose(now));
     vrm.update(delta);
@@ -404,6 +412,10 @@ export async function createVrmRuntime(
     },
     setStreaming(active) {
       speaking = active;
+      gaze.streamActive(active);
+    },
+    setLookAtPrefs(enabled, strength) {
+      gaze.setLookAtPrefs(enabled, strength);
     },
     playAction(name, durMs) {
       playActionScaled(name, durMs ?? null, 1);

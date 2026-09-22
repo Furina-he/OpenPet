@@ -268,6 +268,7 @@ async function boot(): Promise<void> {
 
   // ---- ⑱ 心情 → 渲染端（表情基线/呼吸/姿态）：pet.mood 经 app.prefs.changed 推送 + 本地半衰重算 ----
   let moodPref = { value: 0, updatedAt: 0 };
+  const lookAtPrefs = { enabled: true, strength: 50 };
   const pushMood = (): void => {
     runtime?.setMood(moodCurrent(moodPref.value, moodPref.updatedAt, Date.now()));
   };
@@ -283,6 +284,11 @@ async function boot(): Promise<void> {
       }
     } else if (c.key === 'pet.lifeLayers') {
       runtime?.setLifeLayers(c.value !== false);
+    } else if (c.key === 'display.lookAt' || c.key === 'display.lookAtStrength') {
+      // ⑱ 偿"存而不接"债：两键任一变更即整体重推
+      if (c.key === 'display.lookAt') lookAtPrefs.enabled = c.value !== false;
+      else if (typeof c.value === 'number') lookAtPrefs.strength = c.value;
+      runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);
     } else if (c.key === 'general.language') {
       if (typeof c.value === 'string') locale = c.value;
     } else if (c.key === 'display.bubbleDuration') {
@@ -314,6 +320,9 @@ async function boot(): Promise<void> {
       mouthStrength = pf['voice.mouthStrength'];
       moodPref = pf['pet.mood'];
       runtime?.setLifeLayers(pf['pet.lifeLayers']);
+      lookAtPrefs.enabled = pf['display.lookAt'];
+      lookAtPrefs.strength = pf['display.lookAtStrength'];
+      runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);
       pushMood();
       applyMode();
     })
