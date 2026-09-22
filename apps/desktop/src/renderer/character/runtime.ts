@@ -15,10 +15,27 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import type { CharacterManifest } from '@openpet/protocol';
-import { sampleAction, ACTION_DEFAULT_MS, ZERO_OFFSETS, type BoneOffsets } from './actions';
+import {
+  sampleAction,
+  sampleActionEnvelope,
+  actionTotalMs,
+  ACTION_COMPANIONS,
+  ACTION_DEFAULT_MS,
+  ACTION_SCALE,
+  ZERO_OFFSETS,
+  type BoneOffsets,
+} from './actions';
 import { dragState } from './drag-state';
 import { normalizedFromScreen, lookAtWorldTarget, damp, type Normalized } from './lookat';
-import { selectIdleVariants, planNextIdle, type IdleVariant } from './idle-pool';
+import {
+  selectIdleVariants,
+  planNextIdle,
+  stepsOf,
+  IdleSequencer,
+  type IdleIntent,
+  type IdleStep,
+  type IdleVariant,
+} from './idle-pool';
 import { measureSceneBudget, checkBudget } from './perf-budget';
 import { FpsMeter } from './fps-meter';
 import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
@@ -26,6 +43,7 @@ import { LifeLayer, addOffsets, asEnergy, nightEnergy, type Energy } from './lif
 import { PostureLayer } from './posture';
 import { GazeMachine } from './gaze';
 import { BlinkScheduler } from './blink';
+import { settle } from './settle';
 import type { CharacterRuntime } from './runtime-types';
 
 export type { CharacterRuntime, HitSurface } from './runtime-types';
@@ -170,27 +188,72 @@ export async function createVrmRuntime(
     for (const n of allExpressionNames) em.setValue(n, w[n] ?? 0);
   }
 
-  // ---- 动作：单活动作播放器 ----
+  // ---- 动作：单活动作播放器（⑱ 三段包络 + 协同分发；总闸关 = 旧 bump 曲线）----
   const actionVocab = manifest.actions ?? Object.keys(ACTION_DEFAULT_MS);
-  let activeAction: { name: string; start: number; durMs: number; scale: number } | null = null;
+  let activeAction: {
+    name: string;
+    start: number;
+    durMs: number;
+    scale: number;
+    total: number;
+    restorePosture: boolean;
+  } | null = null;
+  let lastActionEnd = -Infinity;
+  /** 协同：嘴微张窗口（sigh/stretch）与 hum 伪动作窗口。 */
+  let mouthCompanion: { level: number; until: number } | null = null;
+  let hum: { start: number; until: number } | null = null;
+
+  /** 协同表分发（spec §2.5）：节拍档（|scale|<0.5）不触发，避免点缀动作抢戏。 */
+  function dispatchCompanions(name: string, durMs: number, scale: number, now: number): boolean {
+    if (!lifeLayers || Math.abs(scale) < 0.5) return false;
+    const c = ACTION_COMPANIONS[name as keyof typeof ACTION_COMPANIONS];
+    if (!c) return false;
+    if (c.gaze) gaze.nudge(c.gaze, now, c.gazeMs ?? durMs);
+    if (c.blink) blink.nudge(c.blink, now, durMs, c.blinkLevel);
+    if (c.mouth !== undefined) mouthCompanion = { level: c.mouth, until: now + durMs };
+    if (c.breath) life.nudgeBreath(c.breath, now);
+    if (c.posture) {
+      posture.override(c.posture, now);
+      return true;
+    }
+    return false;
+  }
 
   function playActionScaled(name: string, durMs: number | null | undefined, scale: number): void {
     if (!actionVocab.includes(name)) {
       console.warn(`[runtime] unknown action "${name}" (vocab: ${actionVocab.join(',')})`);
       return;
     }
+    const now = performance.now();
     const fallback = (ACTION_DEFAULT_MS as Record<string, number>)[name] ?? 1500;
-    activeAction = { name, start: performance.now(), durMs: durMs ?? fallback, scale };
+    const dur = durMs ?? fallback;
+    const restorePosture = dispatchCompanions(name, dur, scale, now);
+    activeAction = {
+      name,
+      start: now,
+      durMs: dur,
+      scale,
+      total: lifeLayers ? actionTotalMs(name, dur) : dur,
+      restorePosture,
+    };
+  }
+
+  function endAction(now: number): void {
+    if (activeAction?.restorePosture) posture.set(currentEmotion, moodValue, now);
+    activeAction = null;
+    lastActionEnd = now;
   }
 
   function currentOffsets(now: number): BoneOffsets {
     if (!activeAction) return ZERO_OFFSETS;
-    const phase = (now - activeAction.start) / activeAction.durMs;
-    if (phase >= 1) {
-      activeAction = null;
+    const t = now - activeAction.start;
+    if (t >= activeAction.total) {
+      endAction(now);
       return ZERO_OFFSETS;
     }
-    const raw = sampleAction(activeAction.name, phase);
+    const raw = lifeLayers
+      ? sampleActionEnvelope(activeAction.name, t, activeAction.durMs)
+      : sampleAction(activeAction.name, t / activeAction.durMs);
     if (activeAction.scale === 1) return raw;
     const scaled = { ...raw };
     for (const k of Object.keys(scaled) as Array<keyof BoneOffsets>) {
@@ -199,13 +262,20 @@ export async function createVrmRuntime(
     return scaled;
   }
 
+  /** ⑱ 节拍手势门（spec §2.7）：无活动作且距上次动作 ≥1.5s 才播，否则丢弃（永不排队）。 */
+  const BEAT_GATE_MS = 1500;
+  function playBeat(name: string, scale: number, now: number): boolean {
+    if (activeAction || now - lastActionEnd < BEAT_GATE_MS) return false;
+    playActionScaled(name, null, scale);
+    return true;
+  }
+
   // ---- 拖拽物理（F-IT-04）：速度→拎起摆动，松手 0.4s 弹性回归。与动作曲线同一 BoneOffsets 叠加口。
   const DRAG_ROLL_PER_PXMS = 0.35; // headRoll(rad) per px/ms；系数按真窗手感微调
   const DRAG_ROLL_MAX = 0.25;
   const DRAG_PITCH_PER_PXMS = 0.12; // spinePitch 微量（速度绝对值）
   const DRAG_PITCH_MAX = 0.08;
-  const RELEASE_TAU_MS = 130; // e^{-t/τ}：0.4s ≈ 3τ → 衰至 ~5%
-  const RELEASE_OMEGA = 0.016; // rad/ms：cos(ωt) 在 0.4s 内一次 overshoot 变体
+  // 回归包络 = settle.ts（⑱ 与动作余震同源）
   const clampAbs = (v: number, max: number): number => Math.max(-max, Math.min(max, v));
   let physRoll = 0;
   let physPitch = 0;
@@ -229,7 +299,7 @@ export async function createVrmRuntime(
       releaseAmpPitch = physPitch;
     }
     releaseT += dtMs;
-    const env = Math.exp(-releaseT / RELEASE_TAU_MS) * Math.cos(RELEASE_OMEGA * releaseT);
+    const env = settle(releaseT);
     physRoll = releaseAmpRoll * env;
     physPitch = releaseAmpPitch * env;
     if (Math.abs(physRoll) < 1e-3 && Math.abs(physPitch) < 1e-3) {
@@ -294,11 +364,23 @@ export async function createVrmRuntime(
   let mouthTarget = 0;
   let mouthCurrent = 0;
 
-  function updateMouth(): void {
+  function updateMouth(now: number): void {
     const em = vrm.expressionManager;
     if (!em) return;
-    mouthCurrent += (mouthTarget - mouthCurrent) * 0.15;
-    if (mouthTarget === 0 && mouthCurrent < 1e-3) mouthCurrent = 0;
+    let target = mouthTarget;
+    // ⑱ 协同微张（sigh/stretch）与 hum 伪动作（嘴 2.2Hz 微开合）：取 max，TTS 嘴型永远优先。
+    if (mouthCompanion) {
+      if (now < mouthCompanion.until) target = Math.max(target, mouthCompanion.level);
+      else mouthCompanion = null;
+    }
+    if (hum) {
+      if (now < hum.until) {
+        const t = (now - hum.start) / 1000;
+        target = Math.max(target, 0.12 * (0.5 + 0.5 * Math.sin(2 * Math.PI * 2.2 * t)));
+      } else hum = null;
+    }
+    mouthCurrent += (target - mouthCurrent) * 0.15;
+    if (target === 0 && mouthCurrent < 1e-3) mouthCurrent = 0;
     em.setValue('aa', mouthCurrent);
   }
 
@@ -312,16 +394,40 @@ export async function createVrmRuntime(
     em.setValue('blink', blink.sample(now, lifeLayers ? gaze.eyelidFloor(now) : 0));
   }
 
-  let idleSubset: IdleVariant[] = selectIdleVariants({ mood: 'neutral', energy: 'mid' });
+  let idleIntent: IdleIntent = { mood: 'neutral', energy: 'mid' };
+  let autoSpeak = false;
+  let idleSubset: IdleVariant[] = selectIdleVariants(idleIntent);
   let nextIdle = planNextIdle(performance.now(), idleSubset);
+  const sequencer = new IdleSequencer();
+
+  function refreshIdle(): void {
+    idleSubset = selectIdleVariants(idleIntent, { moodValue, autoSpeak });
+    nextIdle = planNextIdle(performance.now(), idleSubset, Math.random, energy);
+  }
+
+  function playIdleStep(step: IdleStep, now: number): void {
+    if (step.action === 'hum') {
+      hum = { start: now, until: now + step.durationMs };
+      return;
+    }
+    playActionScaled(step.action, step.durationMs, step.scale);
+  }
 
   function updateIdleVariants(now: number): void {
+    // ⑱ 序列步进：gap 内不被 idle 抢占；显式动作到来即中止（见 playAction）。
+    if (sequencer.active) {
+      const busy = activeAction !== null || (hum !== null && now < hum.until);
+      const step = sequencer.next(now, busy);
+      if (step) playIdleStep(step, now);
+      return;
+    }
     if (now < nextIdle.at) return;
     if (!activeAction) {
       const v = nextIdle.variant;
-      playActionScaled(v.action, v.durationMs, v.scale);
+      if (lifeLayers) sequencer.start(stepsOf(v), now);
+      else playActionScaled(v.action, v.durationMs, v.scale);
     }
-    nextIdle = planNextIdle(now, idleSubset); // 被显式动作占用时顺延到下个窗口
+    nextIdle = planNextIdle(now, idleSubset, Math.random, lifeLayers ? energy : 'mid'); // 被占用时顺延
   }
 
   // ---- LookAt：⑱ 视线状态机 → 阻尼平滑 + vrm.lookAt target（总闸关 = 旧的直追鼠标）----
@@ -385,7 +491,7 @@ export async function createVrmRuntime(
     updateBlink(now);
     updateIdleVariants(now);
     updateTransition(now);
-    updateMouth();
+    updateMouth(now);
     updateLookAt(now, delta);
     updateDragPhysics(delta * 1000);
     applyPose(now, composePose(now));
@@ -403,8 +509,11 @@ export async function createVrmRuntime(
     applyEmotion,
     releaseEmotion,
     setMood(mood) {
+      const band = (v: number) => (v < -0.3 ? -1 : v > 0.4 ? 1 : 0);
+      const changed = band(mood) !== band(moodValue);
       moodValue = mood;
       refreshBaseline();
+      if (changed) refreshIdle();
     },
     setLifeLayers(enabled) {
       lifeLayers = enabled;
@@ -418,7 +527,28 @@ export async function createVrmRuntime(
       gaze.setLookAtPrefs(enabled, strength);
     },
     playAction(name, durMs) {
-      playActionScaled(name, durMs ?? null, 1);
+      sequencer.abort(); // 显式动作到来即中止 idle 序列
+      hum = null;
+      playActionScaled(name, durMs ?? null, ACTION_SCALE.explicit);
+    },
+    playBeat(kind) {
+      // ⑱ 节拍手势（spec §2.7）：question → tilt .25 / exclaim → nod .3 + happy 闪 / period → 20% nod .2
+      if (!lifeLayers) return false;
+      const now = performance.now();
+      if (kind === 'question') return playBeat('tilt', 0.25, now);
+      if (kind === 'exclaim') {
+        const ok = playBeat('nod', ACTION_SCALE.beat, now);
+        if (ok) {
+          envelope.trigger({ happy: 0.1 }, now);
+          setTimeout(() => envelope.release(performance.now()), 200);
+        }
+        return ok;
+      }
+      return Math.random() < 0.2 ? playBeat('nod', 0.2, now) : false;
+    },
+    setAutoSpeak(on) {
+      autoSpeak = on;
+      refreshIdle();
     },
     setLookAt,
     setMouth(v) {
@@ -429,8 +559,8 @@ export async function createVrmRuntime(
     },
     setIdle(intent) {
       energy = asEnergy(intent.energy);
-      idleSubset = selectIdleVariants(intent);
-      nextIdle = planNextIdle(performance.now(), idleSubset);
+      idleIntent = intent;
+      refreshIdle();
     },
     listEmotions: () => Object.keys(emotions),
     listActions: () => [...actionVocab],

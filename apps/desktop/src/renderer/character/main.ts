@@ -301,6 +301,8 @@ async function boot(): Promise<void> {
     } else if (c.key === 'display.focusMode') {
       focus = c.value === true;
       applyMode();
+    } else if (c.key === 'voice.autoSpeak') {
+      runtime?.setAutoSpeak(c.value === true);
     } else if (c.key === 'voice.mouthSync') {
       mouthSync = c.value === true;
     } else if (c.key === 'voice.mouthStrength') {
@@ -323,6 +325,7 @@ async function boot(): Promise<void> {
       lookAtPrefs.enabled = pf['display.lookAt'];
       lookAtPrefs.strength = pf['display.lookAtStrength'];
       runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);
+      runtime?.setAutoSpeak(pf['voice.autoSpeak']);
       pushMood();
       applyMode();
     })

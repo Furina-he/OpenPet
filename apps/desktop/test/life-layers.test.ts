@@ -72,6 +72,27 @@ describe('Breath 振荡器', () => {
   });
 });
 
+describe('Breath 协同拍', () => {
+  it('inhale 叠正向半正弦、exhale 叠负向；结束后回常规', () => {
+    const base = new Breath();
+    const inh = new Breath();
+    const exh = new Breath();
+    inh.nudge('inhale', 0);
+    exh.nudge('exhale', 0);
+    const b = base.sample(0, ctx());
+    const i = inh.sample(0, ctx());
+    const e = exh.sample(0, ctx());
+    expect(i.chestPitch).toBeCloseTo(b.chestPitch, 9); // t=0 半正弦为 0
+    const b2 = base.sample(175, ctx());
+    expect(inh.sample(175, ctx()).chestPitch).toBeGreaterThan(b2.chestPitch);
+    expect(exh.sample(175, ctx()).chestPitch).toBeLessThan(b2.chestPitch);
+    expect(e.chestPitch).toBeCloseTo(b.chestPitch, 9);
+    base.sample(2000, ctx());
+    inh.sample(2000, ctx());
+    expect(inh.sample(2016, ctx()).chestPitch).toBeCloseTo(base.sample(2016, ctx()).chestPitch, 9);
+  });
+});
+
 describe('microNoise', () => {
   it('幅度上限：全时段扫描不超过表值；high ×1.4', () => {
     let maxYaw = 0;

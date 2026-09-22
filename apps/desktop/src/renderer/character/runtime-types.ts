@@ -23,6 +23,10 @@ export interface CharacterRuntime {
   /** ⑱ 接通 display.lookAt / display.lookAtStrength（false = 不追鼠标只游移；0–100 → 幅度 0.3–1.2）。 */
   setLookAtPrefs(enabled: boolean, strength: number): void;
   playAction(name: string, durMs?: number | null): void;
+  /** ⑱ 节拍手势（behavior.beat）：门内才播，返回是否播放；Live2D 映射 live2dMotions.nod/tilt。 */
+  playBeat(kind: 'question' | 'exclaim' | 'period'): boolean;
+  /** ⑱ voice.autoSpeak 开着 → idle 池排除 hum（不与 TTS 抢嘴）。 */
+  setAutoSpeak(on: boolean): void;
   /** 屏幕坐标（DIP；Main 的 behavior.lookAt 直传）。 */
   setLookAt(x: number, y: number): void;
   /** F-VC 嘴型：RMS 包络 0–1 → 引擎各自的张嘴通道。 */

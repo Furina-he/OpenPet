@@ -17,9 +17,7 @@ import { clamp01, dragToParams, resolveEmotion, resolveMotion } from './live2d-m
 // pixi-live2d-display 经 window.PIXI.Ticker 驱动模型 autoUpdate。
 (window as unknown as { PIXI: typeof PIXI }).PIXI = PIXI;
 
-// 松手弹性回归包络（与 VRM 侧 runtime.ts 同手感常数）。
-const RELEASE_TAU_MS = 130;
-const RELEASE_OMEGA = 0.016;
+import { settle } from './settle';
 
 export async function createLive2dRuntime(
   container: HTMLElement,
@@ -89,7 +87,7 @@ export async function createLive2dRuntime(
         releaseAmpX = physX;
       }
       releaseT += dtMs;
-      const env = Math.exp(-releaseT / RELEASE_TAU_MS) * Math.cos(RELEASE_OMEGA * releaseT);
+      const env = settle(releaseT); // ⑱ 与 VRM 侧/动作余震同源
       physZ = releaseAmpZ * env;
       physX = releaseAmpX * env;
       if (Math.abs(physZ) < 0.05 && Math.abs(physX) < 0.05) {
@@ -134,6 +132,12 @@ export async function createLive2dRuntime(
     },
     setLookAtPrefs(_enabled, _strength) {
       // T8 接视线状态机。
+    },
+    playBeat(_kind) {
+      return false; // T8 接 live2dMotions.nod/tilt
+    },
+    setAutoSpeak(_on) {
+      // Live2D 无 hum 伪动作
     },
     playAction(name) {
       // dur 由 motion 自带时长决定（durMs 参数忽略）

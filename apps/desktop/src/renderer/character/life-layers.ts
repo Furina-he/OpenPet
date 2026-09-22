@@ -46,16 +46,33 @@ export function breathParams(ctx: LifeContext): { hz: number; amp: number } {
 }
 
 /** 相位累积的呼吸振荡器：频率变化时不跳相（换 energy 不会"抽一下"）。 */
+export type BreathNudge = 'inhale' | 'exhale';
+const BREATH_NUDGE_MS: Record<BreathNudge, number> = { inhale: 350, exhale: 700 };
+
 export class Breath {
   private phase = 0;
   private last: number | null = null;
+  private nudgeKind: BreathNudge | null = null;
+  private nudgeStart = -Infinity;
+
+  /** 动作协同（spec §2.5）：jump 吸气拍 / sigh 呼气拍——在常规呼吸上叠一个半正弦。 */
+  nudge(kind: BreathNudge, now: number): void {
+    this.nudgeKind = kind;
+    this.nudgeStart = now;
+  }
 
   sample(now: number, ctx: LifeContext): { chestPitch: number; hipsY: number } {
     const { hz, amp } = breathParams(ctx);
     const dt = this.last === null ? 0 : Math.min(200, Math.max(0, now - this.last));
     this.last = now;
     this.phase = (this.phase + (2 * Math.PI * hz * dt) / 1000) % (2 * Math.PI);
-    const s = Math.sin(this.phase);
+    let s = Math.sin(this.phase);
+    if (this.nudgeKind) {
+      const dur = BREATH_NUDGE_MS[this.nudgeKind];
+      const t = (now - this.nudgeStart) / dur;
+      if (t >= 0 && t < 1) s += (this.nudgeKind === 'inhale' ? 1.2 : -1.0) * Math.sin(Math.PI * t);
+      else this.nudgeKind = null;
+    }
     return { chestPitch: s * amp, hipsY: s * BREATH_HIPS_Y };
   }
 }
@@ -134,6 +151,10 @@ export class LifeLayer {
   private readonly shift: WeightShift;
   constructor(now: number, rand: () => number = Math.random) {
     this.shift = new WeightShift(now, rand);
+  }
+
+  nudgeBreath(kind: BreathNudge, now: number): void {
+    this.breath.nudge(kind, now);
   }
 
   sample(now: number, ctx: LifeContext): BoneOffsets {
