@@ -161,6 +161,13 @@ async function boot(): Promise<void> {
     else face?.setIntent(mood, energy);
   });
 
+  // ⑱ 节拍手势：Main 每发一段来一拍；渲染端按 pet.beatGestures 门 + runtime 内部门（无活动作/≥1.5s）。
+  let beatGestures = true;
+  window.openpet.on('behavior.beat', ({ sessionId, kind }) => {
+    if (sessionId !== 'default' || !beatGestures) return;
+    runtime?.playBeat(kind);
+  });
+
   window.openpet.on('behavior.lookAt', ({ x, y }) => {
     debug.lastLookAt = { x, y };
     runtime?.setLookAt(x, y); // 不算 activity：光标常动，算了 90s 永不触发
@@ -284,6 +291,8 @@ async function boot(): Promise<void> {
       }
     } else if (c.key === 'pet.lifeLayers') {
       runtime?.setLifeLayers(c.value !== false);
+    } else if (c.key === 'pet.beatGestures') {
+      beatGestures = c.value !== false;
     } else if (c.key === 'display.lookAt' || c.key === 'display.lookAtStrength') {
       // ⑱ 偿"存而不接"债：两键任一变更即整体重推
       if (c.key === 'display.lookAt') lookAtPrefs.enabled = c.value !== false;
@@ -322,6 +331,7 @@ async function boot(): Promise<void> {
       mouthStrength = pf['voice.mouthStrength'];
       moodPref = pf['pet.mood'];
       runtime?.setLifeLayers(pf['pet.lifeLayers']);
+      beatGestures = pf['pet.beatGestures'];
       lookAtPrefs.enabled = pf['display.lookAt'];
       lookAtPrefs.strength = pf['display.lookAtStrength'];
       runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);

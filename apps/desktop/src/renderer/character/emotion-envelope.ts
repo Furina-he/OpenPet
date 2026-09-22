@@ -19,7 +19,7 @@ export const ENVELOPE = {
   baselineMs: 2000,
 } as const;
 
-/** 心情三档 → 常驻基线���重（只作用于运行时词表内存在的 expression 名，构造时过滤）。 */
+/** 心情三档 → 常驻基线权重（只作用于运行时词表内存在的 expression 名，构造时过滤）。 */
 export function baselineForMood(mood: number): Weights {
   switch (moodBand(mood)) {
     case 'high':

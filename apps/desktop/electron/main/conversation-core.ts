@@ -75,7 +75,20 @@ export type Notification =
       sessionId: string;
       params: { name: string; durationMs: number | null };
     }
-  | { channel: 'behavior.setIntent'; sessionId: string; params: { mood: string; energy: string } };
+  | { channel: 'behavior.setIntent'; sessionId: string; params: { mood: string; energy: string } }
+  // ⑱ 节拍手势：⑭ 每发一段按段尾标点发一拍（仅 default 会话；渲染端按 pet.beatGestures 门）。
+  | { channel: 'behavior.beat'; sessionId: string; params: { sessionId: string; kind: BeatKind } };
+
+export type BeatKind = 'question' | 'exclaim' | 'period';
+
+/** ⑱ 段尾标点 → 节拍种类（？/! 之外一律 period）。 */
+export function beatKindOf(segment: string): BeatKind {
+  const tail = segment.trimEnd().replace(/["'”’）)\]】》」』…]+$/u, '');
+  const last = tail[tail.length - 1] ?? '';
+  if (last === '?' || last === '？') return 'question';
+  if (last === '!' || last === '！') return 'exclaim';
+  return 'period';
+}
 
 /** tech-design §4.1 fail-safe：300ms 无新 token，半截标签强制 flush 为文本。 */
 export const STALE_FLUSH_MS = 300;
@@ -87,7 +100,7 @@ export interface ConversationCoreOptions {
    * 桌宠领域事件出口（F-IT T4）：reasoning 首块 / tool_call 不再直发 behavior.*，
    * 改发领域事件由 InteractionService 查 cue 表决定表现。缺省 no-op（纯双轨拆分）。
    */
-  cue?: (event: 'chat.reasoning' | 'chat.tool', sessionId: string) => void;
+  cue?: (event: 'chat.reasoning' | 'chat.tool' | 'beat.exclaim', sessionId: string) => void;
   /** ⑭ 自然节奏供给（每次发段时读取，prefs 实时生效）；null/enabled:false = 直通零回归。 */
   rhythm?: () => RhythmConfig | null;
 }
@@ -114,6 +127,8 @@ interface SessionState {
   /** ⑭ 自然节奏：句缓冲（凑齐句边界才发段）+ 已发段计数（第 2 段起延迟 + newBubble）。 */
   rhythmBuf: string;
   segIndex: number;
+  /** ⑱ 本轮是否已发过 beat.exclaim 领域事件（mood 增量每轮至多 1 次）。 */
+  exclaimCued: boolean;
 }
 
 type GateEntry = { kind: 'notify'; n: Notification } | { kind: 'delay'; ms: number };
@@ -123,7 +138,9 @@ export class ConversationCore {
   private readonly sessions = new Map<string, SessionState>();
   private readonly cancelling = new Set<string>();
   private readonly warnOut: (sessionId: string, reason: string, raw: string) => void;
-  private readonly cue: ((event: 'chat.reasoning' | 'chat.tool', sessionId: string) => void) | undefined;
+  private readonly cue:
+    | ((event: 'chat.reasoning' | 'chat.tool' | 'beat.exclaim', sessionId: string) => void)
+    | undefined;
   /** ⑭ 自然节奏供给（每段读取一次，prefs 实时生效）。 */
   private readonly rhythm: (() => RhythmConfig | null) | undefined;
 
@@ -254,6 +271,7 @@ export class ConversationCore {
         reasoningCued: false,
         rhythmBuf: '',
         segIndex: 0,
+        exclaimCued: false,
       };
       this.sessions.set(sessionId, s);
     }
@@ -404,5 +422,14 @@ export class ConversationCore {
       params: { sessionId, text, ...(state.segIndex > 0 ? { newBubble: true } : {}) },
     });
     state.segIndex += 1;
+    // ⑱ 节拍：仅桌面 default 会话（IM/Hub 其它会话无桌宠可动）；与段同门同序。
+    if (sessionId === 'default') {
+      const kind = beatKindOf(text);
+      this.send(sessionId, { channel: 'behavior.beat', sessionId, params: { sessionId, kind } });
+      if (kind === 'exclaim' && !state.exclaimCued) {
+        state.exclaimCued = true;
+        this.cue?.('beat.exclaim', sessionId);
+      }
+    }
   }
 }

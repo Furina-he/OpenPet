@@ -11,6 +11,7 @@ import {
   nightEnergy,
   asEnergy,
   addOffsets,
+  proximityOffsets,
   LifeLayer,
   type LifeContext,
 } from '../src/renderer/character/life-layers';
@@ -147,6 +148,12 @@ describe('nightEnergy / asEnergy / addOffsets', () => {
   it('asEnergy 未知值回 mid', () => {
     expect(asEnergy('bogus')).toBe('mid');
     expect(asEnergy('low')).toBe('low');
+  });
+
+  it('proximityOffsets：光标在右 → 绕 Y 负转（与 lookAt 同向），k 线性缩放，nx=0 不转', () => {
+    expect(proximityOffsets(0.5, 1)).toEqual({ spineYaw: -0.03, headYaw: -0.05 });
+    expect(proximityOffsets(-0.5, 0.5)).toEqual({ spineYaw: 0.015, headYaw: 0.025 });
+    expect(proximityOffsets(0, 1)).toEqual({ spineYaw: 0, headYaw: 0 });
   });
 
   it('addOffsets 逐通道相加且补齐全部键', () => {

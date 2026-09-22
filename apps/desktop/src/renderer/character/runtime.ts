@@ -39,7 +39,15 @@ import {
 import { measureSceneBudget, checkBudget } from './perf-budget';
 import { FpsMeter } from './fps-meter';
 import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
-import { LifeLayer, addOffsets, asEnergy, nightEnergy, type Energy } from './life-layers';
+import {
+  LifeLayer,
+  PROXIMITY_PX,
+  addOffsets,
+  asEnergy,
+  nightEnergy,
+  proximityOffsets,
+  type Energy,
+} from './life-layers';
 import { PostureLayer } from './posture';
 import { GazeMachine } from './gaze';
 import { BlinkScheduler } from './blink';
@@ -346,7 +354,16 @@ export async function createVrmRuntime(
     if (chest) chest.rotation.x = lifeLayers ? offsets.chestPitch : Math.sin(now / 1000) * 0.02;
   }
 
-  /** ⑱ 合成顺序固定：life（底噪）+ posture（姿态）+ action（动作）+ drag（拖拽物理）。 */
+  /** ⑱ 鼠标靠近程度（阻尼标量：进 ~0.3s、离开 ~1s 复位）。 */
+  let proximity = 0;
+  function updateProximity(dtSec: number): void {
+    const near =
+      gaze.state(performance.now()) === 'track' && gaze.cursorDistance(windowRect()) < PROXIMITY_PX;
+    proximity = damp(proximity, near ? 1 : 0, near ? 10 : 3, dtSec);
+    if (proximity < 1e-3) proximity = 0;
+  }
+
+  /** ⑱ 合成顺序固定：life（底噪）+ 靠近朝向 + posture（姿态）+ action（动作）+ drag（拖拽物理）。 */
   function composePose(now: number): BoneOffsets {
     const action = currentOffsets(now);
     if (!lifeLayers) return withDragPhysics(action);
@@ -356,7 +373,14 @@ export async function createVrmRuntime(
       speaking,
       emotion: currentEmotion,
     };
-    return withDragPhysics(addOffsets(life.sample(now, ctx), posture.sample(now), action));
+    return withDragPhysics(
+      addOffsets(
+        life.sample(now, ctx),
+        proximityOffsets(gaze.cursorNx(), proximity),
+        posture.sample(now),
+        action,
+      ),
+    );
   }
 
   // ---- 嘴型（F-VC）：播放侧 RMS 包络 → 'aa'。'aa' 是 VRM lipSync preset，
@@ -493,6 +517,7 @@ export async function createVrmRuntime(
     updateTransition(now);
     updateMouth(now);
     updateLookAt(now, delta);
+    if (lifeLayers) updateProximity(delta);
     updateDragPhysics(delta * 1000);
     applyPose(now, composePose(now));
     vrm.update(delta);

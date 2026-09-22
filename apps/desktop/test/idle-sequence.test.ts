@@ -13,7 +13,7 @@ import { ACTION_NAMES } from '../src/renderer/character/actions';
 const neutral = { mood: 'neutral', energy: 'mid' };
 
 describe('⑱ IDLE_POOL 序列与权重', () => {
-  it('序列步全��引用真实动作（或 hum 伪动作），幅度 ≤0.7', () => {
+  it('序列步全部引用真实动作（或 hum 伪动作），幅度 ≤0.7', () => {
     for (const v of IDLE_POOL) {
       for (const s of stepsOf(v)) {
         expect([...ACTION_NAMES, 'hum']).toContain(s.action);

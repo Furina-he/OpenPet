@@ -2,7 +2,7 @@
  * Idle 动画池（tech-design §7「Idle 行为」）：变体 = 低幅复用程序化动作库，
  * 按当前 intent（mood/energy）过滤子集；空匹配回退「无约束」通用集，
  * 池子永不为空。调度是纯步进：planNextIdle 给出下次触发时刻 + 变体。
- * 基��层（眨眼 + 呼吸）不在池里 —— 那是 runtime 常驻行为。
+ * 基础层（眨眼 + 呼吸）不在池里 —— 那是 runtime 常驻行为。
  *
  * ⑱ 序列与权重（spec §2.6）：变体可带 `steps`（多步动作 + 间隙，scale 可负 = 反向），
  * `weight` 加权抽样；间隔随 energy（low 8–16s / mid 5–11s / high 3–8s）；

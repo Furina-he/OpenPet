@@ -136,6 +136,15 @@ export class WeightShift {
   }
 }
 
+// ---- 桌面注意力（spec §2.8）：鼠标靠近（track 态且 <150px）躯干微朝向 ----
+export const PROXIMITY_PX = 150;
+/** k ∈ [0,1] 靠近程度（runtime 阻尼：进 ~0.3s / 出 ~1s）；nx 光标归一化横坐标（右为正）。 */
+export function proximityOffsets(nx: number, k: number): { spineYaw: number; headYaw: number } {
+  // 与 lookAt 同向约定：光标在右（nx>0）→ 目标在世界 −x → 绕 Y 负转
+  const dir = nx === 0 ? 0 : -Math.sign(nx);
+  return { spineYaw: 0.03 * k * dir, headYaw: 0.05 * k * dir };
+}
+
 /** BoneOffsets 逐通道相加（合成用）。 */
 export function addOffsets(...list: Array<Partial<BoneOffsets>>): BoneOffsets {
   const out: BoneOffsets = { ...ZERO_OFFSETS };

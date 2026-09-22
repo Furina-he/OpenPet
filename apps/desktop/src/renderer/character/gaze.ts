@@ -115,6 +115,11 @@ export class GazeMachine {
     return Math.hypot(this.lastCursor.x - (win.x + win.width / 2), this.lastCursor.y - (win.y + win.height / 2));
   }
 
+  /** 最近光标归一化横坐标（靠近朝向用）。 */
+  cursorNx(): number {
+    return this.cursorN.nx;
+  }
+
   emotionChanged(name: string): void {
     this.emotion = name;
   }
