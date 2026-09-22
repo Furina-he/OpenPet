@@ -4,7 +4,7 @@
  *
  * 职责（仍是"愚蠢播放器"）：
  *   - load：GLTFLoader + VRMLoaderPlugin、性能三件套、预算测量
- *   - applyEmotion：manifest 词表（缺省内置表）→ expression 权重组合，400ms 缓动
+ *   - applyEmotion：manifest 词表（缺省内置表）→ expression 权重组合，⑱ 包络（快起慢退到心情基线）
  *   - playAction：程序化动作库单活动作播放（新顶旧、完毕回 idle）
  *   - setLookAt：屏幕坐标 → 阻尼平滑 → vrm.lookAt target
  *   - setIdle：intent → idle 变体子集（眨眼/呼吸常驻）
@@ -21,11 +21,10 @@ import { normalizedFromScreen, lookAtWorldTarget, damp, type Normalized } from '
 import { selectIdleVariants, planNextIdle, type IdleVariant } from './idle-pool';
 import { measureSceneBudget, checkBudget } from './perf-budget';
 import { FpsMeter } from './fps-meter';
+import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
 import type { CharacterRuntime } from './runtime-types';
 
 export type { CharacterRuntime, HitSurface } from './runtime-types';
-
-const TRANSITION_MS = 400; // 350–500ms 平滑区间中值（S3 实测）
 
 /** 内置情绪表：S3 的 8 个 + persona 词表的 curious/sleepy（消除模板↔运行时漂移）。 */
 export const BUILTIN_EMOTIONS: Record<string, Record<string, number>> = {
@@ -107,36 +106,35 @@ export async function createVrmRuntime(
 
   // ---- 情绪：manifest 词表优先，缺省内置表 ----
   const emotions: Record<string, Record<string, number>> = manifest.emotions ?? BUILTIN_EMOTIONS;
-  const allExpressionNames = [...new Set(Object.values(emotions).flatMap((m) => Object.keys(m)))];
-  let fromWeights: Record<string, number> = {};
-  let toWeights: Record<string, number> = {};
-  let transitionStart = 0;
-
-  const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+  // ⑱ 基线用到的 happy/relaxed/sad 也纳入通道集合：模型无该 expression 时 setValue 是 no-op。
+  const allExpressionNames = [
+    ...new Set([...Object.values(emotions).flatMap((m) => Object.keys(m)), 'happy', 'relaxed', 'sad']),
+  ];
+  // ⑱ 表情包络 + 心情基线（spec §2.1）：快起（180ms 过冲 8%）慢退（1200ms）到 baseline(mood)。
+  const envelope = new EmotionEnvelope(allExpressionNames);
+  let lifeLayers = true;
+  let moodValue = 0;
+  envelope.setBaseline(baselineForMood(0), performance.now());
 
   function applyEmotion(name: string, weight = 1): void {
-    const em = vrm.expressionManager;
-    if (!em) return;
-    const snapshot: Record<string, number> = {};
-    for (const n of allExpressionNames) snapshot[n] = em.getValue(n) ?? 0;
-    fromWeights = snapshot;
     const target: Record<string, number> = {};
-    for (const n of allExpressionNames) target[n] = 0;
     for (const [n, w] of Object.entries(emotions[name] ?? {})) target[n] = w * weight;
-    toWeights = target;
-    transitionStart = performance.now();
+    envelope.trigger(target, performance.now());
   }
 
-  function updateTransition(): void {
+  function releaseEmotion(): void {
+    envelope.release(performance.now());
+  }
+
+  function refreshBaseline(): void {
+    envelope.setBaseline(lifeLayers ? baselineForMood(moodValue) : {}, performance.now());
+  }
+
+  function updateTransition(now: number): void {
     const em = vrm.expressionManager;
     if (!em) return;
-    const t = Math.min((performance.now() - transitionStart) / TRANSITION_MS, 1);
-    const k = easeInOut(t);
-    for (const n of allExpressionNames) {
-      const from = fromWeights[n] ?? 0;
-      const to = toWeights[n] ?? 0;
-      em.setValue(n, from + (to - from) * k);
-    }
+    const w = envelope.sample(now);
+    for (const n of allExpressionNames) em.setValue(n, w[n] ?? 0);
   }
 
   // ---- 动作：单活动作播放器 ----
@@ -334,7 +332,7 @@ export async function createVrmRuntime(
     fps.tick(now);
     updateBlink(now, delta);
     updateIdleVariants(now);
-    updateTransition();
+    updateTransition(now);
     updateMouth();
     updateLookAt(delta);
     updateDragPhysics(delta * 1000);
@@ -351,6 +349,15 @@ export async function createVrmRuntime(
       pixelRatio: renderer.getPixelRatio(),
     },
     applyEmotion,
+    releaseEmotion,
+    setMood(mood) {
+      moodValue = mood;
+      refreshBaseline();
+    },
+    setLifeLayers(enabled) {
+      lifeLayers = enabled;
+      refreshBaseline();
+    },
     playAction(name, durMs) {
       playActionScaled(name, durMs ?? null, 1);
     },

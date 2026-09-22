@@ -119,6 +119,16 @@ export async function createLive2dRuntime(
       if (expr === null) model.internalModel.motionManager.expressionManager?.resetExpression();
       else void model.expression(expr);
     },
+    releaseEmotion() {
+      // ⑱ 单表情无权重、无基线可退（spec §5）：回默认脸。
+      model.internalModel.motionManager.expressionManager?.resetExpression();
+    },
+    setMood(_mood) {
+      // ⑱ Live2D 表情层不吃 mood（spec §5 如实记录）；呼吸/姿态在 T8 接。
+    },
+    setLifeLayers(_enabled) {
+      // T8 接 beforeModelUpdate 各层开关。
+    },
     playAction(name) {
       // dur 由 motion 自带时长决定（durMs 参数忽略）
       const { group, index } = resolveMotion(manifest, name);

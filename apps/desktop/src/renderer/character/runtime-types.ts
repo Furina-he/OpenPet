@@ -12,6 +12,12 @@ export interface CharacterRuntime {
   /** null = 无 alpha buffer（如 DOM fallback），interaction 只拖拽不穿透。 */
   readonly hitSurface: HitSurface | null;
   applyEmotion(name: string, weight?: number): void;
+  /** ⑱ 情绪退到心情基线（取代硬复位 neutral）；Live2D = 回默认脸。 */
+  releaseEmotion(): void;
+  /** ⑱ 心情 [-1,1] → 表情基线 / 呼吸 / 姿态；Live2D 表情层 no-op（spec §5）。 */
+  setMood(mood: number): void;
+  /** ⑱ 总闸 pet.lifeLayers：false = 底噪/姿态/视线状态机/节拍全关（回本批前表现）。 */
+  setLifeLayers(enabled: boolean): void;
   playAction(name: string, durMs?: number | null): void;
   /** 屏幕坐标（DIP；Main 的 behavior.lookAt 直传）。 */
   setLookAt(x: number, y: number): void;

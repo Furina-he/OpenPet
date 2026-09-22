@@ -315,13 +315,14 @@ export const Methods = {
   'app.prefs.changed': {
     params: z.object({
       key: z.string().min(1),
-      // record：会话管理指针 chat.activeSessions 经 chat.setActiveSession 广播（set 面仍不收对象）。
+      // record：会话管理指针 chat.activeSessions 经 chat.setActiveSession 广播；⑱ pet.mood
+      // {value, updatedAt} 经 MoodState 直写 store 后手动广播（set 面仍不收对象）。
       value: z.union([
         z.string(),
         z.number(),
         z.boolean(),
         z.array(z.unknown()),
-        z.record(z.string()),
+        z.record(z.unknown()),
       ]),
     }),
     result: z.null(),

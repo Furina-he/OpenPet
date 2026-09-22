@@ -365,7 +365,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     getPrefs: () => prefsStore.getAll(),
     mood: new MoodState({
       getPref: () => prefsStore.getAll()['pet.mood'],
-      setPref: (v) => prefsStore.set('pet.mood', v),
+      setPref: (v) => {
+        prefsStore.set('pet.mood', v);
+        // ⑱ 直写 store 不经 app.prefs.set → 手动广播，渲染端据此更新表情基线/呼吸/姿态。
+        broadcast('app.prefs.changed', { key: 'pet.mood', value: v });
+      },
     }),
   });
   // F-IT-06 clock/greet 时刻源：只发领域事件，策略（DND/proactiveFreq/概率）由引擎统一执行。

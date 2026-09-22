@@ -8,7 +8,7 @@ import { mountBubble } from './bubble';
 import { resolveMode } from './desktop-state';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
 import { mouthValue, playbackRateOf } from './mouth-drive';
-import type { Prefs } from '@openpet/protocol';
+import { moodCurrent, type Prefs } from '@openpet/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
 import { charStrings } from './strings';
@@ -19,6 +19,8 @@ subscribeTheme();
 
 const FPS_REPORT_MS = 10_000;
 const IDLE_TICK_MS = 5_000;
+/** ⑱ 心情半衰在渲染端 lazy 重算的节拍（2h 半衰，30s 一算足够平滑）。 */
+const MOOD_TICK_MS = 30_000;
 
 declare global {
   interface Window {
@@ -263,9 +265,24 @@ async function boot(): Promise<void> {
     applyMode();
   });
 
+  // ---- ⑱ 心情 → 渲染端（表情基线/呼吸/姿态）：pet.mood 经 app.prefs.changed 推送 + 本地半衰重算 ----
+  let moodPref = { value: 0, updatedAt: 0 };
+  const pushMood = (): void => {
+    runtime?.setMood(moodCurrent(moodPref.value, moodPref.updatedAt, Date.now()));
+  };
+  setInterval(pushMood, MOOD_TICK_MS);
+
   window.openpet.on('app.prefs.changed', (p) => {
     const c = p as { key?: string; value?: unknown };
-    if (c.key === 'general.language') {
+    if (c.key === 'pet.mood') {
+      const v = c.value as { value?: unknown; updatedAt?: unknown } | undefined;
+      if (v && typeof v.value === 'number' && typeof v.updatedAt === 'number') {
+        moodPref = { value: v.value, updatedAt: v.updatedAt };
+        pushMood();
+      }
+    } else if (c.key === 'pet.lifeLayers') {
+      runtime?.setLifeLayers(c.value !== false);
+    } else if (c.key === 'general.language') {
       if (typeof c.value === 'string') locale = c.value;
     } else if (c.key === 'display.bubbleDuration') {
       bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
@@ -294,17 +311,20 @@ async function boot(): Promise<void> {
       focus = pf['display.focusMode'];
       mouthSync = pf['voice.mouthSync'];
       mouthStrength = pf['voice.mouthStrength'];
+      moodPref = pf['pet.mood'];
+      runtime?.setLifeLayers(pf['pet.lifeLayers']);
+      pushMood();
       applyMode();
     })
     .catch(() => {});
 
-  // 回合结束 1.2s 后复位 neutral（S4 行为；neutral 不在情绪表 → 全零权重 = 复位）
+  // 回合结束 1.2s 后情绪退到心情基线（⑱ releaseEmotion 取代硬复位 neutral；fallback 脸仍 reset）
   window.openpet.on('chat.done', (p) => {
     if (p.sessionId !== 'default') return;
     markActivity();
     bubble.endStream();
     setTimeout(() => {
-      if (runtime) runtime.applyEmotion('neutral', 0);
+      if (runtime) runtime.releaseEmotion();
       else face?.reset();
     }, 1200);
   });
