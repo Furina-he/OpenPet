@@ -6,16 +6,11 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Eye, EyeOff, ChevronDown, ChevronRight } from 'lucide-vue-next';
-import {
-  providerConfigMeta,
-  sourceAdvancedMeta,
-  type ConfigItemMeta,
-  type ProviderSource,
-} from '@openpet/protocol';
+import { providerConfigMeta, type ConfigItemMeta, type ProviderSource } from '@openpet/protocol';
 import Input from '../Input.vue';
 import Switch from '../Switch.vue';
 import Button from '../Button.vue';
-import ConfigSectionRenderer from '../config/ConfigSectionRenderer.vue';
+import ConfigItemRenderer from '../config/ConfigItemRenderer.vue';
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -23,6 +18,9 @@ const props = defineProps<{
   detecting?: boolean;
   detectMsg?: string;
   detectedDim?: number;
+  /** 改名校验：其他已存在的源 id + 本源原 id。 */
+  takenIds?: string[];
+  originalId?: string;
 }>();
 const emit = defineEmits<{
   'update:modelValue': [source: ProviderSource];
@@ -30,6 +28,15 @@ const emit = defineEmits<{
 }>();
 
 const isChat = computed(() => props.modelValue.capability === 'chat');
+/** ID 校验（改名时）：非空、无斜杠（模型 id = 源ID/模型名）、不与其他源撞。 */
+const idError = computed(() => {
+  const id = props.modelValue.id.trim();
+  if (!id) return t('settings.providerUi.idRequired');
+  if (id.includes('/')) return t('settings.providerUi.idNoSlash');
+  if (props.takenIds?.some((x) => x === id && x !== props.originalId))
+    return t('settings.providerUi.idTaken');
+  return '';
+});
 const typeFields = computed<ConfigItemMeta[]>(() =>
   providerConfigMeta(props.modelValue.capability),
 );
@@ -54,37 +61,22 @@ watch(
   },
 );
 
-/** 对话源高级字段（timeout/proxy/headers/ollama）走 ConfigSectionRenderer；record ⇄ source 字段。 */
-const advanced = computed<Record<string, unknown>>(() => {
-  const s = props.modelValue;
-  return {
-    ...(s.timeoutMs !== undefined ? { timeoutMs: s.timeoutMs } : {}),
-    ...(s.proxy !== undefined ? { proxy: s.proxy } : {}),
-    ...(s.headers !== undefined ? { headers: s.headers } : {}),
-    ...(s.ollamaDisableThinking !== undefined
-      ? { ollamaDisableThinking: s.ollamaDisableThinking }
-      : {}),
-  };
-});
-function onAdvanced(v: Record<string, unknown>): void {
-  const timeoutMs =
-    typeof v.timeoutMs === 'number' ? v.timeoutMs : Number(v.timeoutMs) || undefined;
-  const proxy = typeof v.proxy === 'string' && v.proxy ? v.proxy : undefined;
-  const headers =
-    v.headers && Object.keys(v.headers as object).length
-      ? (v.headers as Record<string, string>)
-      : undefined;
-  const next: ProviderSource = { ...props.modelValue };
-  delete next.timeoutMs;
-  delete next.proxy;
-  delete next.headers;
-  delete next.ollamaDisableThinking;
-  if (timeoutMs !== undefined) next.timeoutMs = timeoutMs;
-  if (proxy !== undefined) next.proxy = proxy;
-  if (headers !== undefined) next.headers = headers;
-  if (typeof v.ollamaDisableThinking === 'boolean')
-    next.ollamaDisableThinking = v.ollamaDisableThinking;
+/** 高级配置平铺（照 AstrBot advancedSourceConfig 一次展开，不再套第二层折叠）：超时(秒)/代理/请求头/ollama。 */
+const HEADERS_META: ConfigItemMeta = {
+  key: 'headers',
+  type: 'dict',
+  advanced: false,
+  readonly: false,
+};
+function setHeaders(v: unknown): void {
+  const next = { ...props.modelValue };
+  if (v && typeof v === 'object' && Object.keys(v as object).length)
+    next.headers = v as Record<string, string>;
+  else delete next.headers;
   emit('update:modelValue', next);
+}
+function setOllamaThinking(v: boolean): void {
+  emit('update:modelValue', { ...props.modelValue, ollamaDisableThinking: v });
 }
 const timeoutSec = computed(() =>
   props.modelValue.timeoutMs !== undefined
@@ -118,13 +110,15 @@ function setProxy(v: string): void {
           <span class="text-sm text-text-sub">ID</span>
           <Input
             :model-value="modelValue.id"
-            class="mt-1 w-full opacity-70"
-            readonly
-            @update:model-value="() => {}"
+            class="mt-1 w-full"
+            @update:model-value="(v) => patch({ id: v })"
           />
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.hintId')
-          }}</span>
+          <span
+            class="mt-1 block text-xs"
+            :class="idError ? '' : 'text-text-sub'"
+            :style="idError ? { color: 'var(--ds-danger)' } : {}"
+            >{{ idError || t('settings.providerUi.hintId') }}</span
+          >
         </label>
         <div v-if="!isChat" class="flex items-center justify-between">
           <span class="text-sm text-text-sub">{{ t('common.enabledShort') }}</span>
@@ -232,38 +226,59 @@ function setProxy(v: string): void {
         />
         {{ t('settings.providerUi.advancedConfig') }}
       </button>
-      <div v-if="advancedOpen" class="mt-3">
-        <ConfigSectionRenderer
-          v-if="isChat"
-          :items="sourceAdvancedMeta(modelValue.adapter)"
-          :model-value="advanced"
-          @update:model-value="onAdvanced"
-        />
-        <div v-else class="space-y-4">
-          <label class="block">
-            <span class="text-sm text-text-sub">{{ t('settings.providerUi.timeout') }}</span>
-            <Input
-              :model-value="timeoutSec"
-              class="mt-1 w-full"
-              placeholder="20"
-              @update:model-value="setTimeoutSec"
-            />
-            <span class="mt-1 block text-xs text-text-sub">{{
-              t('settings.providerUi.timeoutDesc')
-            }}</span>
-          </label>
-          <label class="block">
-            <span class="text-sm text-text-sub">{{ t('settings.providerUi.proxy') }}</span>
-            <Input
-              :model-value="modelValue.proxy ?? ''"
-              class="mt-1 w-full"
-              placeholder="http://127.0.0.1:7890"
-              @update:model-value="setProxy"
-            />
-            <span class="mt-1 block text-xs text-text-sub">{{
-              t('settings.providerUi.proxyDesc')
-            }}</span>
-          </label>
+      <div v-if="advancedOpen" class="mt-3 space-y-4">
+        <label class="block">
+          <span class="text-sm text-text-sub">{{ t('settings.providerUi.timeout') }}</span>
+          <Input
+            :model-value="timeoutSec"
+            class="mt-1 w-full"
+            placeholder="20"
+            @update:model-value="setTimeoutSec"
+          />
+          <span class="mt-1 block text-xs text-text-sub">{{
+            t('settings.providerUi.timeoutDesc')
+          }}</span>
+        </label>
+        <label class="block">
+          <span class="text-sm text-text-sub">{{ t('settings.providerUi.proxy') }}</span>
+          <Input
+            :model-value="modelValue.proxy ?? ''"
+            class="mt-1 w-full"
+            placeholder="http://127.0.0.1:7890"
+            @update:model-value="setProxy"
+          />
+          <span class="mt-1 block text-xs text-text-sub">{{
+            t('settings.providerUi.proxyDesc')
+          }}</span>
+        </label>
+        <div v-if="isChat" class="block">
+          <span class="text-sm text-text-sub">{{ t('settings.providerUi.headers') }}</span>
+          <ConfigItemRenderer
+            class="mt-1 block"
+            :meta="HEADERS_META"
+            :model-value="modelValue.headers ?? {}"
+            @update:model-value="setHeaders"
+          />
+          <span class="mt-1 block text-xs text-text-sub">{{
+            t('settings.providerUi.headersDesc')
+          }}</span>
+        </div>
+        <div
+          v-if="isChat && modelValue.adapter === 'ollama'"
+          class="flex items-center justify-between"
+        >
+          <div>
+            <div class="text-sm text-text-main">
+              {{ t('settings.providerUi.ollamaDisableThinking') }}
+            </div>
+            <div class="mt-1 text-xs text-text-sub">
+              {{ t('settings.providerUi.ollamaDisableThinkingDesc') }}
+            </div>
+          </div>
+          <Switch
+            :model-value="modelValue.ollamaDisableThinking === true"
+            @update:model-value="setOllamaThinking"
+          />
         </div>
       </div>
     </section>

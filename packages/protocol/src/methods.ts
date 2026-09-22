@@ -622,6 +622,11 @@ export const Methods = {
     params: z.object({ source: ProviderSourceSchema }),
     result: z.object({ ok: z.literal(true), id: z.string() }),
   },
+  'provider.renameSource': {
+    // D3：改供应商源 ID（照 AstrBot 源 id 可编辑）——连带迁移其模型条目 id/sourceId 与各能力默认/杂务模型指针。
+    params: z.object({ from: z.string().min(1), to: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'provider.deleteSource': {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),

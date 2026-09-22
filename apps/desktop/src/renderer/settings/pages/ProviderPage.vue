@@ -160,12 +160,30 @@ function addSource(tpl: ProviderTemplate): void {
   drafts.value = [...drafts.value, draft];
   selectSource(id);
 }
+const idInvalid = computed(() => {
+  const e = editable.value;
+  if (!e) return true;
+  const id = e.id.trim();
+  if (!id || id.includes('/')) return true;
+  return [...sources.value, ...drafts.value].some(
+    (s) => s.id === id && s.id !== selected.value?.id,
+  );
+});
 async function saveSource(): Promise<boolean> {
   const e = editable.value;
-  if (!e) return false;
+  const sel = selected.value;
+  if (!e || !sel || idInvalid.value) return false;
   savingSource.value = true;
   try {
-    await window.openpet.rpc('provider.upsertSource', { source: plain(e) });
+    const nextId = e.id.trim();
+    if (nextId !== sel.id) {
+      // 改名：草稿直接改 id；已持久化的源走 renameSource 迁移模型/默认指针，再 upsert 其余字段。
+      if (isDraft.value)
+        drafts.value = drafts.value.map((d) => (d.id === sel.id ? { ...d, id: nextId } : d));
+      else await window.openpet.rpc('provider.renameSource', { from: sel.id, to: nextId });
+      activeSourceId.value = nextId;
+    }
+    await window.openpet.rpc('provider.upsertSource', { source: plain({ ...e, id: nextId }) });
     if (!isChat.value) await syncSingleModel(e);
     drafts.value = drafts.value.filter((d) => d.id !== e.id);
     await reloadConfig();
@@ -564,7 +582,7 @@ const utilityOptions = computed(() => {
                 style="
                   background: linear-gradient(135deg, var(--ds-brand-from), var(--ds-brand-to));
                 "
-                :disabled="!isModified || savingSource"
+                :disabled="!isModified || savingSource || idInvalid"
                 @click="saveSource"
               >
                 <Save :size="15" :stroke-width="1.75" />
@@ -581,6 +599,8 @@ const utilityOptions = computed(() => {
             <ProviderSourceForm
               :key="selected.id"
               :model-value="editable"
+              :taken-ids="[...sources, ...drafts].map((s) => s.id)"
+              :original-id="selected.id"
               :detecting="detecting"
               :detect-msg="detectMsg"
               :detected-dim="detectedDim"
