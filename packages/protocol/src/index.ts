@@ -15,6 +15,7 @@ export * from './mcp-config.js';
 export * from './im-config.js';
 export * from './kb-config.js';
 export * from './memory-config.js';
+export * from './memory-wiki.js';
 export * from './persona-config.js';
 export * from './trace-config.js';
 export * from './prefs.js';
