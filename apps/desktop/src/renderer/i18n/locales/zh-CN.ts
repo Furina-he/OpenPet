@@ -63,10 +63,20 @@ export const zhCN = {
       savedToast: '✓ 已保存',
     },
     overview: {
-      greeting: { morning: '上午好 ☀️', afternoon: '下午好 🌤', evening: '晚上好 🌙', night: '夜深了 🌌' },
+      greeting: {
+        morning: '上午好 ☀️',
+        afternoon: '下午好 🌤',
+        evening: '晚上好 🌙',
+        night: '夜深了 🌌',
+      },
       todayLine: '今天已经和 {name} 聊了 {n} 句',
       refreshedAt: '60s 自动刷新 · 上次 {time}',
-      kpi: { monthMessages: '本月消息', monthTokens: '本月 Token', memory: '内存占用', uptime: '运行时长' },
+      kpi: {
+        monthMessages: '本月消息',
+        monthTokens: '本月 Token',
+        memory: '内存占用',
+        uptime: '运行时长',
+      },
       range: { d1: '今天', d3: '3 天', d7: '7 天' },
       chart: {
         messageTrend: '消息趋势',
@@ -121,10 +131,12 @@ export const zhCN = {
       freqLow: '低',
       freqHigh: '高',
       emotionFallback: '表情兜底分类',
-      emotionFallbackDesc: '模型没有输出表情标签时，回复结束后用一次轻量分类推断情绪并驱动表情（消耗少量 token）',
+      emotionFallbackDesc:
+        '模型没有输出表情标签时，回复结束后用一次轻量分类推断情绪并驱动表情（消耗少量 token）',
       life: '生命感',
       lifeLayers: '身体生命层',
-      lifeLayersDesc: '呼吸、微动、重心换边、视线游移、情绪姿态与动作余韵；关闭即减少动态效果、回到基础表现',
+      lifeLayersDesc:
+        '呼吸、微动、重心换边、视线游移、情绪姿态与动作余韵；关闭即减少动态效果、回到基础表现',
       beatGestures: '说话节拍手势',
       beatGesturesDesc: '回复分条出现时，问号处轻歪头、感叹号处轻点头（不与动作标签抢戏）',
       moodAffectsVoice: '心情影响语速',
@@ -261,7 +273,8 @@ export const zhCN = {
       emptySources: '该能力下还没有提供商，点右上「＋ 新增模型提供商」开始',
       budgetTitle: '用量与预算',
       utilityTitle: '杂务模型',
-      utilityDesc: '记忆提炼、表情分类、会话摘要等后台任务用的模型，可选便宜快的小模型（需 OpenAI 兼容接口）。',
+      utilityDesc:
+        '记忆提炼、表情分类、会话摘要等后台任务用的模型，可选便宜快的小模型（需 OpenAI 兼容接口）。',
       utilityModel: '杂务模型',
       utilityModelDesc: '不设置时跟随默认对话模型',
       utilityFollow: '跟随默认对话模型',
@@ -354,7 +367,8 @@ export const zhCN = {
       clearMessagesBtn: '清空对话历史',
       clearMemoryBtn: '清空长期记忆',
       confirmClearMsgTitle: '清空全部对话历史？',
-      confirmClearMsgDetail: '将删除所有角色、所有会话的全部消息，不可恢复。人设演进与长期记忆保留。',
+      confirmClearMsgDetail:
+        '将删除所有角色、所有会话的全部消息，不可恢复。人设演进与长期记忆保留。',
       clearLabel: '清空',
       confirmClearMemTitle: '清空长期记忆？',
       confirmClearMemDetail: '将删除当前角色的全部长期记忆条目（含钉住项），不可恢复。',
@@ -517,7 +531,8 @@ export const zhCN = {
       desc: '角色的 markdown 记事本：用户档案跨角色共享，关系与经历按角色隔离。聊天中自动整理，可直接编辑；开关在 隐私 → 长期记忆。',
       clearAll: '清空全部',
       confirmClearTitle: '清空全部记忆？',
-      confirmClearDetail: '将删除用户档案、人物、话题（所有角色共享）与当前角色的关系/经历页，以及旧版记忆条目，不可恢复。',
+      confirmClearDetail:
+        '将删除用户档案、人物、话题（所有角色共享）与当前角色的关系/经历页，以及旧版记忆条目，不可恢复。',
       searchPlaceholder: '搜索标题 / 触发词 / 正文…',
       groupProfile: '用户档案',
       groupPeople: '人物',
@@ -540,7 +555,8 @@ export const zhCN = {
       sections: '节',
       deletePage: '删除此页',
       confirmDeleteTitle: '删除「{title}」？',
-      confirmDeleteDetail: '将删除该页面文件（保留一份 .prev 备份到下次覆盖为止），触发词与向量索引一并移除。',
+      confirmDeleteDetail:
+        '将删除该页面文件（保留一份 .prev 备份到下次覆盖为止），触发词与向量索引一并移除。',
       compileNow: '立即整理',
       compiling: '整理中…',
       compiledOk: '已整理：{ops} 个操作',
@@ -567,7 +583,8 @@ export const zhCN = {
       importPack: '导入 .dspack',
       importFolder: '导入文件夹',
       donorBody: '形象来源',
-      donorBodyHint: '灵魂包只含人设文本；模型、动作与表情映射将从所选角色包复制（自包含，可独立卸载）。',
+      donorBodyHint:
+        '灵魂包只含人设文本；模型、动作与表情映射将从所选角色包复制（自包含，可独立卸载）。',
       currentBadge: '● 当前',
       builtin: '内置',
       empty: '角色库为空。导入 .dspack 角色包或文件夹开始使用。',
@@ -729,7 +746,8 @@ export const zhCN = {
       greetings: '开场白',
       addGreeting: '添加开场白',
       lorebook: '世界书',
-      lorebookHint: '关键词触发的背景设定：聊天提及关键词时注入系统提示（预算内按顺序）。开场白与世界书支持 char/user 宏。',
+      lorebookHint:
+        '关键词触发的背景设定：聊天提及关键词时注入系统提示（预算内按顺序）。开场白与世界书支持 char/user 宏。',
       lorebookEmpty: '暂无条目——可随灵魂包带入，或手动添加',
       addLorebookEntry: '添加条目',
       lorebookKeys: '触发关键词（逗号分隔；留空=常驻）',
@@ -1065,7 +1083,8 @@ export const zhCN = {
     welcomeStep3: '说第一句话',
     start: '开始 →',
     modelTitle: '连接一个大脑',
-    modelLead: '🔑 填 API Key（OpenAI / Claude / Gemini / 通义 / DeepSeek / 自定义），或 💻 选本地 Ollama。',
+    modelLead:
+      '🔑 填 API Key（OpenAI / Claude / Gemini / 通义 / DeepSeek / 自定义），或 💻 选本地 Ollama。',
     modelPrivacy: '🔒 你的 API Key 仅本地加密存储，不会上传任何服务器。',
     modelSkip: '暂时跳过 · 先和角色玩一下',
     next: '下一步 →',

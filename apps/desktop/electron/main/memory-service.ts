@@ -78,7 +78,7 @@ export function createMemoryService(deps: MemoryServiceDeps) {
 
   return {
     /** 兼容期：profile 各节行视图（只读；id = 节序号）。 */
-    'memory.list': async (_p: Record<string, never>) => {
+    'memory.list': async () => {
       const page = deps.wiki.readPage(PROFILE_PATH);
       if (!page) return { facts: [] };
       const ts = Date.parse(page.frontmatter.updated) || now();
@@ -113,19 +113,19 @@ export function createMemoryService(deps: MemoryServiceDeps) {
     },
 
     /** @deprecated wiki 无 id 行；保留 RPC 面为 no-op（下批删）。 */
-    'memory.delete': async (_p: { id: number }) => ({ ok: true as const }),
+    'memory.delete': async () => ({ ok: true as const }),
     /** @deprecated 由节级 `<!-- locked -->` 取代；no-op（下批删）。 */
-    'memory.setPinned': async (_p: { id: number; pinned: boolean }) => ({ ok: true as const }),
+    'memory.setPinned': async () => ({ ok: true as const }),
 
     /** ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 页向量索引。 */
-    'memory.clear': async (_p: Record<string, never>) => {
+    'memory.clear': async () => {
       deps.wiki.clear(cid());
       deps.store.memoryClear(cid());
       for (const r of deps.store.pageIndexList()) deps.store.pageIndexDelete(r.path);
       return { ok: true as const };
     },
 
-    'memory.tree': async (_p: Record<string, never>) => deps.wiki.tree(cid()),
+    'memory.tree': async () => deps.wiki.tree(cid()),
 
     'memory.readPage': async (p: { path: string }) => {
       const raw = deps.wiki.readRaw(p.path);

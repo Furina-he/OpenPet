@@ -200,11 +200,11 @@ describe('⑲ memory-service 三路注入', () => {
     const { store, wiki, svc, cid } = make({ embed: throwEmbed });
     store.memoryInsert(cid, '旧事实', [], 1);
     await svc['memory.add']({ text: '用户养了只猫' });
-    const list = await svc['memory.list']({});
+    const list = await svc['memory.list']();
     expect(list.facts.map((f) => f.text)).toEqual(['杂项：- 用户养了只猫']);
     expect(wiki.readPage('user/profile.md')!.frontmatter.source).toBe('user');
 
-    const tree = await svc['memory.tree']({});
+    const tree = await svc['memory.tree']();
     expect(tree.profile.path).toBe('user/profile.md');
     expect(tree.relationship.path).toBe(`characters/${cid}/relationship.md`);
     const page = await svc['memory.readPage']({ path: 'user/profile.md' });
@@ -221,11 +221,11 @@ describe('⑲ memory-service 三路注入', () => {
     ).rejects.toThrow();
     await expect(svc['memory.readPage']({ path: 'user/topics/nope.md' })).rejects.toThrow();
     await svc['memory.deletePage']({ path: 'user/topics/openpet.md' });
-    expect((await svc['memory.tree']({})).topics).toEqual([]);
+    expect((await svc['memory.tree']()).topics).toEqual([]);
 
-    await svc['memory.clear']({});
+    await svc['memory.clear']();
     expect(store.memoryCount(cid)).toBe(0);
-    expect((await svc['memory.list']({})).facts).toEqual([]);
+    expect((await svc['memory.list']()).facts).toEqual([]);
     expect(wiki.readPage('user/profile.md')).not.toBeNull(); // 骨架重建
   });
 });

@@ -65,10 +65,20 @@ export const en: LocaleMessages = {
       savedToast: '✓ Saved',
     },
     overview: {
-      greeting: { morning: 'Good morning ☀️', afternoon: 'Good afternoon 🌤', evening: 'Good evening 🌙', night: 'Late night 🌌' },
+      greeting: {
+        morning: 'Good morning ☀️',
+        afternoon: 'Good afternoon 🌤',
+        evening: 'Good evening 🌙',
+        night: 'Late night 🌌',
+      },
       todayLine: 'Chatted {n} messages with {name} today',
       refreshedAt: 'Auto-refresh 60s · last {time}',
-      kpi: { monthMessages: 'Messages this month', monthTokens: 'Tokens this month', memory: 'Memory', uptime: 'Uptime' },
+      kpi: {
+        monthMessages: 'Messages this month',
+        monthTokens: 'Tokens this month',
+        memory: 'Memory',
+        uptime: 'Uptime',
+      },
       range: { d1: 'Today', d3: '3 days', d7: '7 days' },
       chart: {
         messageTrend: 'Message trend',
@@ -123,22 +133,28 @@ export const en: LocaleMessages = {
       freqLow: 'Low',
       freqHigh: 'High',
       emotionFallback: 'Expression fallback',
-      emotionFallbackDesc: 'When the model emits no emotion tags, classify the finished reply once to drive the expression (uses a few tokens)',
+      emotionFallbackDesc:
+        'When the model emits no emotion tags, classify the finished reply once to drive the expression (uses a few tokens)',
       life: 'Liveliness',
       lifeLayers: 'Body life layers',
-      lifeLayersDesc: 'Breathing, micro-motion, weight shifts, wandering gaze, emotional posture and action follow-through; turn off to reduce motion and return to the basic look',
+      lifeLayersDesc:
+        'Breathing, micro-motion, weight shifts, wandering gaze, emotional posture and action follow-through; turn off to reduce motion and return to the basic look',
       beatGestures: 'Speech beat gestures',
-      beatGesturesDesc: 'While replies arrive in parts: a slight head tilt on question marks, a small nod on exclamation marks (never competes with action tags)',
+      beatGesturesDesc:
+        'While replies arrive in parts: a slight head tilt on question marks, a small nod on exclamation marks (never competes with action tags)',
       moodAffectsVoice: 'Mood affects speech rate',
-      moodAffectsVoiceDesc: 'TTS rate follows the character mood and the turn energy (a bit faster when upbeat, slower when down)',
+      moodAffectsVoiceDesc:
+        'TTS rate follows the character mood and the turn energy (a bit faster when upbeat, slower when down)',
       humanize: 'Humanized chat',
       naturalRhythm: 'Natural rhythm',
-      naturalRhythmDesc: 'Replies arrive as short bubbles with typing pauses, with speech-tic fixes applied; IM messages are sent in parts too',
+      naturalRhythmDesc:
+        'Replies arrive as short bubbles with typing pauses, with speech-tic fixes applied; IM messages are sent in parts too',
       sessionSummary: 'Rolling session summary',
       sessionSummaryDesc:
         'Long conversations beyond the memory window are compressed into a summary injected into context (extra utility-model calls); view and edit it on the History page',
       styleAnchor: 'Speaking-style anchor',
-      styleAnchorDesc: 'Keeps reminding the model to stay casual and short, never claiming to be an AI; a character pack anchor takes priority',
+      styleAnchorDesc:
+        'Keeps reminding the model to stay casual and short, never claiming to be an AI; a character pack anchor takes priority',
       styleAnchorPlaceholder: 'Leave empty to use the built-in reminder',
       regexRules: 'Speech-tic fix rules',
       regexName: 'Rule name',
@@ -261,8 +277,10 @@ export const en: LocaleMessages = {
       providersDesc:
         'Configure chat models under "Chat". Agent runner, voice, embedding and rerank providers are configured per capability. Keys are stored in plain text with each source.',
       addProvider: '＋ Add provider',
-      emptySourcesChat: 'No provider sources for this capability yet — click "＋ Add source" on the left to start',
-      emptySources: 'No providers for this capability yet — click "＋ Add provider" at the top right to start',
+      emptySourcesChat:
+        'No provider sources for this capability yet — click "＋ Add source" on the left to start',
+      emptySources:
+        'No providers for this capability yet — click "＋ Add provider" at the top right to start',
       budgetTitle: 'Usage & budget',
       utilityTitle: 'Utility model',
       utilityDesc:
@@ -371,7 +389,8 @@ export const en: LocaleMessages = {
     },
     voice: {
       libTitle: 'Voice library',
-      libSubtitle: 'Presets, text-described designs, and reference-audio clones — used for chat readout and preview',
+      libSubtitle:
+        'Presets, text-described designs, and reference-audio clones — used for chat readout and preview',
       addVoice: '+ New voice',
       empty: 'No voices yet',
       emptyCta: 'Create your first voice',
@@ -405,7 +424,8 @@ export const en: LocaleMessages = {
       mouthStrengthDesc: 'Gain from loudness to mouth openness',
       secInput: 'Voice input',
       sttModel: 'Recognition model (STT)',
-      sttModelDesc: 'Shared by voice input and clone-reference transcription; configure in Model API',
+      sttModelDesc:
+        'Shared by voice input and clone-reference transcription; configure in Model API',
       goModelPage: 'Open Model API',
       micDevice: 'Microphone',
       micDeviceDesc: 'Input device shared by voice input and clone recording',
@@ -423,16 +443,20 @@ export const en: LocaleMessages = {
       pickMimoSource: 'MiMo source',
       willUse: 'Will use: {label}',
       bindingDefault: 'Default TTS',
-      noTtsModels: 'No usable TTS models — create a TTS source and add models on the Model API page first.',
-      noMimoSource: 'Design-by-text needs MiMo voicedesign — create a MiMo TTS source on the Model API page first.',
+      noTtsModels:
+        'No usable TTS models — create a TTS source and add models on the Model API page first.',
+      noMimoSource:
+        'Design-by-text needs MiMo voicedesign — create a MiMo TTS source on the Model API page first.',
       voiceName: 'Voice name (engine built-in)',
-      designHint: 'Describe the voice you want in natural language; MiMo voicedesign generates it. Iterate with previews.',
+      designHint:
+        'Describe the voice you want in natural language; MiMo voicedesign generates it. Iterate with previews.',
       stylePlaceholder: 'e.g. a gentle girlish voice, light and quick, slightly coquettish',
       dialect: 'Dialect (optional)',
       advanced: 'Advanced',
       seedText: 'Seed text',
       seedTextHint: 'Optional; leading context for style guidance',
-      cloneHint: 'Upload or record 5–10 seconds of clear speech as reference audio; the engine clones its timbre.',
+      cloneHint:
+        'Upload or record 5–10 seconds of clear speech as reference audio; the engine clones its timbre.',
       uploadRef: 'Upload file',
       recordStart: 'Record now',
       recordStop: 'Stop ({s}s)',
@@ -441,7 +465,8 @@ export const en: LocaleMessages = {
       refText: 'Reference text',
       transcribing: '(transcribing…)',
       refTextPlaceholder: 'What the reference audio says',
-      refTextHint: 'Matching the audio content is key to clone quality; auto-transcribed, edit as needed',
+      refTextHint:
+        'Matching the audio content is key to clone quality; auto-transcribed, edit as needed',
       testConn: 'Test',
       testOk: 'Connected',
       testFail: 'Not connected: {error}',
@@ -452,7 +477,8 @@ export const en: LocaleMessages = {
       apiBase: 'Service URL',
       fishKey: 'API Key',
       referenceId: 'Platform model ID (optional)',
-      referenceIdHint: 'Paste a 32-char fish.audio model ID to use it directly without reference audio',
+      referenceIdHint:
+        'Paste a 32-char fish.audio model ID to use it directly without reference audio',
       previewDraft: 'Preview draft',
       draftName: 'Draft',
       errRefSize: 'Reference audio exceeds the 10MB limit',
@@ -523,15 +549,15 @@ export const en: LocaleMessages = {
       userSays: 'The user says…',
       charReplies: 'They reply…',
       confirmDeleteTitle: 'Delete persona "{name}"?',
-      confirmDeleteDetail:
-        'Characters using it will fall back to the default or built-in persona.',
+      confirmDeleteDetail: 'Characters using it will fall back to the default or built-in persona.',
     },
     memory: {
       title: 'Memory',
       desc: "The character's markdown notebook: the user profile is shared across characters; relationship and timeline are per character. Compiled automatically while chatting, editable here; toggle under Privacy → Long-term memory.",
       clearAll: 'Clear all',
       confirmClearTitle: 'Clear all memory?',
-      confirmClearDetail: 'Deletes the user profile, people and topics (shared by all characters), this character's relationship/timeline pages, and legacy memory rows. Cannot be undone.',
+      confirmClearDetail:
+        "Deletes the user profile, people and topics (shared by all characters), this character's relationship/timeline pages, and legacy memory rows. Cannot be undone.",
       searchPlaceholder: 'Search title / keys / body…',
       groupProfile: 'User profile',
       groupPeople: 'People',
@@ -554,7 +580,8 @@ export const en: LocaleMessages = {
       sections: 'Sections',
       deletePage: 'Delete page',
       confirmDeleteTitle: 'Delete "{title}"?',
-      confirmDeleteDetail: 'Removes the page file (a .prev backup is kept until next overwrite) along with its keys and vector index.',
+      confirmDeleteDetail:
+        'Removes the page file (a .prev backup is kept until next overwrite) along with its keys and vector index.',
       compileNow: 'Compile now',
       compiling: 'Compiling…',
       compiledOk: 'Compiled: {ops} operation(s)',
@@ -565,7 +592,8 @@ export const en: LocaleMessages = {
       neverCompiled: 'Never compiled',
       openFolder: 'Open folder',
       disabled: 'Long-term memory is off: nothing is injected or compiled; files are kept.',
-      migratedBanner: 'Migrated {n} legacy memories into the wiki; the old rows are kept and can be cleared on the Data page.',
+      migratedBanner:
+        'Migrated {n} legacy memories into the wiki; the old rows are kept and can be cleared on the Data page.',
       legacyPending: '{n} legacy memories detected; they will be migrated on the next compile.',
       pages: '{n} pages',
       timeAgo: '{dur} ago',
@@ -581,7 +609,8 @@ export const en: LocaleMessages = {
       importPack: 'Import .dspack',
       importFolder: 'Import folder',
       donorBody: 'Body source',
-      donorBodyHint: 'Soul packs carry persona text only; the model, actions and emotion mappings are copied from the selected character pack.',
+      donorBodyHint:
+        'Soul packs carry persona text only; the model, actions and emotion mappings are copied from the selected character pack.',
       currentBadge: '● Current',
       builtin: 'Built-in',
       empty: 'The library is empty. Import a .dspack character pack or a folder to start.',
@@ -664,15 +693,15 @@ export const en: LocaleMessages = {
         title: 'Swap body',
         target: 'Target character',
         body: 'New body',
-        keepHint:
-          'Soul, memories, chat history and voice are all kept — same character, new body.',
+        keepHint: 'Soul, memories, chat history and voice are all kept — same character, new body.',
         vocabHint:
           'Emotion / action vocabularies follow the new body (unknown old tags degrade gracefully).',
         crossEngineHint:
           'Cross-engine swap ({from} → {to}): action and expression mappings are replaced wholesale.',
         noTargets:
           'Built-in characters are read-only. Duplicate one under “My characters” first, then swap its body.',
-        noBodies: 'No bodies installed yet. Find one in the market, or import a local .dsbody file.',
+        noBodies:
+          'No bodies installed yet. Find one in the market, or import a local .dsbody file.',
         confirm: 'Swap body',
         busy: 'Swapping…',
         done: '✓ Now wearing “{name}”',
@@ -690,7 +719,8 @@ export const en: LocaleMessages = {
         },
         typeLabel: 'Type',
         loading: 'Loading…',
-        empty: 'No matching characters. Try another keyword, or add a source under “Manage sources”.',
+        empty:
+          'No matching characters. Try another keyword, or add a source under “Manage sources”.',
         allSourcesFailed:
           'Every market source failed. Check your network, or switch sources under “Manage sources”.',
         manageSources: 'Manage sources',
@@ -754,7 +784,8 @@ export const en: LocaleMessages = {
       greetings: 'Greetings',
       addGreeting: 'Add greeting',
       lorebook: 'Lorebook',
-      lorebookHint: 'Keyword-triggered background lore, injected into the system prompt when mentioned (ordered, budget-capped). Greetings and lorebook support char/user macros.',
+      lorebookHint:
+        'Keyword-triggered background lore, injected into the system prompt when mentioned (ordered, budget-capped). Greetings and lorebook support char/user macros.',
       lorebookEmpty: 'No entries yet — they can come with a soul pack, or add one manually',
       addLorebookEntry: 'Add entry',
       lorebookKeys: 'Trigger keywords (comma separated; empty = always on)',
@@ -1030,7 +1061,8 @@ export const en: LocaleMessages = {
       test: 'Test',
       editDialogTitle: '{action} {name} provider',
       actionAdd: 'Add',
-      baseUrlHint: 'If the test fails, try appending /v1 for compatibility with some OpenAI API versions.',
+      baseUrlHint:
+        'If the test fails, try appending /v1 for compatibility with some OpenAI API versions.',
       autodetect: 'Auto-detect',
       timeout: 'Timeout',
       timeoutDesc: 'Timeout in seconds.',
@@ -1055,7 +1087,8 @@ export const en: LocaleMessages = {
       noSources: 'No provider sources yet',
       addSourceBtn: '＋ Add source',
       setupChatTitle: 'Set up a chat model',
-      setupChatDesc: 'Pick a provider, enter the API key, then choose a model as the default chat model.',
+      setupChatDesc:
+        'Pick a provider, enter the API key, then choose a model as the default chat model.',
       changeOne: 'Change',
       apply: 'Apply',
       noModelsFound: 'No models found',
