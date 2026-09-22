@@ -361,7 +361,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
   });
   pluginService.startAll();
-  runMemoryMigration(characters.current().characterId);
   const interactions = new InteractionService({
     cues: () => [
       ...mergeCues(DEFAULT_CUES, characters.current().manifest.cues),
@@ -506,6 +505,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     if (!prefsStore.getAll()['privacy.longTermMemory']) return;
     void memoryMigrator.maybeRun(cid).catch((e) => console.warn('[memory] migrate failed:', e));
   };
+  runMemoryMigration(characters.current().characterId); // 启动检测（当前角色）
   // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
   const sessionSummarizer = createSessionSummarizer({
     store,
