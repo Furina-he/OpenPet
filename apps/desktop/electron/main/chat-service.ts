@@ -65,6 +65,8 @@ export interface ChatServiceOptions {
   character?: () => CharacterRef;
   /** SqliteStore 源 db 路径（导出快照用）；缺省导出仅含 manifest。 */
   sqlitePath?: string;
+  /** ⑲ 记忆 wiki 根（.dsbak 导出纳入）。 */
+  memoryRoot?: string;
   queue?: NotificationQueueOptions;
   host?: ProviderHostOptions;
   plugins?: PluginGatewayDeps;
@@ -153,6 +155,7 @@ export class ChatService {
   private readonly session: SessionStore;
   private readonly getCharacter: () => CharacterRef;
   private readonly sqlitePath: string | undefined;
+  private readonly memoryRoot: string | undefined;
   private readonly queue: NotificationQueue;
   /** chat.reasoning/chat.toolCall 直发通道（C′ §3，旁路背压队列）。 */
   private readonly broadcast: (channel: string, params: unknown) => void;
@@ -207,6 +210,7 @@ export class ChatService {
     this.conv = opts.store ?? new MemoryStore();
     this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
     this.sqlitePath = opts.sqlitePath;
+    this.memoryRoot = opts.memoryRoot;
     this.session = new SessionStore({
       store: this.conv,
       characterId: () => this.getCharacter().id,
@@ -382,7 +386,10 @@ export class ChatService {
 
   /** 一键导出 .dsbak（app.exportData 后端）：DB + manifest，无密钥。 */
   async exportData(outPath: string): Promise<{ ok: true; bytes: number }> {
-    await exportDsbak(this.conv, outPath, this.sqlitePath ? { sqlitePath: this.sqlitePath } : {});
+    await exportDsbak(this.conv, outPath, {
+      ...(this.sqlitePath ? { sqlitePath: this.sqlitePath } : {}),
+      ...(this.memoryRoot ? { memoryRoot: this.memoryRoot } : {}),
+    });
     return { ok: true, bytes: statSync(outPath).size };
   }
 

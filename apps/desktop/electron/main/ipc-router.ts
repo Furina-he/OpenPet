@@ -576,6 +576,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       };
     },
     ...(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {}),
+    memoryRoot,
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
     ...(deps.defaultProviderId ? { defaultProviderId: deps.defaultProviderId } : {}),
     // §7.1：chat.send 未带 providerId 时，动态读 prefs 的两层默认 chat 目标（工作台选默认即生效）。
@@ -873,7 +874,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       const picked = (await deps.pickDsbakOpen?.()) ?? null;
       if (!picked) return { cancelled: true as const };
       if (!deps.sqlitePath) throw new Error('纯内存模式不支持导入');
-      stageDsbakImport(picked, deps.sqlitePath);
+      stageDsbakImport(picked, deps.sqlitePath, memoryRoot);
       return { cancelled: false as const, ok: true as const, requiresRestart: true as const };
     },
     'app.exportDataPick': async () => {

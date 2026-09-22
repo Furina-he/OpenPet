@@ -1,5 +1,5 @@
 import AdmZip from 'adm-zip';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,21 @@ export interface ExportOptions {
   now?: () => number;
   /** SqliteStore 的源 db 路径（给了则一致性快照进 zip）；MemoryStore 省略=仅 manifest。 */
   sqlitePath?: string;
+  /** ⑲ 记忆 wiki 根（userData/memory）；存在则整目录进 zip 的 memory/（跳过 .tmp 临时文件）。 */
+  memoryRoot?: string;
+}
+
+/** 递归收集目录下文件（相对路径，/ 分隔），跳过 .tmp。 */
+export function listMemoryFiles(root: string, rel = ''): string[] {
+  const dir = rel ? join(root, rel) : root;
+  if (!existsSync(dir)) return [];
+  const out: string[] = [];
+  for (const name of readdirSync(dir).sort()) {
+    const r = rel ? `${rel}/${name}` : name;
+    if (statSync(join(root, r)).isDirectory()) out.push(...listMemoryFiles(root, r));
+    else if (!name.endsWith('.tmp')) out.push(r);
+  }
+  return out;
 }
 
 /**
@@ -38,6 +53,14 @@ export async function exportDsbak(
     const snap = join(tmp, 'sessions.db');
     await store.backupTo(snap);
     if (existsSync(snap)) zip.addLocalFile(snap, '', 'sessions.db');
+  }
+  if (opts.memoryRoot && existsSync(opts.memoryRoot)) {
+    for (const rel of listMemoryFiles(opts.memoryRoot)) {
+      zip.addLocalFile(
+        join(opts.memoryRoot, rel),
+        `memory/${rel.split('/').slice(0, -1).join('/')}`,
+      );
+    }
   }
   zip.writeZip(outPath);
 }

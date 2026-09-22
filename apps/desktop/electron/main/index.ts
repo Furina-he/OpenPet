@@ -146,7 +146,7 @@ app.whenReady().then(async () => {
   // 批次⑥ D7：上次会话若 stage 了 .dsbak 导入（<sqlitePath>.import），建 store 前原子换库
   //（旧库转 .bak-<ts> 兜底）。必须先于 registerIpcRouter（它持 DB 单连接）。
   const sqlitePath = path.join(dataDir, 'sessions.db');
-  applyPendingImport(sqlitePath);
+  applyPendingImport(sqlitePath, Date.now, memoryRoot); // ⑲ 同时原子替换 wiki 目录
   // ⑪ 自动更新：dev/portable 门控；electron-updater CJS 动态载入（仅 packaged 需要）。
   const updateMode: UpdateMode = !app.isPackaged
     ? 'dev'
