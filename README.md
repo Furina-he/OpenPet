@@ -141,46 +141,77 @@ docs/                 用户手册与资源
 
 ## 🗺️ Roadmap
 
-> **北极星**：让 AI 角色像真正的伙伴一样常驻桌面——**被看见、能交流、有反应、可扩展、属于社区**。
-> **角色三层模型**：一个角色 = **灵魂**（怎么说话：人设 / 记忆 / 世界设定）+ **肉体**（怎么动：VRM / Live2D 形象与动作）+ **声音**（怎么响：音色）。三层可分别流通、自由组合，是整个路线图的骨架。
-
-### 总览
+> 一个角色 = **灵魂**（怎么说话）+ **肉体**（怎么动）+ **声音**（怎么响）。路线图围绕这三层展开：先把内核立起来，再分五条线并行推进，最后汇入正式发布。
 
 ```mermaid
-flowchart LR
+flowchart TB
   classDef done fill:#DDF3E4,stroke:#2E8B57,color:#1B4332
-  classDef active fill:#FFF1CC,stroke:#D4A017,color:#5C4300
-  classDef plan fill:#EEF0F3,stroke:#8A94A6,color:#3B4252,stroke-dasharray: 5 5
+  classDef active fill:#FFF1CC,stroke:#D4A017,color:#5C4300,stroke-width:2px
+  classDef plan fill:#F4F5F7,stroke:#8A94A6,color:#3B4252,stroke-dasharray: 5 5
+  classDef gate fill:#E8E4F5,stroke:#6C5CE7,color:#2D2A4A,stroke-width:2px
 
-  P0["<b>P0 内核 MVP</b><br/>桌面透明窗口 · VRM 渲染<br/>流式行为协议 · 多 Provider<br/>Hub 设置面板 · 聊天浮层"]:::done
-  P1["<b>P1 AI 内核</b><br/>Provider 工作台 · 动态配置<br/>Hub 完整会话 · MCP 工具安全门<br/>知识库 RAG"]:::done
-  P2["<b>P2 生命感与语音</b><br/>触摸分级 · 拖拽物理 · 心情连续性<br/>主动行为 · 工作状态外化<br/>TTS / ASR / 嘴型 · 人设管理 · Trace"]:::done
-  P3["<b>P3 角色生态</b><br/>.dspack 角色包 · Live2D 双引擎<br/>角色编辑器 · 音色工坊<br/>.dssoul 灵魂包 · .dsbody 形象包<br/>角色市场 · 一键换形象"]:::done
-  P4["<b>P4 连接生态</b><br/>QQ / Telegram 通道<br/>插件双运行时 · 会话管理<br/>总览仪表盘"]:::done
-  P5["<b>P5 拟人与记忆 v1</b><br/>拟人化对话 · 表情分类兜底<br/>事实生命周期 · 会话滚动摘要<br/>世界设定 · 提示词宏"]:::done
-  P6["<b>P6 打磨与发布基建</b><br/>中英双语 · 无障碍 · 性能埋点<br/>安装器 · 自动更新 · 发布流水线"]:::done
-  P7["<b>P7 生命感 v2 · 记忆 v2</b><br/>身体分层模型 · 视线状态机<br/>节拍手势 · 心情贯穿三层<br/>角色 wiki 记忆 · 可编辑档案"]:::active
-  P8["<b>P8 候选</b><br/>精灵图第三引擎<br/>音素级嘴型 · 市场内容扩充<br/>正式发布 v0.1.0"]:::plan
+  MVP["内核 MVP<br/>桌面窗口 · VRM 渲染 · 流式行为协议<br/>多 Provider · Hub · 聊天浮层"]:::done
 
-  P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8
+  subgraph BODY["肉体线 · 桌宠身体"]
+    direction TB
+    B1["交互与生命感<br/>触摸分级 · 拖拽物理 · 心情 · 主动行为"]:::done
+    B2["语音运行时<br/>朗读 · 语音输入 · 嘴型"]:::done
+    B3["生命感 v2<br/>呼吸底噪 · 视线状态机<br/>姿态层 · 节拍手势"]:::active
+    B4["精灵图第三引擎"]:::plan
+    B5["音素级嘴型"]:::plan
+    B1 --> B2 --> B3
+    B3 --> B4
+    B3 --> B5
+  end
+
+  subgraph SOUL["灵魂线 · AI 内核"]
+    direction TB
+    S1["Provider 工作台<br/>MCP 工具 · 知识库 RAG"]:::done
+    S2["人设管理 · Trace 诊断"]:::done
+    S3["拟人化对话<br/>风格锚 · 自然节奏 · 表情兜底"]:::done
+    S4["记忆 v1<br/>事实生命周期 · 会话摘要 · 世界设定"]:::done
+    S5["记忆 v2 · 角色 wiki<br/>可读可编辑档案 · 三路注入"]:::active
+    S1 --> S2 --> S3 --> S4 --> S5
+  end
+
+  subgraph ECO["角色生态线 · 灵魂 / 肉体 / 声音分层流通"]
+    direction TB
+    E1["角色包 .dspack<br/>导入 · 热切换"]:::done
+    E2["Live2D 双引擎"]:::done
+    E3["角色编辑器 · 音色工坊"]:::done
+    E4["灵魂包 .dssoul<br/>角色市场"]:::done
+    E5["形象包 .dsbody<br/>一键换形象"]:::done
+    E6["市场内容扩充"]:::plan
+    E1 --> E2 --> E3 --> E4 --> E5 --> E6
+  end
+
+  subgraph LINK["连接线 · 入口与扩展"]
+    direction TB
+    L1["IM 通道<br/>QQ · Telegram"]:::done
+    L2["插件双运行时<br/>沙箱 · AstrBot 兼容"]:::done
+    L3["会话管理 · 总览仪表盘"]:::done
+    L1 --> L2 --> L3
+  end
+
+  subgraph SHIP["发布线"]
+    direction TB
+    R1["双语 · 无障碍 · 性能"]:::done
+    R2["安装器 · 自动更新<br/>发布流水线"]:::done
+    R3["v0.1.0 正式发布"]:::gate
+    R4["macOS / Linux 评估"]:::plan
+    R1 --> R2 --> R3 --> R4
+  end
+
+  MVP --> B1
+  MVP --> S1
+  MVP --> E1
+  MVP --> L1
+  MVP --> R1
+  B3 -.打磨完成后.-> R3
+  S5 -.打磨完成后.-> R3
 ```
 
-<div align="center"><sub>🟩 已完成 · 🟨 进行中 · ⬜ 候选（虚线）</sub></div>
-
-### 里程碑明细
-
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| **P0 内核 MVP** | 透明置顶桌面窗口 / 点击穿透 / 托盘与热键 · VRM 角色渲染与 LookAt · 流式行为协议（`<emo/>` `<act/>` `<wait/>` + intent）· 多 Provider 与降级链 · SQLite 状态与会话 · Hub 设置面板 · 聊天浮层 · 引导流程 | ✅ 2026-06 |
-| **P1 AI 内核** | Provider 两层 Source + Model 工作台（55+ 具名模板）· 动态配置表单 · Hub 完整会话（推理侧栏 / 工具卡）· MCP 工具授权与安全门 · 知识库 RAG（PDF / rerank / 缓存） | ✅ 2026-06 |
-| **P2 生命感与语音** | 声明式交互 cue 表（角色包可覆盖）· 单击 / 连击 / 长按 / 抚摸分级 · 拖拽拎起摆动与回弹 · 心情 2h 半衰连续性 · 主动行为策略与勿扰 · 思考 / 查工具 / 出错 / 打瞌睡等工作状态外化 · 自动朗读 + 语音输入 + RMS 嘴型 · 可编辑人设 · 全链路 Trace 诊断 | ✅ 2026-07 |
-| **P3 角色生态** | `.dspack` 安全导入与热切换 · Live2D（Cubism 4/5）第二运行时 · 角色编辑器 · 音色工坊（预设 / 文字设计 / 参考音频克隆）· `.dssoul` 灵魂包 · `.dsbody` 形象包与一键换形象（记忆 / 会话原地保留）· 零服务器静态索引角色市场（首批内容已上线） | ✅ 2026-09 |
-| **P4 连接生态** | QQ（OneBot v11 / NapCat）与 Telegram 通道 · Desktop 插件 worker 沙箱 + AstrBot 插件兼容宿主 · 多会话管理与导出 · Hub 总览仪表盘 | ✅ 2026-07 |
-| **P5 拟人与记忆 v1** | 风格锚 / 自然节奏分段 / 口癖规则 / 时间感 · 模型不吐标签时的表情分类兜底 · 长期记忆事实生命周期（增 / 改 / 删）· 会话滚动摘要 · 世界设定关键词注入 · 提示词宏 · 杂务模型独立配置 | ✅ 2026-07 |
-| **P6 打磨与发布基建** | 中英双语即时切换 · 无障碍精简包 · 性能埋点与用户手册 · NSIS 安装器（自定义路径）· electron-updater 自动更新 · GitHub Releases 流水线 | ✅ 2026-07（正式发布暂缓，先打磨） |
-| **P7 生命感 v2** | 身体分层模型（呼吸 / 微动 / 重心底噪 + 情绪姿态 + 动作预备与余震）· 表情快起慢退到心情基线 · 视线状态机（追踪 / 游移 / 思考 / 说话）· 动作协同（点头压视线、叹气半合眼）· 空闲行为序列 · 回复分段驱动的节拍手势 · 心情贯穿语气与语速 · VRMA 动画片段通道 · Live2D 对齐 | 🟨 进行中 |
-| **P7 记忆 v2** | 记忆从扁平句子升级为可读可编辑的 markdown 角色 wiki：用户档案跨角色共享、关系与共同经历按角色隔离 · 常驻 + 关键词 + 向量三路注入 · LLM 作为编译器受控维护页面 · 旧记忆一次性整理迁移 · Hub 记忆页升级为 wiki 浏览器 | 🟨 进行中 |
-| **P8 候选** | 精灵图第三引擎（像素图集形象，图像生成即可量产）· 音素级嘴型（TTS 时间戳对齐）· 角色市场内容扩充 · 正式发布 v0.1.0 · macOS / Linux 评估 | ⬜ 未排期 |
+<div align="center"><sub>🟩 已完成 · 🟨 进行中 · ⬜ 候选 · 🟪 发布门</sub></div>
 
 ## 🤝 贡献
 
