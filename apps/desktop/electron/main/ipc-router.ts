@@ -46,7 +46,7 @@ import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { MemoryWiki } from './memory-wiki.js';
-import { createMemoryExtractor } from './memory-extractor.js';
+import { createMemoryCompiler } from './memory-compiler.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
@@ -478,13 +478,17 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     const key = p['model.providerSources'].find((s) => s.id === t.sourceId)?.key ?? '';
     return { apiBase: t.apiBase, model: t.model, key, adapter: t.adapter };
   };
-  const memoryExtractor = createMemoryExtractor({
+  // ⑲ 记忆编译器 v3（取代 extractor）：受控 diff 写 wiki；变更页重算向量 + memory.changed。
+  const memoryCompiler = createMemoryCompiler({
     store,
+    wiki: memoryWiki,
     embed: memoryEmbed,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
     resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
+    reindex: (paths) => memoryService.reindexVectors(paths),
+    onChanged: (pages) => broadcast('memory.changed', { pages }),
   });
   // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
   const sessionSummarizer = createSessionSummarizer({
@@ -572,7 +576,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     retrieveMemory: (q, h) => memoryService.retrieveForChat(q, h),
     // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
     onTurnEnd: (sid) => {
-      if (imService?.shouldExtractMemory(sid) ?? true) void memoryExtractor.onTurnEnd(sid);
+      if (imService?.shouldExtractMemory(sid) ?? true) void memoryCompiler.onTurnEnd(sid);
       // ⑮ 滚动摘要不受 im 门限制（只摘要本会话，无群聊污染问题，spec §2）。
       void sessionSummarizer.onTurnEnd(sid);
     },
@@ -810,7 +814,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { cancelled: false as const, path: out };
     },
     'chat.setActiveSession': (p) => {
-      void memoryExtractor.flush(); // ⑮ 会话切换前收尾未提炼的轮（防抖内跳过）
+      void memoryCompiler.flush(); // ⑮ 会话切换前收尾未提炼的轮（防抖内跳过）
       writeActiveSession(
         {
           getMap: () => prefsStore.getAll()['chat.activeSessions'],
@@ -965,7 +969,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       };
     },
     'character.switch': (p) => {
-      void memoryExtractor.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
+      void memoryCompiler.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
       characters.switch(p.id);
       broadcast('character.changed', { characterId: p.id });
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
@@ -1171,7 +1175,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       if (fullscreen) interactions.trigger('desktop.fullscreen');
     },
     dispose: async () => {
-      const memoryFlush = memoryExtractor.flush(); // ⑮ 退出前收尾（store.close 前 await）
+      const memoryFlush = memoryCompiler.flush(); // ⑮ 退出前收尾（store.close 前 await）
       ipcMain.removeHandler('openpet:rpc');
       scheduler.stop();
       interactions.dispose();
