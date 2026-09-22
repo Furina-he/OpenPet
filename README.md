@@ -97,26 +97,115 @@ pnpm build
 ## 🏗️ 架构
 
 ```mermaid
-flowchart LR
-  Renderer["Renderer\nVue 3 / Tailwind / Three.js / Pixi.js"]
-  Preload["Preload\ncontextBridge"]
-  Main["Electron Main\nIPC Router / Chat / Persona / DB / Provider Router"]
-  Worker["worker_threads\nProvider / Plugin / Tool / Memory"]
-  Protocol["packages/protocol\nZod schemas / JSON-RPC / BehaviorParser"]
-  SQLite["SQLite WAL\nstate / memory / knowledge base"]
+flowchart TB
+  classDef win fill:#E3F2FD,stroke:#1E88E5,color:#0D47A1
+  classDef main fill:#FFF8E1,stroke:#F9A825,color:#5D4037
+  classDef worker fill:#F3E5F5,stroke:#8E24AA,color:#4A148C
+  classDef data fill:#E8F5E9,stroke:#43A047,color:#1B5E20
+  classDef ext fill:#F5F5F5,stroke:#9E9E9E,color:#424242,stroke-dasharray: 4 4
+  classDef proto fill:#FBE9E7,stroke:#E64A19,color:#BF360C
 
-  Renderer --> Preload
-  Preload --> Main
-  Main --> Worker
-  Main --> SQLite
-  Renderer -. shared types .-> Protocol
-  Main -. shared types .-> Protocol
-  Worker -. shared types .-> Protocol
+  subgraph R["Renderer（sandbox · contextIsolation）"]
+    direction LR
+    RC["角色窗口<br/>透明置顶 · alpha 命中穿透<br/>VRM (three-vrm) / Live2D (pixi)<br/>表情 · 动作 · 视线 · 嘴型 · 拖拽"]:::win
+    RO["聊天浮层<br/>流式气泡 · 语音输入"]:::win
+    RH["Hub 管理窗<br/>Vue 3 + Tailwind<br/>会话 · 角色库 / 编辑器 / 市场 · 模型 · 记忆<br/>知识库 · 工具 · 插件 · 连接 · 语音 · 设置"]:::win
+  end
+
+  PRE["Preload · contextBridge<br/>window.openpet.rpc / on"]:::win
+
+  subgraph M["Electron Main · 业务大脑（单进程直调）"]
+    direction TB
+    subgraph M1["路由与宿主"]
+      direction LR
+      IPC["IPC Router<br/>JSON-RPC 2.0 · 通知路由表"]:::main
+      WIN["窗口编排 · 托盘 · 全局热键<br/>全屏让位 · 自动更新"]:::main
+      ASSET["asset:// 协议<br/>内置 / 导入 / 形象库 三根白名单"]:::main
+    end
+    subgraph M2["对话链"]
+      direction LR
+      CS["ChatService<br/>TurnOrchestrator · ConversationCore"]:::main
+      CP["ContextPipeline<br/>知识库 · 记忆 · 世界设定 · 摘要 并行检索<br/>→ ContextAssembler 组装 system"]:::main
+      BP["BehaviorParser<br/>流式标签 → 表情 / 动作 / 停顿"]:::main
+      CS --> CP
+      CS --> BP
+    end
+    subgraph M3["能力服务"]
+      direction LR
+      PROV["Provider 路由<br/>多源多模型 · 降级链 · 预算"]:::main
+      MCP["MCP Manager<br/>工具发现 · 授权门"]:::main
+      KB["知识库<br/>分块 · 向量 · rerank"]:::main
+      MEM["记忆<br/>事实提炼 · 会话摘要"]:::main
+      VOICE["语音<br/>TTS / ASR · 音色库"]:::main
+      CHAR["角色 / 形象 / 市场<br/>.dspack .dssoul .dsbody"]:::main
+      INT["交互引擎<br/>cue 注册表 · 心情 · 主动策略"]:::main
+      IM["IM 服务<br/>唤醒 · 白名单 · 串行化"]:::main
+      PLUG["插件宿主<br/>Desktop 插件 · AstrBot Star"]:::main
+    end
+    subgraph M4["数据"]
+      direction LR
+      DB[("SQLite WAL<br/>会话 · 记忆 · 知识库向量 · 统计")]:::data
+      PREFS[("Prefs JSON<br/>Zod 深校验 · 变更广播")]:::data
+      FILES[("userData<br/>characters · bodies · voices · plugins")]:::data
+    end
+    M1 --> M2
+    M2 --> M3
+    M3 --> M4
+  end
+
+  subgraph W["隔离执行（崩溃监督 · 指数退避）"]
+    direction LR
+    PW["Provider Worker<br/>worker_threads · 流式适配器<br/>openai / anthropic / gemini / ollama"]:::worker
+    DPW["插件 Worker<br/>每插件一线程 · 权限确认"]:::worker
+    STAR["Star 兼容宿主<br/>Python 子进程"]:::worker
+    MCPP["MCP Server<br/>stdio / SSE 子进程"]:::worker
+  end
+
+  subgraph X["外部"]
+    direction LR
+    LLM["LLM / Embedding / Rerank API"]:::ext
+    TTS["TTS / ASR 引擎<br/>openai 兼容 · MiMo · GPT-SoVITS · fish.audio"]:::ext
+    IMX["QQ (OneBot v11 / NapCat) · Telegram"]:::ext
+    MKT["角色市场静态索引<br/>GitHub raw · jsDelivr"]:::ext
+  end
+
+  PROTO["packages/protocol · 跨进程单一真源<br/>Zod schema · RPC 方法表 · 行为解析器<br/>角色 manifest 与灵魂/肉体切分线 · cue 表 · prefs"]:::proto
+
+  RC --> PRE
+  RO --> PRE
+  RH --> PRE
+  PRE -- "ipcRenderer.invoke / 通知" --> IPC
+  IPC --> CS
+  IPC --> M3
+  BP -. "behavior.* 通知" .-> RC
+  INT -. "cue → 表情 / 动作 / 台词" .-> RC
+  CHAR --> ASSET
+  ASSET -. "模型 / 贴图" .-> RC
+
+  PROV -- "MessagePort" --> PW
+  PLUG -- "MessagePort" --> DPW
+  PLUG -- "stdout JSON" --> STAR
+  MCP --> MCPP
+  PW --> LLM
+  KB --> LLM
+  MEM --> LLM
+  VOICE --> TTS
+  IM --> IMX
+  CHAR --> MKT
+
+  R -. "共享类型" .-> PROTO
+  M -. "共享类型" .-> PROTO
+  W -. "共享类型" .-> PROTO
 ```
 
-OpenPet 使用 Electron 作为桌面壳，业务大脑运行在 Main 进程，Renderer 负责 UI、桌面浮层和角色渲染。Provider、插件、工具和记忆相关任务运行在 `worker_threads` 中，避免复杂任务拖垮主进程。
+**一条消息的旅程**：用户在浮层或 Hub 输入 → Preload 经 JSON-RPC 送到 Main 的 IPC Router → ChatService 开一轮，ContextPipeline 并行检索知识库 / 记忆 / 世界设定 / 会话摘要并组装 system prompt → Provider Worker 流式调用模型 → 每个 token 块同时走两条轨：干净文本进气泡，`<emo/>` `<act/>` 等标签经 BehaviorParser 实时驱动角色窗口的表情与动作 → 模型请求工具时经 MCP 授权门执行并回灌 → 轮末异步提炼记忆、更新会话摘要、（可选）朗读。
 
-跨进程协议由 `packages/protocol` 统一维护，Zod schema 是 Main、Renderer、Worker 之间的单一协议真源。
+**几条设计约束**：
+
+- **Renderer 全部沙箱**：`sandbox` + `contextIsolation`，唯一 Node 能力是 Preload 暴露的 `window.openpet.rpc / on`；角色窗口是"哑播放器"，不含业务逻辑。
+- **Main 是业务大脑但保持薄**：只做协议路由、Worker 调度、SQLite 单连接；Provider / 插件 / MCP / Python 宿主全部隔离执行，崩溃由监督者指数退避重启，密钥永不进 Worker。
+- **三套协议互不混淆**：本地 IPC 用 JSON-RPC 2.0；LLM 输出用行为标签协议；插件用 `@openpet/plugin-sdk`。三者的 schema 都在 `packages/protocol` 以 Zod 定义，Main / Renderer / Worker 共享同一份类型。
+- **一个角色 = 灵魂 + 肉体 + 声音**：切分线是 protocol 里的字段常量，灵魂包 `.dssoul`、形象包 `.dsbody` 与一键换形象读同一张表，换形象不换 characterId，记忆与会话原地保留。
 
 ## 📁 仓库结构
 
