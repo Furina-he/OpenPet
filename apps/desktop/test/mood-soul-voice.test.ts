@@ -61,7 +61,7 @@ describe('⑱ mood + energy → 声音：语速因子', () => {
     expect(voiceRateFactor(undefined, -0.8)).toBeCloseTo(0.97, 9);
   });
 
-  const prefs = (over: Partial<Prefs>): Prefs => PrefsSchema.parse(over);
+  const prefs = (over: Record<string, unknown>): Prefs => PrefsSchema.parse(over);
 
   it('effectiveRate：门开 = rate×因子夹 [0.5,2]；门关 = 原 rate', () => {
     const now = Date.now();
