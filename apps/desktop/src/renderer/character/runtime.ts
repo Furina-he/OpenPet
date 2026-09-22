@@ -14,6 +14,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
+import {
+  VRMAnimationLoaderPlugin,
+  VRMLookAtQuaternionProxy,
+  createVRMAnimationClip,
+  type VRMAnimation,
+} from '@pixiv/three-vrm-animation';
+import { ActionClipRegistry, applyPoseTo, resolveClipEntries } from './action-clips';
 import type { CharacterManifest } from '@openpet/protocol';
 import {
   sampleAction,
@@ -74,10 +81,16 @@ export const BUILTIN_EMOTIONS: Record<string, Record<string, number>> = {
 /** 手臂自然下垂的 rest pose（VRM 默认 T-pose）；符号经手测校准（M4 Task 17）。 */
 const ARM_REST_Z = 1.15;
 
+export interface VrmRuntimeOptions {
+  /** `asset://<characterId>/`——manifest.actionClips 相对路径的根（缺省不加载片段）。 */
+  assetBase?: string | undefined;
+}
+
 export async function createVrmRuntime(
   container: HTMLElement,
   modelUrl: string,
   manifest: CharacterManifest,
+  options: VrmRuntimeOptions = {},
 ): Promise<CharacterRuntime> {
   const width = container.clientWidth || 320;
   const height = container.clientHeight || 480;
@@ -237,6 +250,8 @@ export async function createVrmRuntime(
     const fallback = (ACTION_DEFAULT_MS as Record<string, number>)[name] ?? 1500;
     const dur = durMs ?? fallback;
     const restorePosture = dispatchCompanions(name, dur, scale, now);
+    // ⑱ T9：显式动作命中 VRMA 片段 → mixer 播放（幅度档不适用于片段：idle/节拍仍走曲线）
+    if (scale === ACTION_SCALE.explicit && playClip(name, now)) return;
     activeAction = {
       name,
       start: now,
@@ -274,7 +289,7 @@ export async function createVrmRuntime(
   /** ⑱ 节拍手势门（spec §2.7）：无活动作且距上次动作 ≥1.5s 才播，否则丢弃（永不排队）。 */
   const BEAT_GATE_MS = 1500;
   function playBeat(name: string, scale: number, now: number): boolean {
-    if (activeAction || now - lastActionEnd < BEAT_GATE_MS) return false;
+    if (activeAction || activeClip || now - lastActionEnd < BEAT_GATE_MS) return false;
     playActionScaled(name, null, scale);
     return true;
   }
@@ -334,25 +349,88 @@ export async function createVrmRuntime(
   const hipsRestY = hips?.position.y ?? 0;
   const hipsRestX = hips?.position.x ?? 0;
 
-  function applyPose(now: number, offsets: BoneOffsets): void {
-    if (upperArmL) upperArmL.rotation.z = ARM_REST_Z - offsets.armRaiseL;
-    if (upperArmR) upperArmR.rotation.z = -(ARM_REST_Z - offsets.armRaiseR);
-    if (head) {
-      head.rotation.x = offsets.headPitch;
-      head.rotation.y = offsets.headYaw;
-      head.rotation.z = offsets.headRoll;
-    }
-    if (spine) {
-      spine.rotation.x = offsets.spinePitch;
-      spine.rotation.y = offsets.spineYaw;
-      spine.rotation.z = offsets.spineRoll;
-    }
-    if (hips) {
-      hips.position.y = hipsRestY + offsets.hipsY;
-      hips.position.x = hipsRestX + offsets.hipsX;
-    }
+  const poseTargets = { head, spine, chest, hips, upperArmL, upperArmR };
+  const poseRest = { armRestZ: ARM_REST_Z, hipsRestX, hipsRestY };
+
+  /** 无片段：rest + offsets 赋值（幂等）；片段播放中：在 mixer 写出的姿态上累加（⑱ T9）。 */
+  function applyPose(now: number, offsets: BoneOffsets, mode: 'absolute' | 'additive'): void {
     // 呼吸：⑱ 底噪层写 chestPitch；总闸关时回 S3 固定正弦（本批前表现）。
-    if (chest) chest.rotation.x = lifeLayers ? offsets.chestPitch : Math.sin(now / 1000) * 0.02;
+    const chestPitch = lifeLayers ? offsets.chestPitch : Math.sin(now / 1000) * 0.02;
+    applyPoseTo(poseTargets, { ...offsets, chestPitch }, mode, poseRest);
+  }
+
+  // ---- ⑱ T9 VRMA 片段通道：manifest.actionClips → AnimationMixer；命中走片段，否则程序化曲线 ----
+  const clips = new ActionClipRegistry<THREE.AnimationClip>();
+  const mixer = new THREE.AnimationMixer(vrm.scene);
+  let activeClip: { action: THREE.AnimationAction; until: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  const CLIP_FADE_IN_S = 0.15;
+  const CLIP_FADE_OUT_S = 0.25;
+  if (vrm.lookAt) {
+    // 片段里的 lookAt 轨道需要这个代理节点才能绑定（否则 mixer 报 no target）。
+    const proxy = new VRMLookAtQuaternionProxy(vrm.lookAt);
+    proxy.name = 'VRMLookAtQuaternionProxy';
+    vrm.scene.add(proxy);
+  }
+  // mixer 的"原始状态"快照在首次绑定时抓取：先摆到 rest（手臂下垂），避免淡入淡出时向 T-pose 混合。
+  applyPose(0, ZERO_OFFSETS, 'absolute');
+
+  async function loadClipFromUrl(url: string): Promise<THREE.AnimationClip> {
+    const gltf = await new Promise<{ userData: { vrmAnimations?: VRMAnimation[] } }>((resolve, reject) => {
+      const loader = new GLTFLoader();
+      loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+      loader.load(url, resolve, undefined, (e) => reject(e instanceof Error ? e : new Error(String(e))));
+    });
+    const anim = gltf.userData.vrmAnimations?.[0];
+    if (!anim) throw new Error('file contains no VRM animation');
+    return createVRMAnimationClip(anim, vrm);
+  }
+
+  async function loadActionClip(name: string, url: string): Promise<boolean> {
+    const r = await clips.loadAll([{ name, url }], loadClipFromUrl);
+    return r.loaded.length === 1;
+  }
+
+  const clipEntries = resolveClipEntries(manifest.actionClips, options.assetBase ?? '');
+  if (options.assetBase && clipEntries.length > 0) {
+    void clips.loadAll(clipEntries, loadClipFromUrl).then((r) => {
+      if (r.loaded.length > 0) console.info(`[runtime] actionClips loaded: ${r.loaded.join(',')}`);
+    });
+  }
+
+  function stopClip(): void {
+    if (!activeClip) return;
+    clearTimeout(activeClip.timer);
+    activeClip.action.fadeOut(CLIP_FADE_OUT_S);
+    activeClip = null;
+  }
+
+  /** 命中片段则播放（LoopOnce，fadeIn 150ms / fadeOut 250ms），返回 true；未命中 false（走曲线）。 */
+  function playClip(name: string, now: number): boolean {
+    const clip = clips.get(name);
+    if (!clip) return false;
+    stopClip();
+    const action = mixer.clipAction(clip);
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.fadeIn(CLIP_FADE_IN_S);
+    action.play();
+    const durMs = clip.duration * 1000;
+    const timer = setTimeout(
+      () => {
+        action.fadeOut(CLIP_FADE_OUT_S);
+        setTimeout(() => {
+          if (activeClip?.action === action) {
+            activeClip = null;
+            lastActionEnd = performance.now();
+          }
+        }, CLIP_FADE_OUT_S * 1000);
+      },
+      Math.max(0, durMs - CLIP_FADE_OUT_S * 1000),
+    );
+    activeClip = { action, until: now + durMs, timer };
+    activeAction = null; // 片段接管：程序化动作层停
+    return true;
   }
 
   /** ⑱ 鼠标靠近程度（阻尼标量：进 ~0.3s、离开 ~1s 复位）。 */
@@ -442,13 +520,13 @@ export async function createVrmRuntime(
   function updateIdleVariants(now: number): void {
     // ⑱ 序列步进：gap 内不被 idle 抢占；显式动作到来即中止（见 playAction）。
     if (sequencer.active) {
-      const busy = activeAction !== null || (hum !== null && now < hum.until);
+      const busy = activeAction !== null || activeClip !== null || (hum !== null && now < hum.until);
       const step = sequencer.next(now, busy);
       if (step) playIdleStep(step, now);
       return;
     }
     if (now < nextIdle.at) return;
-    if (!activeAction) {
+    if (!activeAction && !activeClip) {
       const v = nextIdle.variant;
       if (lifeLayers) sequencer.start(stepsOf(v), now);
       else playActionScaled(v.action, v.durationMs, v.scale);
@@ -521,7 +599,13 @@ export async function createVrmRuntime(
     updateLookAt(now, delta);
     if (lifeLayers) updateProximity(delta);
     updateDragPhysics(delta * 1000);
-    applyPose(now, composePose(now));
+    const pose = composePose(now);
+    if (activeClip) {
+      mixer.update(delta);
+      applyPose(now, pose, 'additive'); // 底噪/姿态/拖拽叠在片段之上（normalized rig）
+    } else {
+      applyPose(now, pose, 'absolute');
+    }
     vrm.update(delta);
     renderer.render(scene, camera);
   }
@@ -589,6 +673,7 @@ export async function createVrmRuntime(
       idleIntent = intent;
       refreshIdle();
     },
+    loadActionClip,
     listEmotions: () => Object.keys(emotions),
     listActions: () => [...actionVocab],
     getStats: () => ({ fps: fps.average(), budget, budgetWarnings }),
@@ -596,6 +681,8 @@ export async function createVrmRuntime(
       disposed = true;
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
+      stopClip();
+      mixer.stopAllAction();
       VRMUtils.deepDispose(vrm.scene);
       renderer.dispose();
       renderer.domElement.remove();

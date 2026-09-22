@@ -79,7 +79,10 @@ async function bootRuntime(stageEl: HTMLElement): Promise<CharacterRuntime> {
     return createLive2dRuntime(stageEl, modelUrl, cur.manifest);
   }
   bootedEngine = 'vrm';
-  return createVrmRuntime(stageEl, modelUrl, cur.manifest);
+  // ⑱ T9：assetBase 供 manifest.actionClips（.vrma）解析成 asset:// URL
+  return createVrmRuntime(stageEl, modelUrl, cur.manifest, {
+    assetBase: `asset://${cur.characterId}/`,
+  });
 }
 
 // i18n：character 窗仅两条 toast 文案走微型字典；locale 随 prefs 初读与变更同步。
