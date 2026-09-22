@@ -157,10 +157,8 @@ flowchart TB
     B1["交互与生命感<br/>触摸分级 · 拖拽物理 · 心情 · 主动行为"]:::done
     B2["语音运行时<br/>朗读 · 语音输入 · 嘴型"]:::done
     B3["生命感 v2<br/>呼吸底噪 · 视线状态机<br/>姿态层 · 节拍手势"]:::active
-    B4["精灵图第三引擎"]:::plan
     B5["音素级嘴型"]:::plan
     B1 --> B2 --> B3
-    B3 --> B4
     B3 --> B5
   end
 
@@ -177,12 +175,15 @@ flowchart TB
   subgraph ECO["角色生态线 · 灵魂 / 肉体 / 声音分层流通"]
     direction TB
     E1["角色包 .dspack<br/>导入 · 热切换"]:::done
-    E2["Live2D 双引擎"]:::done
+    E2["Live2D 第二引擎"]:::done
+    E7["2D 帧动画第三引擎<br/>像素图集 · 图像生成即可量产"]:::plan
     E3["角色编辑器 · 音色工坊"]:::done
     E4["灵魂包 .dssoul<br/>角色市场"]:::done
     E5["形象包 .dsbody<br/>一键换形象"]:::done
     E6["市场内容扩充"]:::plan
     E1 --> E2 --> E3 --> E4 --> E5 --> E6
+    E2 -.-> E7
+    E7 -.-> E5
   end
 
   subgraph LINK["连接线 · 入口与扩展"]
