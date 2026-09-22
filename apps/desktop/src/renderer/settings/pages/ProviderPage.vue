@@ -558,7 +558,7 @@ const utilityOptions = computed(() => {
               <div
                 class="break-all text-[21px] font-bold leading-tight tracking-tight text-text-main"
               >
-                {{ selected.name || selected.id }}
+                {{ selected.id }}
               </div>
               <div class="mt-1.5 break-all text-[13px] text-text-sub">
                 {{ editable.apiBase || 'N/A' }}
@@ -676,7 +676,7 @@ const utilityOptions = computed(() => {
       :title="
         confirm.kind === 'source'
           ? t('settings.providerUi.deleteSourceConfirm', {
-              id: confirm.source?.name || confirm.source?.id || '',
+              id: confirm.source?.id ?? '',
             })
           : t('settings.providerUi.deleteModelConfirm', { id: confirm.model?.id ?? '' })
       "

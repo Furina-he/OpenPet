@@ -1,16 +1,17 @@
-<!-- components/provider/ProviderSourceForm.vue — 供应商源配置表单（照 AstrBot 右栏「设置」+「高级配置...」）。
-     对话源：ID / API Key / API Base URL + 高级（超时/代理/headers/ollama）。
-     非对话源：另含 启用 + 类型专属字段（嵌入维度带「自动检测」/ 音色 / 后缀 …）+ 超时/代理。
+<!-- components/provider/ProviderSourceForm.vue — 供应商源配置（照 AstrBot AstrBotConfig 行布局：
+     每行 = 左「名称 + 提示」| 右控件，行间分隔线）。「设置」= ID / API Key / API Base URL；
+     「高级配置...」（常开、平铺，= AstrBot advancedSourceConfig）= 超时时间 / 代理地址 / 自定义请求头（ObjectEditor）
+     / 关闭思考模式（ollama）；非对话源另含 启用 + 类型专属字段（嵌入维度带「自动检测」等）。
      受控组件：任何改动 emit 完整新 source（父侧据此判脏，保存前不落盘）。 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { Eye, EyeOff, ChevronDown, ChevronRight } from 'lucide-vue-next';
+import { Eye, EyeOff } from 'lucide-vue-next';
 import { providerConfigMeta, type ConfigItemMeta, type ProviderSource } from '@openpet/protocol';
 import Input from '../Input.vue';
 import Switch from '../Switch.vue';
 import Button from '../Button.vue';
-import ConfigItemRenderer from '../config/ConfigItemRenderer.vue';
+import ObjectEditor from '../config/widgets/ObjectEditor.vue';
 
 const { t } = useI18n();
 const props = defineProps<{
@@ -28,6 +29,10 @@ const emit = defineEmits<{
 }>();
 
 const isChat = computed(() => props.modelValue.capability === 'chat');
+const typeFields = computed<ConfigItemMeta[]>(() =>
+  providerConfigMeta(props.modelValue.capability),
+);
+const showKey = ref(false);
 /** ID 校验（改名时）：非空、无斜杠（模型 id = 源ID/模型名）、不与其他源撞。 */
 const idError = computed(() => {
   const id = props.modelValue.id.trim();
@@ -37,11 +42,6 @@ const idError = computed(() => {
     return t('settings.providerUi.idTaken');
   return '';
 });
-const typeFields = computed<ConfigItemMeta[]>(() =>
-  providerConfigMeta(props.modelValue.capability),
-);
-const showKey = ref(false);
-const advancedOpen = ref(false);
 
 function patch(p: Partial<ProviderSource>): void {
   emit('update:modelValue', { ...props.modelValue, ...p });
@@ -53,31 +53,12 @@ function cfgStr(k: string): string {
   const v = props.modelValue.config?.[k];
   return v === undefined || v === null ? '' : String(v);
 }
-// 父自动检测完成 → 回填维度。
 watch(
   () => props.detectedDim,
   (v) => {
     if (typeof v === 'number' && v > 0) setCfg('dimensions', v);
   },
 );
-
-/** 高级配置平铺（照 AstrBot advancedSourceConfig 一次展开，不再套第二层折叠）：超时(秒)/代理/请求头/ollama。 */
-const HEADERS_META: ConfigItemMeta = {
-  key: 'headers',
-  type: 'dict',
-  advanced: false,
-  readonly: false,
-};
-function setHeaders(v: unknown): void {
-  const next = { ...props.modelValue };
-  if (v && typeof v === 'object' && Object.keys(v as object).length)
-    next.headers = v as Record<string, string>;
-  else delete next.headers;
-  emit('update:modelValue', next);
-}
-function setOllamaThinking(v: boolean): void {
-  emit('update:modelValue', { ...props.modelValue, ollamaDisableThinking: v });
-}
 const timeoutSec = computed(() =>
   props.modelValue.timeoutMs !== undefined
     ? String(Math.round(props.modelValue.timeoutMs / 1000))
@@ -96,46 +77,57 @@ function setProxy(v: string): void {
   else delete next.proxy;
   emit('update:modelValue', next);
 }
+function setHeaders(v: Record<string, string>): void {
+  const next = { ...props.modelValue };
+  if (Object.keys(v).length) next.headers = v;
+  else delete next.headers;
+  emit('update:modelValue', next);
+}
 </script>
 
 <template>
   <div>
     <!-- 设置 -->
-    <section class="px-6 py-5">
-      <div class="mb-3 text-base font-semibold text-text-main">
+    <section class="px-6 py-4">
+      <div class="mb-1 text-base font-semibold text-text-main">
         {{ t('settings.providerUi.settings') }}
       </div>
-      <div class="space-y-4">
-        <label class="block">
-          <span class="text-sm text-text-sub">ID</span>
-          <Input
-            :model-value="modelValue.id"
-            class="mt-1 w-full"
-            @update:model-value="(v) => patch({ id: v })"
-          />
-          <span
-            class="mt-1 block text-xs"
-            :class="idError ? '' : 'text-text-sub'"
-            :style="idError ? { color: 'var(--ds-danger)' } : {}"
-            >{{ idError || t('settings.providerUi.hintId') }}</span
-          >
-        </label>
-        <div v-if="!isChat" class="flex items-center justify-between">
-          <span class="text-sm text-text-sub">{{ t('common.enabledShort') }}</span>
-          <Switch
-            :model-value="modelValue.enabled"
-            @update:model-value="(v) => patch({ enabled: v })"
-          />
+      <div class="divide-y divide-glass-border">
+        <div class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">ID</div>
+            <div
+              class="mt-0.5 text-xs"
+              :class="idError ? '' : 'text-text-sub'"
+              :style="idError ? { color: 'var(--ds-danger)' } : {}"
+            >
+              {{ idError || t('settings.providerUi.hintId') }}
+            </div>
+          </div>
+          <Input :model-value="modelValue.id" @update:model-value="(v) => patch({ id: v })" />
         </div>
-        <label class="block">
-          <span class="text-sm text-text-sub">API Key</span>
-          <div class="ds-control mt-1 flex items-center gap-2 rounded-input px-3 py-2">
+        <div v-if="!isChat" class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">{{ t('common.enabledShort') }}</div>
+          </div>
+          <div>
+            <Switch
+              :model-value="modelValue.enabled"
+              @update:model-value="(v) => patch({ enabled: v })"
+            />
+          </div>
+        </div>
+        <div class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">API Key</div>
+            <div class="mt-0.5 text-xs text-text-sub">{{ t('settings.providerUi.hintKey') }}</div>
+          </div>
+          <div class="ds-control flex items-center gap-2 rounded-input px-3 py-2">
             <input
               :value="modelValue.key"
               :type="showKey ? 'text' : 'password'"
               class="min-w-0 flex-1 bg-transparent text-base text-text-main outline-none"
-              placeholder="sk-..."
-              autocomplete="off"
+              autocomplete="new-password"
               spellcheck="false"
               @input="patch({ key: ($event.target as HTMLInputElement).value })"
             />
@@ -148,37 +140,47 @@ function setProxy(v: string): void {
               <component :is="showKey ? EyeOff : Eye" :size="16" :stroke-width="1.5" />
             </button>
           </div>
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.hintKey')
-          }}</span>
-        </label>
-        <label class="block">
-          <span class="text-sm text-text-sub">API Base URL</span>
+        </div>
+        <div class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">API Base URL</div>
+            <div class="mt-0.5 text-xs text-text-sub">
+              {{ t('settings.providerUi.hintApiBase') }}
+            </div>
+          </div>
           <Input
             :model-value="modelValue.apiBase"
-            class="mt-1 w-full"
-            placeholder="https://api.openai.com/v1"
             @update:model-value="(v) => patch({ apiBase: v })"
           />
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.hintApiBase')
-          }}</span>
-        </label>
-
+        </div>
         <!-- 类型专属字段（非对话；embedding 维度带自动检测） -->
-        <div v-for="f in typeFields" :key="f.key" class="block">
-          <span class="text-sm text-text-sub">{{ f.label || f.key }}</span>
-          <div v-if="f.type === 'bool'" class="mt-1">
+        <div
+          v-for="f in typeFields"
+          :key="f.key"
+          class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2"
+        >
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">{{ f.label || f.key }}</div>
+            <div
+              v-if="f.key === 'dimensions' && detectMsg"
+              class="mt-0.5 text-xs"
+              style="color: var(--ds-danger)"
+            >
+              {{ detectMsg }}
+            </div>
+            <div v-else-if="f.hint" class="mt-0.5 text-xs text-text-sub">{{ f.hint }}</div>
+          </div>
+          <div v-if="f.type === 'bool'">
             <Switch
               :model-value="modelValue.config?.[f.key] === true"
               @update:model-value="(v) => setCfg(f.key, v)"
             />
           </div>
-          <div v-else-if="f.key === 'dimensions'" class="mt-1 flex gap-2">
+          <div v-else-if="f.key === 'dimensions'" class="flex items-center gap-2">
             <div class="flex-1">
               <Input
                 :model-value="cfgStr(f.key)"
-                placeholder="1024"
+                type="number"
                 @update:model-value="(v) => setCfg(f.key, v === '' ? undefined : Number(v))"
               />
             </div>
@@ -195,90 +197,78 @@ function setProxy(v: string): void {
           <Input
             v-else
             :model-value="cfgStr(f.key)"
-            class="mt-1 w-full"
             @update:model-value="(v) => setCfg(f.key, v)"
           />
-          <span
-            v-if="f.key === 'dimensions' && detectMsg"
-            class="mt-1 block text-xs"
-            style="color: var(--ds-danger)"
-          >
-            {{ detectMsg }}
-          </span>
-          <span v-else-if="f.hint" class="mt-1 block text-xs text-text-sub">{{ f.hint }}</span>
         </div>
       </div>
     </section>
 
     <div class="border-t border-glass-border" />
 
-    <!-- 高级配置... -->
+    <!-- 高级配置...（照 AstrBot 常开平铺） -->
     <section class="px-6 py-4">
-      <button
-        class="flex items-center gap-1 text-base font-semibold text-text-main"
-        :aria-expanded="advancedOpen"
-        @click="advancedOpen = !advancedOpen"
-      >
-        <component
-          :is="advancedOpen ? ChevronDown : ChevronRight"
-          :size="16"
-          :stroke-width="1.75"
-        />
+      <div class="mb-1 text-base font-semibold text-text-main">
         {{ t('settings.providerUi.advancedConfig') }}
-      </button>
-      <div v-if="advancedOpen" class="mt-3 space-y-4">
-        <label class="block">
-          <span class="text-sm text-text-sub">{{ t('settings.providerUi.timeout') }}</span>
+      </div>
+      <div class="divide-y divide-glass-border">
+        <div class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">
+              {{ t('settings.providerUi.timeout') }}
+            </div>
+            <div class="mt-0.5 text-xs text-text-sub">
+              {{ t('settings.providerUi.timeoutDesc') }}
+            </div>
+          </div>
           <Input
             :model-value="timeoutSec"
-            class="mt-1 w-full"
-            placeholder="20"
+            type="number"
+            placeholder="120"
             @update:model-value="setTimeoutSec"
           />
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.timeoutDesc')
-          }}</span>
-        </label>
-        <label class="block">
-          <span class="text-sm text-text-sub">{{ t('settings.providerUi.proxy') }}</span>
-          <Input
-            :model-value="modelValue.proxy ?? ''"
-            class="mt-1 w-full"
-            placeholder="http://127.0.0.1:7890"
-            @update:model-value="setProxy"
-          />
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.proxyDesc')
-          }}</span>
-        </label>
-        <div v-if="isChat" class="block">
-          <span class="text-sm text-text-sub">{{ t('settings.providerUi.headers') }}</span>
-          <ConfigItemRenderer
-            class="mt-1 block"
-            :meta="HEADERS_META"
+        </div>
+        <div class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">
+              {{ t('settings.providerUi.proxy') }}
+            </div>
+            <div class="mt-0.5 text-xs text-text-sub">{{ t('settings.providerUi.proxyDesc') }}</div>
+          </div>
+          <Input :model-value="modelValue.proxy ?? ''" @update:model-value="setProxy" />
+        </div>
+        <div v-if="isChat" class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">
+              {{ t('settings.providerUi.headers') }}
+            </div>
+            <div class="mt-0.5 text-xs text-text-sub">
+              {{ t('settings.providerUi.headersDesc') }}
+            </div>
+          </div>
+          <ObjectEditor
             :model-value="modelValue.headers ?? {}"
+            :title="t('settings.providerUi.headers')"
             @update:model-value="setHeaders"
           />
-          <span class="mt-1 block text-xs text-text-sub">{{
-            t('settings.providerUi.headersDesc')
-          }}</span>
         </div>
         <div
           v-if="isChat && modelValue.adapter === 'ollama'"
-          class="flex items-center justify-between"
+          class="grid grid-cols-1 items-center gap-3 py-3 sm:grid-cols-2"
         >
-          <div>
-            <div class="text-sm text-text-main">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-text-main">
               {{ t('settings.providerUi.ollamaDisableThinking') }}
             </div>
-            <div class="mt-1 text-xs text-text-sub">
+            <div class="mt-0.5 text-xs text-text-sub">
               {{ t('settings.providerUi.ollamaDisableThinkingDesc') }}
             </div>
           </div>
-          <Switch
-            :model-value="modelValue.ollamaDisableThinking === true"
-            @update:model-value="setOllamaThinking"
-          />
+          <div>
+            <Switch
+              :model-value="modelValue.ollamaDisableThinking === true"
+              @update:model-value="(v) => patch({ ollamaDisableThinking: v })"
+            />
+          </div>
         </div>
       </div>
     </section>

@@ -66,9 +66,7 @@ function onImgError(icon?: string): void {
           </span>
         </span>
         <span class="min-w-0 flex-1">
-          <span class="block truncate text-sm font-semibold text-text-main">{{
-            s.name || s.id
-          }}</span>
+          <span class="block truncate text-sm font-semibold text-text-main">{{ s.id }}</span>
           <span class="mt-0.5 block truncate text-xs text-text-sub">{{
             s.apiBase || s.adapter
           }}</span>
