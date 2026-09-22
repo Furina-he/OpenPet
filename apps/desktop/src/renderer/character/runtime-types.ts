@@ -18,6 +18,8 @@ export interface CharacterRuntime {
   setMood(mood: number): void;
   /** ⑱ 总闸 pet.lifeLayers：false = 底噪/姿态/视线状态机/节拍全关（回本批前表现）。 */
   setLifeLayers(enabled: boolean): void;
+  /** ⑱ chat.stream 活跃（说话中）：呼吸幅度 ×0.6、视线切 speaking。 */
+  setStreaming(active: boolean): void;
   playAction(name: string, durMs?: number | null): void;
   /** 屏幕坐标（DIP；Main 的 behavior.lookAt 直传）。 */
   setLookAt(x: number, y: number): void;

@@ -22,6 +22,8 @@ import { selectIdleVariants, planNextIdle, type IdleVariant } from './idle-pool'
 import { measureSceneBudget, checkBudget } from './perf-budget';
 import { FpsMeter } from './fps-meter';
 import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
+import { LifeLayer, addOffsets, asEnergy, nightEnergy, type Energy } from './life-layers';
+import { PostureLayer } from './posture';
 import type { CharacterRuntime } from './runtime-types';
 
 export type { CharacterRuntime, HitSurface } from './runtime-types';
@@ -114,20 +116,43 @@ export async function createVrmRuntime(
   const envelope = new EmotionEnvelope(allExpressionNames);
   let lifeLayers = true;
   let moodValue = 0;
+  /** 当前情绪名（姿态层 / 呼吸 sleepy / 视线用；neutral = 无）。 */
+  let currentEmotion = 'neutral';
+  let energy: Energy = 'mid';
+  let speaking = false;
   envelope.setBaseline(baselineForMood(0), performance.now());
 
+  // ⑱ 底噪层 + 姿态层（spec §2.2 / §2.4）：纯逻辑模块，这里只装配。
+  const life = new LifeLayer(performance.now());
+  const posture = new PostureLayer();
+
   function applyEmotion(name: string, weight = 1): void {
+    const now = performance.now();
     const target: Record<string, number> = {};
     for (const [n, w] of Object.entries(emotions[name] ?? {})) target[n] = w * weight;
-    envelope.trigger(target, performance.now());
+    envelope.trigger(target, now);
+    currentEmotion = emotions[name] && weight > 0 ? name : 'neutral';
+    posture.set(currentEmotion, moodValue, now);
   }
 
   function releaseEmotion(): void {
-    envelope.release(performance.now());
+    const now = performance.now();
+    envelope.release(now);
+    currentEmotion = 'neutral';
+    posture.set('neutral', moodValue, now);
   }
 
   function refreshBaseline(): void {
-    envelope.setBaseline(lifeLayers ? baselineForMood(moodValue) : {}, performance.now());
+    const now = performance.now();
+    envelope.setBaseline(lifeLayers ? baselineForMood(moodValue) : {}, now);
+    posture.set(currentEmotion, moodValue, now);
+  }
+
+  /** 本地小时（夜间降档用），每秒刷新一次足够。 */
+  let hourCache = { at: -Infinity, hour: new Date().getHours() };
+  function localHour(now: number): number {
+    if (now - hourCache.at > 1000) hourCache = { at: now, hour: new Date().getHours() };
+    return hourCache.hour;
   }
 
   function updateTransition(now: number): void {
@@ -220,6 +245,7 @@ export async function createVrmRuntime(
   const upperArmL = humanoid?.getNormalizedBoneNode('leftUpperArm') ?? null;
   const upperArmR = humanoid?.getNormalizedBoneNode('rightUpperArm') ?? null;
   const hipsRestY = hips?.position.y ?? 0;
+  const hipsRestX = hips?.position.x ?? 0;
 
   function applyPose(now: number, offsets: BoneOffsets): void {
     if (upperArmL) upperArmL.rotation.z = ARM_REST_Z - offsets.armRaiseL;
@@ -232,9 +258,27 @@ export async function createVrmRuntime(
     if (spine) {
       spine.rotation.x = offsets.spinePitch;
       spine.rotation.y = offsets.spineYaw;
+      spine.rotation.z = offsets.spineRoll;
     }
-    if (hips) hips.position.y = hipsRestY + offsets.hipsY;
-    if (chest) chest.rotation.x = Math.sin(now / 1000) * 0.02; // 呼吸常驻（S3）
+    if (hips) {
+      hips.position.y = hipsRestY + offsets.hipsY;
+      hips.position.x = hipsRestX + offsets.hipsX;
+    }
+    // 呼吸：⑱ 底噪层写 chestPitch；总闸关时回 S3 固定正弦（本批前表现）。
+    if (chest) chest.rotation.x = lifeLayers ? offsets.chestPitch : Math.sin(now / 1000) * 0.02;
+  }
+
+  /** ⑱ 合成顺序固定：life（底噪）+ posture（姿态）+ action（动作）+ drag（拖拽物理）。 */
+  function composePose(now: number): BoneOffsets {
+    const action = currentOffsets(now);
+    if (!lifeLayers) return withDragPhysics(action);
+    const ctx = {
+      energy: nightEnergy(localHour(now), energy),
+      mood: moodValue,
+      speaking,
+      emotion: currentEmotion,
+    };
+    return withDragPhysics(addOffsets(life.sample(now, ctx), posture.sample(now), action));
   }
 
   // ---- 嘴型（F-VC）：播放侧 RMS 包络 → 'aa'。'aa' 是 VRM lipSync preset，
@@ -336,7 +380,7 @@ export async function createVrmRuntime(
     updateMouth();
     updateLookAt(delta);
     updateDragPhysics(delta * 1000);
-    applyPose(now, withDragPhysics(currentOffsets(now)));
+    applyPose(now, composePose(now));
     vrm.update(delta);
     renderer.render(scene, camera);
   }
@@ -358,6 +402,9 @@ export async function createVrmRuntime(
       lifeLayers = enabled;
       refreshBaseline();
     },
+    setStreaming(active) {
+      speaking = active;
+    },
     playAction(name, durMs) {
       playActionScaled(name, durMs ?? null, 1);
     },
@@ -369,6 +416,7 @@ export async function createVrmRuntime(
       // V1+ 语音嘴型（tech-design §7 接口占位）；M4 显式 no-op
     },
     setIdle(intent) {
+      energy = asEnergy(intent.energy);
       idleSubset = selectIdleVariants(intent);
       nextIdle = planNextIdle(performance.now(), idleSubset);
     },

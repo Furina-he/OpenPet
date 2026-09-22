@@ -8,8 +8,14 @@
 export interface BoneOffsets {
   /** hips 纵向位移（米，normalized rig）。 */
   hipsY: number;
+  /** ⑱ hips 横向位移（重心转移，米）。 */
+  hipsX: number;
   spinePitch: number;
   spineYaw: number;
+  /** ⑱ 脊柱侧倾（重心转移配合）。 */
+  spineRoll: number;
+  /** ⑱ 胸腔俯仰（呼吸）。 */
+  chestPitch: number;
   headPitch: number;
   headYaw: number;
   headRoll: number;
@@ -20,8 +26,11 @@ export interface BoneOffsets {
 
 export const ZERO_OFFSETS: BoneOffsets = {
   hipsY: 0,
+  hipsX: 0,
   spinePitch: 0,
   spineYaw: 0,
+  spineRoll: 0,
+  chestPitch: 0,
   headPitch: 0,
   headYaw: 0,
   headRoll: 0,

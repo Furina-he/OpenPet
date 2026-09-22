@@ -172,6 +172,7 @@ async function boot(): Promise<void> {
   window.openpet.on('chat.stream', (p) => {
     if (p.sessionId !== 'default') return;
     markActivity();
+    runtime?.setStreaming(true); // ⑱ 说话中：呼吸收窄 + 视线看用户（chat.done 复位）
     bubble.appendStream(p.text);
   });
 
@@ -323,6 +324,7 @@ async function boot(): Promise<void> {
     if (p.sessionId !== 'default') return;
     markActivity();
     bubble.endStream();
+    runtime?.setStreaming(false);
     setTimeout(() => {
       if (runtime) runtime.releaseEmotion();
       else face?.reset();
