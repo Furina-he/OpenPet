@@ -20,6 +20,7 @@ import path from 'node:path';
 import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   isMimoSource,
+  moodCurrent,
   resolveChatTarget,
   resolveVoiceProfile,
   VoiceProfileSchema,
@@ -43,8 +44,25 @@ export type FetchLike = (
   text(): Promise<string>;
 }>;
 
+/** ⑱ mood + intent.energy → 语速因子（spec §3）：high 1.06 / low 0.94；mood<−0.3 再 ×0.97。 */
+export function voiceRateFactor(energy: string | undefined, mood: number): number {
+  let f = energy === 'high' ? 1.06 : energy === 'low' ? 0.94 : 1;
+  if (mood < -0.3) f *= 0.97;
+  return f;
+}
+
+/** 生效语速：prefs voice.rate × 因子（门 pet.moodAffectsVoice），夹在 [0.5, 2]。 */
+export function effectiveRate(p: Prefs, energy: string | undefined): number {
+  const base = p['voice.rate'];
+  if (!p['pet.moodAffectsVoice']) return base;
+  const mood = moodCurrent(p['pet.mood'].value, p['pet.mood'].updatedAt, Date.now());
+  return Math.max(0.5, Math.min(2, base * voiceRateFactor(energy, mood)));
+}
+
 export interface VoiceServiceDeps {
   getPrefs: () => Prefs;
+  /** ⑱ 最近一轮 intent 的 energy（persona_state.lastEnergy，ipc-router 注入）；缺省 mid。 */
+  lastEnergy?: (() => string | undefined) | undefined;
   broadcast: (channel: string, params: unknown) => void;
   /** 取某会话最后一条 assistant 干净文本（autoSpeak 用）；ipc-router 注入 store 读取闭包。 */
   lastAssistantText: (sessionId: string) => string | null;
@@ -294,7 +312,7 @@ export function createVoiceService(deps: VoiceServiceDeps) {
     text: string,
     sessionId?: string,
   ): Promise<void> => {
-    const rate = deps.getPrefs()['voice.rate'];
+    const rate = effectiveRate(deps.getPrefs(), deps.lastEnergy?.());
     switch (profile.engine) {
       case 'openai':
       case 'mimo': {
@@ -355,7 +373,7 @@ export function createVoiceService(deps: VoiceServiceDeps) {
     }
     // legacy / 引擎缺省：沿用 provider 绑定旧链（无音色库时行为不变）
     if (!target) throw new Error('未配置 TTS 模型（模型 API → 默认 TTS）');
-    const rate = p['voice.rate'];
+    const rate = effectiveRate(p, deps.lastEnergy?.());
     const legacyName = resolved?.via === 'legacy' ? resolved.voiceName : undefined;
     await (isMimo(target.source)
       ? speakMimoPreset(target, text, legacyName ?? 'mimo_default', rate, sessionId)

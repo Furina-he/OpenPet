@@ -49,6 +49,8 @@ export interface ContextPipelineDeps {
   sessionSummary?: ((sessionId: string) => string | null) | undefined;
   /** ⑭ 风格锚供给（包锚 > 全局文案 > 内置；总闸关 = null）。ipc-router 注入。 */
   styleAnchor?: (() => string | null) | undefined;
+  /** ⑱ 当前心情供给（MoodState.current()，ChatService 从 InteractionService 取）；缺省不注入。 */
+  mood?: (() => number) | undefined;
 }
 
 export interface BuildInput {
@@ -171,6 +173,8 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       const personaSel = deps.persona?.() ?? null;
       const mc = deps.macroUser?.();
       const anchor = deps.styleAnchor?.() ?? null;
+      const moodValue = deps.mood?.();
+      if (moodValue !== undefined) input.trace?.('context.mood', { value: Number(moodValue.toFixed(3)) });
       const assembled = assembleContext({
         store: deps.store,
         character: deps.character(),
@@ -183,6 +187,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(bag.sessionSummary ? { sessionSummary: bag.sessionSummary } : {}),
         ...(mc ? { macroCtx: mc } : {}),
         ...(anchor ? { styleAnchor: anchor } : {}),
+        ...(moodValue !== undefined ? { moodValue } : {}),
         ...(personaSel
           ? { personaPrompt: personaSel.systemPrompt, beginDialogs: personaSel.beginDialogs }
           : {}),

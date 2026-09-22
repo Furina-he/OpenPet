@@ -249,6 +249,7 @@ export class ChatService {
       lorebook: opts.lorebook,
       macroUser: opts.macroUser,
       styleAnchor: opts.styleAnchor,
+      mood: () => this.interactions.moodValue(), // ⑱ mood → 灵魂（心情句）
       sessionSummary: opts.sessionSummary,
     });
     this.onTurnEnd = opts.onTurnEnd;

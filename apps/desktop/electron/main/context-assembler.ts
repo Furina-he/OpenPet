@@ -46,6 +46,8 @@ export interface AssembleInput {
   macroCtx?: { user: string; locale?: string; hour12?: boolean };
   /** ⑭ 风格锚：以 system 消息插在 history 之后、当前 user 之前（近生成点服从度最高，spec §1）。 */
   styleAnchor?: string;
+  /** ⑱ 当前心情 [-1,1]（MoodState.current()）→ 【关系记忆】语气句。 */
+  moodValue?: number;
 }
 
 /**
@@ -73,6 +75,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
   const base = buildSystemPrompt({
     name: input.character.name,
     persona,
+    ...(input.moodValue !== undefined ? { moodValue: input.moodValue } : {}),
     ...(input.personaPrompt ? { personaPrompt: ex(input.personaPrompt) } : {}),
     ...(input.character.emotions ? { emotions: input.character.emotions } : {}),
     ...(input.character.actions ? { actions: input.character.actions } : {}),

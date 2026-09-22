@@ -86,6 +86,11 @@ export class InteractionService {
     this.rand = deps.rand ?? (() => Math.random());
   }
 
+  /** ⑱ 当前心情（lazy 半衰）；ChatService 供给组装链心情句。 */
+  moodValue(): number {
+    return this.deps.mood.current();
+  }
+
   /** 领域事件入口：查表 → 策略门 → 发射（语义 ①-⑦，见 plan T3）。 */
   trigger(event: CueEvent): void {
     // ⑦ mood 联动先于查表——chat.done 无 cue 也要累积。

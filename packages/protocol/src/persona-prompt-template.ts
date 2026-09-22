@@ -9,6 +9,7 @@
  * 模板刻意不教——教了只会让模型输出被静默吞掉的标签。
  */
 import { BEHAVIOR_LIMITS } from './behavior-parser.js';
+import { moodBand } from './mood.js';
 import type { PersonaStateBlob } from './state.js';
 
 export interface BehaviorPromptOptions {
@@ -67,10 +68,24 @@ export function buildBehaviorPrompt(opts: BehaviorPromptOptions = {}): string {
   ].join('\n');
 }
 
+/** ⑱ mood 三档 → 语气句（system prompt 中文口径同现有；neutral 不加）。 */
+export const MOOD_SENTENCES = {
+  high: '你现在心情不错，语气可以更轻快',
+  low: '你现在有点低落，语气可以更慢、更收敛，但不要抱怨',
+} as const;
+
+export function moodSentence(moodValue: number | undefined): string | null {
+  if (moodValue === undefined || !Number.isFinite(moodValue)) return null;
+  const band = moodBand(moodValue);
+  return band === 'neutral' ? null : MOOD_SENTENCES[band];
+}
+
 export interface SystemPromptOptions {
   name: string;
   /** 角色当前 persona state（亲密度/上次情绪）；缺省不注入「关系记忆」段。 */
   persona?: PersonaStateBlob;
+  /** ⑱ 当前心情 [-1,1]（MoodState.current()）；三档非 neutral 时在【关系记忆】追加语气句。 */
+  moodValue?: number;
   /** §6 用户自定义人设正文；缺省用内置一句。行为标签规约/关系记忆段不受影响（桌宠边界）。 */
   personaPrompt?: string;
   emotions?: readonly string[];
@@ -88,11 +103,15 @@ export function buildSystemPrompt(opts: SystemPromptOptions): string {
       ? opts.personaPrompt.trim()
       : `你是${opts.name}，用户的桌面 AI 伙伴。用自然、有温度的口吻陪伴用户。`;
   const parts: string[] = [intro];
+  const mood = moodSentence(opts.moodValue);
   if (opts.persona) {
     const p = opts.persona;
     const bits = [`你与用户的亲密度 ${p.affinity}/100`, `已经互动了 ${p.turns} 轮`];
     if (p.lastMood) bits.push(`上次对话你的心情是「${p.lastMood}」`);
+    if (mood) bits.push(mood);
     parts.push(`【关系记忆】${bits.join('，')}。`);
+  } else if (mood) {
+    parts.push(`【关系记忆】${mood}。`);
   }
   parts.push(
     buildBehaviorPrompt({

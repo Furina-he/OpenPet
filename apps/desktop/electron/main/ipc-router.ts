@@ -36,17 +36,14 @@ import { McpManager, type McpClientLike } from './mcp-manager.js';
 import { createMcpService } from './mcp-service.js';
 import { createStatsService } from './stats-service.js';
 import { deriveTitle, sanitizeFilename, sessionToMarkdown } from './session-export.js';
-import {
-  assertNotImSession,
-  nextActiveAfterDelete,
-  writeActiveSession,
-} from './session-guards.js';
+import { assertNotImSession, nextActiveAfterDelete, writeActiveSession } from './session-guards.js';
 import { createKbService } from './kb-service.js';
 import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { MemoryWiki } from './memory-wiki.js';
 import { createMemoryCompiler } from './memory-compiler.js';
+import { createMemoryMigrator } from './memory-migrate.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
@@ -135,6 +132,8 @@ export interface IpcRouterDeps {
   /** 会话导出 .md 保存框（index.ts showSaveDialog；测试省略）。 */
   pickMarkdownSave?: (defaultName: string) => Promise<string | null>;
   openDataDir?: () => void;
+  /** ⑲ 打开任意目录（memory.openFolder）；index 注入 shell.openPath。 */
+  openPath?: (dir: string) => void;
   relaunch?: () => void;
   providerEntryPath: string;
   /** sessions.db 路径（生产 userData/data/sessions.db；测试省略=纯内存）。 */
@@ -246,6 +245,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         .filter((r) => r.role === 'assistant')
         .at(-1)?.text ?? null,
     fetchImpl: voiceFetch,
+    // ⑱ 语速随 mood + 最近一轮 intent.energy（persona_state.lastEnergy 由 chat.done 演进写入）。
+    lastEnergy: () => store.getPersonaState(characters.current().characterId)?.lastEnergy,
     // 角色绑定音色（manifest.voice，F-VC-05）：生效序最优先；切角色自然重取。
     getActiveCharacterVoice: () => characters.current().manifest.voice,
     voicesDir,
@@ -360,6 +361,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
   });
   pluginService.startAll();
+  runMemoryMigration(characters.current().characterId);
   const interactions = new InteractionService({
     cues: () => [
       ...mergeCues(DEFAULT_CUES, characters.current().manifest.cues),
@@ -490,6 +492,20 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     reindex: (paths) => memoryService.reindexVectors(paths),
     onChanged: (pages) => broadcast('memory.changed', { pages }),
   });
+  // ⑲ §4 一次性迁移：旧 memory_fact → wiki（启动 + 切角色时检测；旧表只读不删）。
+  const memoryMigrator = createMemoryMigrator({
+    store,
+    wiki: memoryWiki,
+    compileFacts: (cid, facts) => memoryCompiler.compileFacts(cid, facts),
+    onDone: () => {
+      void memoryService.reindexVectors();
+      broadcast('memory.changed', { pages: [] });
+    },
+  });
+  const runMemoryMigration = (cid: string): void => {
+    if (!prefsStore.getAll()['privacy.longTermMemory']) return;
+    void memoryMigrator.maybeRun(cid).catch((e) => console.warn('[memory] migrate failed:', e));
+  };
   // ⑮ 会话滚动摘要：同款杂务单发通道；开关 chat.sessionSummary（摘要器内自查）。
   const sessionSummarizer = createSessionSummarizer({
     store,
@@ -523,8 +539,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     pluginCounts: async () => {
       const r = await pluginService['plugins.list']({});
       return {
-        enabled:
-          r.desktop.filter((x) => x.enabled).length + r.star.filter((x) => x.enabled).length,
+        enabled: r.desktop.filter((x) => x.enabled).length + r.star.filter((x) => x.enabled).length,
         total: r.desktop.length + r.star.length,
       };
     },
@@ -871,6 +886,34 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       store.clearMessages();
       return { ok: true as const };
     },
+    // --- ⑲ 记忆 wiki：编译/状态/打开文件夹（其余 memory.* 在 memoryHandlers）---
+    'memory.compileNow': async () => {
+      const r = await memoryCompiler.compileNow();
+      return { ok: r.ok, ops: r.ops, ...(r.error ? { error: r.error } : {}) };
+    },
+    'memory.openFolder': () => {
+      mkdirSync(memoryRoot, { recursive: true });
+      deps.openPath?.(memoryRoot);
+      return { ok: true as const };
+    },
+    'memory.status': () => {
+      const cid = characters.current().characterId;
+      const last = memoryCompiler.status();
+      return {
+        enabled: Boolean(prefsStore.getAll()['privacy.longTermMemory']),
+        pageCount: memoryWiki.pageCount(cid),
+        lastCompile: last
+          ? {
+              at: last.at,
+              ok: last.ok,
+              ops: last.ops,
+              ...(last.error ? { error: last.error } : {}),
+            }
+          : null,
+        migration: memoryMigrator.status(cid),
+        legacyFacts: store.memoryCount(cid),
+      };
+    },
     'app.openDataDir': () => {
       deps.openDataDir?.();
       return { ok: true as const };
@@ -886,7 +929,9 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'app.update.status': () =>
       deps.updateService?.status() ?? { state: 'disabled' as const, reason: 'dev' as const },
     'app.update.check': async () =>
-      deps.updateService ? await deps.updateService.check() : { state: 'disabled' as const, reason: 'dev' as const },
+      deps.updateService
+        ? await deps.updateService.check()
+        : { state: 'disabled' as const, reason: 'dev' as const },
     'app.update.download': async () => {
       await deps.updateService?.download();
       return { ok: true as const };
@@ -910,7 +955,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         version: deps.appVersion ?? '0.0.0',
         platform: process.platform,
         prefs: prefsStore.getAll() as Record<string, unknown>,
-        logs: trace.history().slice(-100).map((r) => `${new Date(r.ts).toISOString()} ${r.action}`),
+        logs: trace
+          .history()
+          .slice(-100)
+          .map((r) => `${new Date(r.ts).toISOString()} ${r.action}`),
       });
       const out = deps.diagPath ?? 'openpet.dsdiag';
       writeFileSync(out, JSON.stringify(diag, null, 2), 'utf8');
@@ -963,15 +1011,14 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'character.list': () => {
       const activeId = characters.current().characterId;
       return {
-        characters: characters
-          .list()
-          .map((c) => ({ ...c, active: c.characterId === activeId })),
+        characters: characters.list().map((c) => ({ ...c, active: c.characterId === activeId })),
       };
     },
     'character.switch': (p) => {
       void memoryCompiler.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
       characters.switch(p.id);
       broadcast('character.changed', { characterId: p.id });
+      runMemoryMigration(p.id);
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
       const greeting = pickGreeting(characters.current().manifest, {
         user: prefsStore.getAll()['chat.userName'] || '用户',
@@ -1080,7 +1127,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       try {
         body = readInstalledBody(bodiesRoot, p.bodyId).body;
       } catch (e) {
-        throw new RpcError(-32602, `形象不存在或已损坏：${e instanceof Error ? e.message : String(e)}`);
+        throw new RpcError(
+          -32602,
+          `形象不存在或已损坏：${e instanceof Error ? e.message : String(e)}`,
+        );
       }
       swapBody({
         characterId: p.characterId,
