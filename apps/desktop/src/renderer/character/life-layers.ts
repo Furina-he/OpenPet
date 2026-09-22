@@ -6,6 +6,18 @@ import { ZERO_OFFSETS, type BoneOffsets } from './actions';
 
 export type Energy = 'low' | 'mid' | 'high';
 
+/** ⑱ 层开关（harness A/B 对比用；生产全开）。总闸 pet.lifeLayers 在 runtime 另行判断。 */
+export const LIFE_FLAGS = {
+  breath: true,
+  noise: true,
+  shift: true,
+  posture: true,
+  gaze: true,
+  proximity: true,
+  companions: true,
+  beat: true,
+};
+
 export function asEnergy(v: string): Energy {
   return v === 'low' || v === 'high' ? v : 'mid';
 }
@@ -79,7 +91,11 @@ export class Breath {
 
 // ---- 微噪：3 个互质周期正弦叠加（廉价 1D 噪声）----
 const NOISE_PERIODS_MS = [6100, 8700, 11300] as const;
-export const MICRO_NOISE_AMP = { headYaw: 0.03, headRoll: 0.02, spineYaw: 0.01 } as const;
+export const MICRO_NOISE_AMP: { headYaw: number; headRoll: number; spineYaw: number } = {
+  headYaw: 0.03,
+  headRoll: 0.02,
+  spineYaw: 0.01,
+};
 
 function noise1d(now: number, seed: number): number {
   let v = 0;
@@ -102,7 +118,13 @@ export function microNoise(
 }
 
 // ---- 重心转移：每 8–20s 随机一次，0.8s 缓动到 ±0.012m + spineRoll ∓0.02，静止保持 ----
-export const WEIGHT_SHIFT = { minGapMs: 8000, maxGapMs: 20000, easeMs: 800, hipsX: 0.012, spineRoll: 0.02 } as const;
+export const WEIGHT_SHIFT: {
+  minGapMs: number;
+  maxGapMs: number;
+  easeMs: number;
+  hipsX: number;
+  spineRoll: number;
+} = { minGapMs: 8000, maxGapMs: 20000, easeMs: 800, hipsX: 0.012, spineRoll: 0.02 };
 const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
 export class WeightShift {
@@ -167,6 +189,13 @@ export class LifeLayer {
   }
 
   sample(now: number, ctx: LifeContext): BoneOffsets {
-    return addOffsets(this.breath.sample(now, ctx), microNoise(now, ctx.energy), this.shift.sample(now));
+    const b = this.breath.sample(now, ctx); // 始终采样以保持相位连续
+    const n = microNoise(now, ctx.energy);
+    const s = this.shift.sample(now);
+    return addOffsets(
+      LIFE_FLAGS.breath ? b : {},
+      LIFE_FLAGS.noise ? n : {},
+      LIFE_FLAGS.shift ? s : {},
+    );
   }
 }

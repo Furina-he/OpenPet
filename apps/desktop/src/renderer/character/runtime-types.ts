@@ -34,6 +34,8 @@ export interface CharacterRuntime {
   /** V1+ 语音嘴型；接口占位。 */
   setLipsync(visemes: unknown | null): void;
   setIdle(intent: { mood: string; energy: string }): void;
+  /** ⑱ T9（VRM 专有，可选）：把 url 指向的 .vrma 装为某动作的片段；失败回 false（曲线兜底）。 */
+  loadActionClip?: ((name: string, url: string) => Promise<boolean>) | undefined;
   listEmotions(): string[];
   listActions(): string[];
   getStats(): { fps: number; budget: SceneBudget; budgetWarnings: string[] };

@@ -28,10 +28,15 @@ async function loadRenderer(
   win: BrowserWindow,
   name: 'character' | 'overlay' | 'settings' | 'onboarding',
 ): Promise<void> {
+  // ⑱ dev harness：OPENPET_HARNESS=life → character 窗带 ?harness=life（调参/录 GIF 入口）。
+  const harness = name === 'character' ? process.env.OPENPET_HARNESS : undefined;
+  const query = harness ? `?harness=${encodeURIComponent(harness)}` : '';
   if (process.env.ELECTRON_RENDERER_URL) {
-    await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${name}/index.html`);
+    await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/${name}/index.html${query}`);
   } else {
-    await win.loadFile(path.join(__dirname, `../renderer/${name}/index.html`));
+    await win.loadFile(path.join(__dirname, `../renderer/${name}/index.html`), {
+      ...(harness ? { query: { harness } } : {}),
+    });
   }
 }
 

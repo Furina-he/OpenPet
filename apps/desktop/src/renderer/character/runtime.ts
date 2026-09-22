@@ -40,6 +40,7 @@ import { measureSceneBudget, checkBudget } from './perf-budget';
 import { FpsMeter } from './fps-meter';
 import { EmotionEnvelope, baselineForMood } from './emotion-envelope';
 import {
+  LIFE_FLAGS,
   LifeLayer,
   PROXIMITY_PX,
   addOffsets,
@@ -213,7 +214,7 @@ export async function createVrmRuntime(
 
   /** 协同表分发（spec §2.5）：节拍档（|scale|<0.5）不触发，避免点缀动作抢戏。 */
   function dispatchCompanions(name: string, durMs: number, scale: number, now: number): boolean {
-    if (!lifeLayers || Math.abs(scale) < 0.5) return false;
+    if (!lifeLayers || !LIFE_FLAGS.companions || Math.abs(scale) < 0.5) return false;
     const c = ACTION_COMPANIONS[name as keyof typeof ACTION_COMPANIONS];
     if (!c) return false;
     if (c.gaze) gaze.nudge(c.gaze, now, c.gazeMs ?? durMs);
@@ -373,11 +374,12 @@ export async function createVrmRuntime(
       speaking,
       emotion: currentEmotion,
     };
+    const post = posture.sample(now); // 始终采样保持缓动连续
     return withDragPhysics(
       addOffsets(
         life.sample(now, ctx),
-        proximityOffsets(gaze.cursorNx(), proximity),
-        posture.sample(now),
+        LIFE_FLAGS.proximity ? proximityOffsets(gaze.cursorNx(), proximity) : {},
+        LIFE_FLAGS.posture ? post : {},
         action,
       ),
     );
@@ -478,7 +480,7 @@ export async function createVrmRuntime(
   function updateLookAt(now: number, dt: number): void {
     let target: Normalized = rawN;
     let lambda = 8;
-    if (lifeLayers) {
+    if (lifeLayers && LIFE_FLAGS.gaze) {
       const g = gaze.target(now);
       target = g;
       if (g.saccade) lambda = 30; // 扫视：80ms 内基本到位
@@ -558,7 +560,7 @@ export async function createVrmRuntime(
     },
     playBeat(kind) {
       // ⑱ 节拍手势（spec §2.7）：question → tilt .25 / exclaim → nod .3 + happy 闪 / period → 20% nod .2
-      if (!lifeLayers) return false;
+      if (!lifeLayers || !LIFE_FLAGS.beat) return false;
       const now = performance.now();
       if (kind === 'question') return playBeat('tilt', 0.25, now);
       if (kind === 'exclaim') {

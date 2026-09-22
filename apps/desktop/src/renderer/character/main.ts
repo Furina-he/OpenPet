@@ -108,9 +108,31 @@ async function boot(): Promise<void> {
 
   let runtime: CharacterRuntime | null = null;
   let face: FallbackFace | null = null;
+  // ⑱ dev harness：`?harness=life`（Main 经 OPENPET_HARNESS=life 追加）。面板是 DOM，
+  // alpha 穿透会把面板区域判成透明 → 跳过穿透只留拖拽。
+  const harness = new URLSearchParams(location.search).get('harness');
   try {
     runtime = await bootRuntime(stageEl);
-    setupInteraction(runtime.hitSurface);
+    setupInteraction(harness ? null : runtime.hitSurface);
+    if (harness === 'life') {
+      const rt = runtime;
+      const { mountLifeHarness } = await import('../dev/life-harness');
+      mountLifeHarness(document.body, rt, {
+        simulateStream: () => {
+          rt.setStreaming(true);
+          rt.applyEmotion('happy', 0.8);
+          const kinds = ['exclaim', 'question', 'period'] as const;
+          kinds.forEach((k, i) => setTimeout(() => rt.playBeat(k), 400 + i * 1800));
+          setTimeout(() => {
+            rt.setStreaming(false);
+            rt.releaseEmotion();
+          }, 6000);
+        },
+        loadClip: rt.loadActionClip
+          ? (name, file) => rt.loadActionClip!(name, URL.createObjectURL(file))
+          : undefined,
+      });
+    }
   } catch (e) {
     console.warn('[character] runtime unavailable, using fallback face:', e);
     fallbackEl.style.display = 'flex';

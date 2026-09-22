@@ -10,7 +10,21 @@ import { normalizedFromScreen, type Normalized } from './lookat';
 
 export type GazeState = 'track' | 'wander' | 'thinking' | 'speaking' | 'sleepy';
 
-export const GAZE = {
+export const GAZE: {
+  trackIdleMs: number;
+  trackRadiusFactor: number;
+  saccadeMs: number;
+  wanderRange: number;
+  wanderHoldMinMs: number;
+  wanderHoldMaxMs: number;
+  wanderJitter: number;
+  readonly thinking: { nx: number; ny: number };
+  readonly thinkingGlanceDown: { nx: number; ny: number };
+  speakingGlanceRatio: number;
+  speakingGlanceMs: number;
+  readonly sleepy: { nx: number; ny: number };
+  sleepyEyelidFloor: number;
+} = {
   /** 鼠标静止超过此时长 → 离开 track。 */
   trackIdleMs: 3000,
   /** track 半径 = 窗宽 × 此倍数。 */
@@ -27,7 +41,7 @@ export const GAZE = {
   speakingGlanceMs: 600,
   sleepy: { nx: 0, ny: -0.2 },
   sleepyEyelidFloor: 0.4,
-} as const;
+};
 
 /** display.lookAtStrength 0–100 → 幅度 0.3–1.2。 */
 export function strengthFromPref(v: number): number {

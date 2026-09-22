@@ -11,13 +11,19 @@ import { moodBand } from '@openpet/protocol';
 
 export type Weights = Record<string, number>;
 
-export const ENVELOPE = {
+export const ENVELOPE: {
+  attackMs: number;
+  overshootAtMs: number;
+  overshoot: number;
+  releaseMs: number;
+  baselineMs: number;
+} = {
   attackMs: 180,
   overshootAtMs: 120,
   overshoot: 0.08,
   releaseMs: 1200,
   baselineMs: 2000,
-} as const;
+};
 
 /** 心情三档 → 常驻基线权重（只作用于运行时词表内存在的 expression 名，构造时过滤）。 */
 export function baselineForMood(mood: number): Weights {
