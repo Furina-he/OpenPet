@@ -390,6 +390,22 @@ export class MemoryStore implements ConversationStore {
       }));
   }
 
+  lastUserMessage(characterId: string, sessionId: string): { id: number; text: string } | null {
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId && r.role === 'user')
+        return { id: r.id, text: r.text };
+    }
+    return null;
+  }
+
+  deleteMessagesFrom(sessionId: string, fromId: number): void {
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      if (this.rows[i]!.sessionId === sessionId && this.rows[i]!.id >= fromId)
+        this.rows.splice(i, 1);
+    }
+  }
+
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取（语义与 SqliteStore 对齐）---
   sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
     const meta = this.sessionMeta.get(sessionId);

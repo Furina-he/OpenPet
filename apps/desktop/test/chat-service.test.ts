@@ -731,3 +731,50 @@ describe('ChatService · ⑬ 表情分类兜底钩子', () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe('ChatService · 重试 / 编辑重发', () => {
+  it('retry：以最后一条 user 重新生成，user 不重复入库、旧 assistant 行被替换', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+    });
+    svc.send('s1', '你好');
+    await until(() => !!doneOf(sent, 's1'), 'first done');
+    sent.length = 0;
+    await svc.retry('s1');
+    await until(() => !!doneOf(sent, 's1'), 'retry done');
+    const snap = svc.snapshot('s1');
+    expect(snap.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(snap.messages[0]!.text).toBe('你好');
+    expect(snap.messages[1]!.finishReason).toBe('stop');
+  });
+
+  it('retry 无可重试消息 → -32602；editResend 替换最后一轮', async () => {
+    const sent: Sent[] = [];
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: (channel, params) => sent.push({ channel, params }),
+      host: { intervalMs: 0 },
+      queue: { flushIntervalMs: 5 },
+    });
+    try {
+      svc.retry('empty');
+      expect.unreachable('retry on empty session should throw');
+    } catch (e) {
+      expect((e as { code?: number }).code).toBe(-32602);
+    }
+    svc.send('s2', '原话');
+    await until(() => !!doneOf(sent, 's2'), 'first done');
+    sent.length = 0;
+    await svc.editResend('s2', '改过的话');
+    await until(() => !!doneOf(sent, 's2'), 'edit done');
+    const snap = svc.snapshot('s2');
+    expect(snap.messages.map((m) => [m.role, m.role === 'user' ? m.text : '*'])).toEqual([
+      ['user', '改过的话'],
+      ['assistant', '*'],
+    ]);
+  });
+});

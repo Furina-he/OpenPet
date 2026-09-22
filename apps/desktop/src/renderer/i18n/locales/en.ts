@@ -223,6 +223,10 @@ export const en: LocaleMessages = {
     chat: {
       you: 'Me',
       replyError: '⚠ Reply failed ({kind})',
+      retry: 'Retry',
+      edit: 'Edit',
+      editingHint: 'Editing your last message; sending will replace that turn',
+      cancelEdit: 'Cancel edit',
       emptyReply: '(The model returned an empty reply — try resending or switching models)',
       unknown: 'unknown',
       emptyHint: 'Start chatting with me ✨',
@@ -1110,6 +1114,9 @@ export const en: LocaleMessages = {
       empty: 'No sessions yet',
     },
     actionRetry: 'Retry',
+    actionEdit: 'Edit',
+    editingHint: 'Editing your last message; sending will replace that turn',
+    cancelEdit: 'Cancel edit',
     actionSwitchModel: 'Switch model',
     actionChangeKey: 'Change key',
     error: {

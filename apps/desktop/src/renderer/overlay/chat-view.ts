@@ -71,7 +71,9 @@ export function explodeSegments(messages: ChatMessage[]): ChatMessage[] {
     if (segs.length === 1) return [m];
     return segs.map((text, i) => {
       const { splits: _splits, ...rest } = m;
-      return i < segs.length - 1 ? { ...rest, text, finishReason: 'stop' as const } : { ...rest, text };
+      return i < segs.length - 1
+        ? { ...rest, text, finishReason: 'stop' as const }
+        : { ...rest, text };
     });
   });
 }
@@ -143,6 +145,35 @@ export class ChatView {
     this.messages.splice(-2, 2);
     this.streaming = false;
     this.onChange();
+  }
+
+  /** 最后一条 user 消息的下标（编辑重发/重试定位）；无 → -1。 */
+  lastUserIndex(): number {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      if (this.messages[i]!.role === 'user') return i;
+    }
+    return -1;
+  }
+
+  /**
+   * 重试乐观视图（对应 chat.retry）：去掉最后一条 user 之后的全部（出错/取消的 assistant），
+   * 补一条空 assistant 占位进入流式态。失败时调用方重拉快照。
+   */
+  beginRetry(): boolean {
+    const i = this.lastUserIndex();
+    if (i < 0) return false;
+    this.messages.splice(i + 1);
+    this.messages.push({ role: 'assistant', text: '', finishReason: null });
+    this.streaming = true;
+    this.onChange();
+    return true;
+  }
+
+  /** 编辑重发乐观视图（对应 chat.editResend）：去掉最后一轮再以新文本回显。 */
+  beginEdit(text: string): void {
+    const i = this.lastUserIndex();
+    if (i >= 0) this.messages.splice(i);
+    this.echoUser(text);
   }
 
   private applyStream(ev: StreamEvent, opts: { silent?: boolean } = {}): void {

@@ -58,6 +58,16 @@ export const Methods = {
     params: z.object({ sessionId: z.string() }),
     result: z.object({ ok: z.literal(true) }),
   },
+  'chat.retry': {
+    // 出错后"以当前这句再试"：以最后一条 user 重新生成，删掉其后的 assistant 行，不重复入库 user。
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'chat.editResend': {
+    // 编辑已发消息后重发：删掉最后一轮（user + 其后全部）再按新文本发送。
+    params: z.object({ sessionId: z.string(), text: z.string() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'chat.snapshot': {
     // 崩溃恢复：UI 启动/重载时拉最近 N 条重建视图（tech-design §3 / impl-plan M2）。
     // seq = 该 session 已发出的最后一个 chat.stream 序号；渲染端以 seq 去重缓冲事件。
@@ -210,7 +220,11 @@ export const Methods = {
     params: z.object({}),
     result: z.union([
       z.object({ cancelled: z.literal(true) }),
-      z.object({ cancelled: z.literal(false), ok: z.literal(true), requiresRestart: z.literal(true) }),
+      z.object({
+        cancelled: z.literal(false),
+        ok: z.literal(true),
+        requiresRestart: z.literal(true),
+      }),
     ]),
   },
   'app.exportDataPick': {
@@ -218,7 +232,12 @@ export const Methods = {
     params: z.object({}),
     result: z.union([
       z.object({ cancelled: z.literal(true) }),
-      z.object({ cancelled: z.literal(false), ok: z.literal(true), bytes: z.number().int(), path: z.string() }),
+      z.object({
+        cancelled: z.literal(false),
+        ok: z.literal(true),
+        bytes: z.number().int(),
+        path: z.string(),
+      }),
     ]),
   },
   'app.relaunch': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },

@@ -760,6 +760,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
+    'chat.retry': (p) => chat.retry(p.sessionId),
+    'chat.editResend': (p) => chat.editResend(p.sessionId, p.text),
     'chat.snapshot': (p) => chat.snapshot(p.sessionId, p.limit),
     // --- 会话管理（spec 2026-07-09-session-management）---
     'chat.sessions': () => {

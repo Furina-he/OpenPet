@@ -29,14 +29,22 @@ describe('SessionStore - 运行时状态机 + 持久化委托', () => {
     store.appendDelta('sess1', 'lo');
     const mid = store.snapshot('sess1');
     expect(mid.streaming).toBe(true);
-    expect(mid.messages.at(-1)).toMatchObject({ role: 'assistant', text: 'Hello', finishReason: null });
+    expect(mid.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      text: 'Hello',
+      finishReason: null,
+    });
     // 流式中途仅 user 落库
     expect(backend.recentMessages('default', 'sess1', 10)).toHaveLength(1);
 
     store.finishAssistant('sess1', 'stop');
     const done = store.snapshot('sess1');
     expect(done.streaming).toBe(false);
-    expect(done.messages.at(-1)).toMatchObject({ role: 'assistant', text: 'Hello', finishReason: 'stop' });
+    expect(done.messages.at(-1)).toMatchObject({
+      role: 'assistant',
+      text: 'Hello',
+      finishReason: 'stop',
+    });
     expect(backend.recentMessages('default', 'sess1', 10)).toHaveLength(2);
   });
 
@@ -95,5 +103,46 @@ describe('SessionStore - 运行时状态机 + 持久化委托', () => {
   it('enforces character isolation in the backing store', () => {
     store.appendUser('sess1', 'mine');
     expect(backend.recentMessages('other', 'sess1', 10)).toEqual([]);
+  });
+});
+
+describe('SessionStore · 重试 / 编辑重发截断', () => {
+  it('truncateAfterLastUser：删尾部 assistant 保留 user，返回原文；流中 / 无 user → null', () => {
+    const backend = new MemoryStore();
+    const store = new SessionStore({ store: backend, characterId: 'default' });
+    expect(store.truncateAfterLastUser('s')).toBeNull();
+    store.appendUser('s', '第一句');
+    store.beginAssistant('s');
+    store.appendDelta('s', '回一');
+    store.finishAssistant('s', 'stop');
+    store.appendUser('s', '第二句');
+    store.beginAssistant('s');
+    expect(store.truncateAfterLastUser('s')).toBeNull(); // 流中不截
+    store.finishAssistant('s', 'error');
+    expect(store.truncateAfterLastUser('s')).toBe('第二句');
+    expect(store.snapshot('s').messages).toEqual([
+      { role: 'user', text: '第一句', finishReason: null },
+      { role: 'assistant', text: '回一', finishReason: 'stop' },
+      { role: 'user', text: '第二句', finishReason: null },
+    ]);
+    // 幂等：再截一次仍返回原文、不再删任何行
+    expect(store.truncateAfterLastUser('s')).toBe('第二句');
+    expect(store.snapshot('s').messages).toHaveLength(3);
+  });
+
+  it('dropLastTurn：删最后一轮（user + 其后全部）；上一轮不动', () => {
+    const backend = new MemoryStore();
+    const store = new SessionStore({ store: backend, characterId: 'default' });
+    store.appendUser('s', '第一句');
+    store.beginAssistant('s');
+    store.finishAssistant('s', 'stop');
+    store.appendUser('s', '第二句');
+    store.beginAssistant('s');
+    store.finishAssistant('s', 'error');
+    expect(store.dropLastTurn('s')).toBe('第二句');
+    expect(store.snapshot('s').messages.map((m) => m.text)).toEqual(['第一句', '']);
+    expect(store.dropLastTurn('s')).toBe('第一句');
+    expect(store.snapshot('s').messages).toEqual([]);
+    expect(store.dropLastTurn('s')).toBeNull();
   });
 });

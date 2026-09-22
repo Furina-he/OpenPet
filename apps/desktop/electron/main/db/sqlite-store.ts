@@ -477,6 +477,20 @@ export class SqliteStore implements ConversationStore {
       .all(characterId, sessionId) as StoredRow[];
   }
 
+  lastUserMessage(characterId: string, sessionId: string): { id: number; text: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, text FROM messages WHERE character_id = ? AND session_id = ? AND role = 'user'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(characterId, sessionId) as { id: number; text: string } | undefined;
+    return row ?? null;
+  }
+
+  deleteMessagesFrom(sessionId: string, fromId: number): void {
+    this.db.prepare('DELETE FROM messages WHERE session_id = ? AND id >= ?').run(sessionId, fromId);
+  }
+
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---
   sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
     const row = this.db

@@ -242,9 +242,14 @@ async function autodetectDim(source: ProviderSource): Promise<void> {
       model: m,
     });
     if (r.ok && r.dimensions) detectedDim.value = r.dimensions;
-    else detectMsg.value = t('settings.model.detectFail', { detail: r.error ?? t('settings.model.unknownError') });
+    else
+      detectMsg.value = t('settings.model.detectFail', {
+        detail: r.error ?? t('settings.model.unknownError'),
+      });
   } catch (e) {
-    detectMsg.value = t('settings.model.detectFail', { detail: e instanceof Error ? e.message : String(e) });
+    detectMsg.value = t('settings.model.detectFail', {
+      detail: e instanceof Error ? e.message : String(e),
+    });
   } finally {
     detecting.value = false;
   }
@@ -354,9 +359,12 @@ const ollamaOptions = computed(() => {
 });
 
 // --- 批次⑥ F-AI-08：用量与预算卡（口径 = 万 tokens；月界 Main 侧自然月）。 ---
-const usage = ref<{ sinceTs: number; tokensIn: number; tokensOut: number; messages: number } | null>(
-  null,
-);
+const usage = ref<{
+  sinceTs: number;
+  tokensIn: number;
+  tokensOut: number;
+  messages: number;
+} | null>(null);
 onMounted(async () => {
   usage.value = await window.openpet.rpc('app.usageSummary', {});
 });
@@ -399,7 +407,9 @@ const utilityOptions = computed(() => {
     <section class="ds-glass rounded-panel mb-4 p-5">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h2 class="text-md font-semibold text-text-main">{{ t('settings.model.providersTitle') }}</h2>
+          <h2 class="text-md font-semibold text-text-main">
+            {{ t('settings.model.providersTitle') }}
+          </h2>
           <p class="mt-1 text-base text-text-sub">
             {{ t('settings.model.providersDesc') }}
           </p>
@@ -445,6 +455,7 @@ const utilityOptions = computed(() => {
         <div class="min-h-[320px]">
           <ProviderModelsPanel
             v-if="activeSource"
+            :key="activeSource.id"
             :source="activeSource"
             :models="activeModels"
             :available="available"
@@ -530,7 +541,9 @@ const utilityOptions = computed(() => {
           <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <div class="font-semibold text-text-main">{{ t('settings.model.utilityModel') }}</div>
-              <div class="mt-1 text-sm text-text-sub">{{ t('settings.model.utilityModelDesc') }}</div>
+              <div class="mt-1 text-sm text-text-sub">
+                {{ t('settings.model.utilityModelDesc') }}
+              </div>
             </div>
             <Select
               :model-value="prefs['model.utilityModelId']"
@@ -548,7 +561,13 @@ const utilityOptions = computed(() => {
           {{ t('settings.model.usedThisMonth') }}
           <span class="font-semibold text-text-main">{{ fmtTokens(usedTokens) }}</span> tokens
           <template v-if="usage">
-            {{ t('settings.model.usageDetail', { tin: fmtTokens(usage.tokensIn), tout: fmtTokens(usage.tokensOut), n: usage.messages }) }}
+            {{
+              t('settings.model.usageDetail', {
+                tin: fmtTokens(usage.tokensIn),
+                tout: fmtTokens(usage.tokensOut),
+                n: usage.messages,
+              })
+            }}
           </template>
           <span v-if="nearBudget" class="ml-2 font-medium" style="color: var(--ds-danger)">
             {{ t('settings.model.nearBudget') }}
@@ -572,7 +591,9 @@ const utilityOptions = computed(() => {
           <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <div class="font-semibold text-text-main">{{ t('settings.model.budgetEnable') }}</div>
-              <div class="mt-1 text-sm text-text-sub">{{ t('settings.model.budgetEnableDesc') }}</div>
+              <div class="mt-1 text-sm text-text-sub">
+                {{ t('settings.model.budgetEnableDesc') }}
+              </div>
             </div>
             <Switch
               :model-value="prefs['budget.enabled']"
@@ -627,7 +648,9 @@ const utilityOptions = computed(() => {
           <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <div class="font-semibold text-text-main">{{ t('settings.model.fallbackWhen') }}</div>
-              <div class="mt-1 text-sm text-text-sub">{{ t('settings.model.fallbackWhenDesc') }}</div>
+              <div class="mt-1 text-sm text-text-sub">
+                {{ t('settings.model.fallbackWhenDesc') }}
+              </div>
             </div>
             <Select
               :model-value="prefs['offline.fallbackMode']"
@@ -640,7 +663,9 @@ const utilityOptions = computed(() => {
           <div class="grid min-h-[58px] gap-4 px-4 py-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <div class="font-semibold text-text-main">{{ t('settings.model.ollamaBackup') }}</div>
-              <div class="mt-1 text-sm text-text-sub">{{ t('settings.model.ollamaBackupDesc') }}</div>
+              <div class="mt-1 text-sm text-text-sub">
+                {{ t('settings.model.ollamaBackupDesc') }}
+              </div>
             </div>
             <Select
               :model-value="prefs['offline.ollamaModel']"

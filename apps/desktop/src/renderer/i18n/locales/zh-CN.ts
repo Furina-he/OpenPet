@@ -216,6 +216,10 @@ export const zhCN = {
     chat: {
       you: '你',
       replyError: '⚠ 回复出错了（{kind}）',
+      retry: '重试',
+      edit: '编辑',
+      editingHint: '正在编辑上一条消息，发送后将替换那一轮对话',
+      cancelEdit: '取消编辑',
       emptyReply: '（模型返回了空回复，可重发或换个模型试试）',
       unknown: '未知',
       emptyHint: '开始和我聊天吧 ✨',
@@ -1058,6 +1062,9 @@ export const zhCN = {
       empty: '还没有会话',
     },
     actionRetry: '重试',
+    actionEdit: '编辑',
+    editingHint: '正在编辑上一条消息，发送后将替换那一轮对话',
+    cancelEdit: '取消编辑',
     actionSwitchModel: '换个模型',
     actionChangeKey: '改 Key',
     error: {

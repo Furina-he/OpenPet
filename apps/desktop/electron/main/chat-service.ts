@@ -300,11 +300,43 @@ export class ChatService {
     );
   }
 
+  /**
+   * 重试：以会话最后一条 user 消息重新生成——删掉其后出错/取消的 assistant 行，user 行不重复入库。
+   * 无可重试消息 → -32602。busy/预算门与 send 同口径。
+   */
+  retry(sessionId: string): Promise<{ ok: true }> {
+    if (this.session.isStreaming(sessionId) || this.sending.has(sessionId)) {
+      throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
+    }
+    const blocked = this.budgetGate?.();
+    if (blocked) throw new RpcError(-32003, blocked);
+    const text = this.session.truncateAfterLastUser(sessionId);
+    if (text === null) throw new RpcError(-32602, 'nothing to retry');
+    this.sending.add(sessionId);
+    return this.sendInner(sessionId, text, undefined, { persistUser: false }).finally(() =>
+      this.sending.delete(sessionId),
+    );
+  }
+
+  /** 编辑重发：删掉最后一轮（user + 其后全部）后按新文本正常发送。 */
+  editResend(sessionId: string, text: string): Promise<{ ok: true }> {
+    if (this.session.isStreaming(sessionId) || this.sending.has(sessionId)) {
+      throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
+    }
+    const blocked = this.budgetGate?.();
+    if (blocked) throw new RpcError(-32003, blocked);
+    this.session.dropLastTurn(sessionId);
+    this.sending.add(sessionId);
+    return this.sendInner(sessionId, text).finally(() => this.sending.delete(sessionId));
+  }
+
   private async sendInner(
     sessionId: string,
     text: string,
     providerId?: string,
+    opts: { persistUser?: boolean } = {},
   ): Promise<{ ok: true }> {
+    const persistUser = opts.persistUser ?? true;
     const resolved = providerId ? undefined : this.resolveModel?.();
     const { chain, model, adapter, baseUrl } = resolveSendTarget(
       providerId,
@@ -325,7 +357,7 @@ export class ChatService {
     if (intercepted !== null) {
       span?.record('turn.intercepted', { by: 'star' });
       this.trackTurn(sessionId).intercepted = true; // ⑬ 命令输出不做表情分类
-      this.session.appendUser(sessionId, text);
+      if (persistUser) this.session.appendUser(sessionId, text);
       this.session.beginAssistant(sessionId);
       this.core.handleEvent(sessionId, { type: 'delta', text: intercepted });
       this.core.handleEvent(sessionId, { type: 'done', finishReason: 'stop' });
@@ -347,8 +379,8 @@ export class ChatService {
     } catch {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
-    // host.send 成功才入账：失败的发送不进历史
-    this.session.appendUser(sessionId, text);
+    // host.send 成功才入账：失败的发送不进历史（重试路径 user 行已在库，不重复）
+    if (persistUser) this.session.appendUser(sessionId, text);
     this.session.beginAssistant(sessionId);
     return { ok: true };
   }

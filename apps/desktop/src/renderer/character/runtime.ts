@@ -152,7 +152,12 @@ export async function createVrmRuntime(
   const emotions: Record<string, Record<string, number>> = manifest.emotions ?? BUILTIN_EMOTIONS;
   // ⑱ 基线用到的 happy/relaxed/sad 也纳入通道集合：模型无该 expression 时 setValue 是 no-op。
   const allExpressionNames = [
-    ...new Set([...Object.values(emotions).flatMap((m) => Object.keys(m)), 'happy', 'relaxed', 'sad']),
+    ...new Set([
+      ...Object.values(emotions).flatMap((m) => Object.keys(m)),
+      'happy',
+      'relaxed',
+      'sad',
+    ]),
   ];
   // ⑱ 表情包络 + 心情基线（spec §2.1）：快起（180ms 过冲 8%）慢退（1200ms）到 baseline(mood)。
   const envelope = new EmotionEnvelope(allExpressionNames);
@@ -170,8 +175,13 @@ export async function createVrmRuntime(
   const gaze = new GazeMachine(performance.now());
   const blink = new BlinkScheduler(performance.now());
 
+  /** 非说话期触发的表情（如轮末表情兜底分类晚于 chat.done 到达）没有后续 done 来复位 → 定时退基线。 */
+  const EMOTION_HOLD_MS = 4000;
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
   function applyEmotion(name: string, weight = 1): void {
     const now = performance.now();
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = speaking ? null : setTimeout(releaseEmotion, EMOTION_HOLD_MS);
     const target: Record<string, number> = {};
     for (const [n, w] of Object.entries(emotions[name] ?? {})) target[n] = w * weight;
     envelope.trigger(target, now);
@@ -183,6 +193,8 @@ export async function createVrmRuntime(
 
   function releaseEmotion(): void {
     const now = performance.now();
+    if (holdTimer) clearTimeout(holdTimer);
+    holdTimer = null;
     envelope.release(now);
     currentEmotion = 'neutral';
     posture.set('neutral', moodValue, now);
@@ -362,7 +374,11 @@ export async function createVrmRuntime(
   // ---- ⑱ T9 VRMA 片段通道：manifest.actionClips → AnimationMixer；命中走片段，否则程序化曲线 ----
   const clips = new ActionClipRegistry<THREE.AnimationClip>();
   const mixer = new THREE.AnimationMixer(vrm.scene);
-  let activeClip: { action: THREE.AnimationAction; until: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  let activeClip: {
+    action: THREE.AnimationAction;
+    until: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
   const CLIP_FADE_IN_S = 0.15;
   const CLIP_FADE_OUT_S = 0.25;
   if (vrm.lookAt) {
@@ -375,11 +391,15 @@ export async function createVrmRuntime(
   applyPose(0, ZERO_OFFSETS, 'absolute');
 
   async function loadClipFromUrl(url: string): Promise<THREE.AnimationClip> {
-    const gltf = await new Promise<{ userData: { vrmAnimations?: VRMAnimation[] } }>((resolve, reject) => {
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
-      loader.load(url, resolve, undefined, (e) => reject(e instanceof Error ? e : new Error(String(e))));
-    });
+    const gltf = await new Promise<{ userData: { vrmAnimations?: VRMAnimation[] } }>(
+      (resolve, reject) => {
+        const loader = new GLTFLoader();
+        loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+        loader.load(url, resolve, undefined, (e) =>
+          reject(e instanceof Error ? e : new Error(String(e))),
+        );
+      },
+    );
     const anim = gltf.userData.vrmAnimations?.[0];
     if (!anim) throw new Error('file contains no VRM animation');
     return createVRMAnimationClip(anim, vrm);
@@ -520,7 +540,8 @@ export async function createVrmRuntime(
   function updateIdleVariants(now: number): void {
     // ⑱ 序列步进：gap 内不被 idle 抢占；显式动作到来即中止（见 playAction）。
     if (sequencer.active) {
-      const busy = activeAction !== null || activeClip !== null || (hum !== null && now < hum.until);
+      const busy =
+        activeAction !== null || activeClip !== null || (hum !== null && now < hum.until);
       const step = sequencer.next(now, busy);
       if (step) playIdleStep(step, now);
       return;

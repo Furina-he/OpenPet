@@ -188,8 +188,10 @@ async function boot(): Promise<void> {
 
   // ⑱ 节拍手势：Main 每发一段来一拍；渲染端按 pet.beatGestures 门 + runtime 内部门（无活动作/≥1.5s）。
   let beatGestures = true;
+  // 桌面会话 = 非 IM（会话管理批次起 id 不再固定为 'default'；按 'default' 判会漏掉新建会话 → 表情永不复位）。
+  const isDesktopSession = (id: string): boolean => !id.startsWith('im:');
   window.openpet.on('behavior.beat', ({ sessionId, kind }) => {
-    if (sessionId !== 'default' || !beatGestures) return;
+    if (!isDesktopSession(sessionId) || !beatGestures) return;
     runtime?.playBeat(kind);
   });
 
@@ -202,7 +204,7 @@ async function boot(): Promise<void> {
   // 线 B-1：只反映桌面会话（Main 已 tee 掉 im: 会话，此处双保险防未来新通道漏网）。
   const bubble = mountBubble(document.getElementById('bubble')!);
   window.openpet.on('chat.stream', (p) => {
-    if (p.sessionId !== 'default') return;
+    if (!isDesktopSession(p.sessionId)) return;
     markActivity();
     runtime?.setStreaming(true); // ⑱ 说话中：呼吸收窄 + 视线看用户（chat.done 复位）
     bubble.appendStream(p.text);
@@ -368,7 +370,7 @@ async function boot(): Promise<void> {
 
   // 回合结束 1.2s 后情绪退到心情基线（⑱ releaseEmotion 取代硬复位 neutral；fallback 脸仍 reset）
   window.openpet.on('chat.done', (p) => {
-    if (p.sessionId !== 'default') return;
+    if (!isDesktopSession(p.sessionId)) return;
     markActivity();
     bubble.endStream();
     runtime?.setStreaming(false);

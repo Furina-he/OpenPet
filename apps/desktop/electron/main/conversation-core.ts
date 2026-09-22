@@ -205,7 +205,10 @@ export class ConversationCore {
       this.send(sessionId, {
         channel: 'chat.toolCall',
         sessionId,
-        params: { sessionId, call: { id: event.id, name: event.name, args: event.args, phase: 'pending' } },
+        params: {
+          sessionId,
+          call: { id: event.id, name: event.name, args: event.args, phase: 'pending' },
+        },
       });
       // 桌宠线索：查一下…——发领域事件，表现由 cue 表决定（F-IT T4）。
       this.cue?.('chat.tool', sessionId);
@@ -422,8 +425,8 @@ export class ConversationCore {
       params: { sessionId, text, ...(state.segIndex > 0 ? { newBubble: true } : {}) },
     });
     state.segIndex += 1;
-    // ⑱ 节拍：仅桌面 default 会话（IM/Hub 其它会话无桌宠可动）；与段同门同序。
-    if (sessionId === 'default') {
+    // ⑱ 节拍：仅桌面会话（IM 会话无桌宠可动；桌面会话 id 不固定为 'default'）；与段同门同序。
+    if (!sessionId.startsWith('im:')) {
       const kind = beatKindOf(text);
       this.send(sessionId, { channel: 'behavior.beat', sessionId, params: { sessionId, kind } });
       if (kind === 'exclaim' && !state.exclaimCued) {
