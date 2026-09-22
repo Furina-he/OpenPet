@@ -16,7 +16,13 @@ describe('assembleContext', () => {
 
   it('injects working memory (recent turns) between system and current user', () => {
     const store = new MemoryStore();
-    store.appendMessage({ characterId: 'default', sessionId: 's', role: 'user', text: 'q1', ts: 1 });
+    store.appendMessage({
+      characterId: 'default',
+      sessionId: 's',
+      role: 'user',
+      text: 'q1',
+      ts: 1,
+    });
     store.appendMessage({
       characterId: 'default',
       sessionId: 's',
@@ -26,13 +32,24 @@ describe('assembleContext', () => {
       finishReason: 'stop',
     });
     const req = assembleContext({ store, character: CH, sessionId: 's', userText: 'q2' });
-    expect(req.messages.map((m) => m.content)).toEqual([req.messages[0]!.content, 'q1', 'a1', 'q2']);
+    expect(req.messages.map((m) => m.content)).toEqual([
+      req.messages[0]!.content,
+      'q1',
+      'a1',
+      'q2',
+    ]);
   });
 
   it('caps working memory to the last WORKING_TURNS messages', () => {
     const store = new MemoryStore();
     for (let i = 0; i < 50; i++) {
-      store.appendMessage({ characterId: 'default', sessionId: 's', role: 'user', text: `m${i}`, ts: i });
+      store.appendMessage({
+        characterId: 'default',
+        sessionId: 's',
+        role: 'user',
+        text: `m${i}`,
+        ts: i,
+      });
     }
     const req = assembleContext({ store, character: CH, sessionId: 's', userText: 'now' });
     expect(req.messages).toHaveLength(22); // system + 20 working + 1 current
@@ -61,15 +78,28 @@ describe('assembleContext', () => {
 
   it('isolates working memory by character (no cross-character bleed)', () => {
     const store = new MemoryStore();
-    store.appendMessage({ characterId: 'other', sessionId: 's', role: 'user', text: 'secret', ts: 1 });
+    store.appendMessage({
+      characterId: 'other',
+      sessionId: 's',
+      role: 'user',
+      text: 'secret',
+      ts: 1,
+    });
     const req = assembleContext({ store, character: CH, sessionId: 's', userText: 'hi' });
     expect(req.messages.some((m) => m.content === 'secret')).toBe(false);
   });
 
   it('透传 model 进 ChatRequest.model；未给则不带该键', () => {
     const store = new MemoryStore();
-    const base = { store, character: { id: 'default', name: '小灵' }, sessionId: 's1', userText: 'hi' };
-    expect(assembleContext({ ...base, model: 'claude-sonnet-4-6' }).model).toBe('claude-sonnet-4-6');
+    const base = {
+      store,
+      character: { id: 'default', name: '小灵' },
+      sessionId: 's1',
+      userText: 'hi',
+    };
+    expect(assembleContext({ ...base, model: 'claude-sonnet-4-6' }).model).toBe(
+      'claude-sonnet-4-6',
+    );
     expect('model' in assembleContext(base)).toBe(false);
   });
 
@@ -112,16 +142,21 @@ describe('assembleContext', () => {
     expect(req.messages.at(-1)).toEqual({ role: 'user', content: 'hi' });
   });
 
-  it('批次⑥ memories 注入 system「长期记忆」段（不进消息数组）', () => {
+  it('⑲ memory 注入 system「记忆」块（常驻 + ### 命中页；不进消息数组）', () => {
     const req = assembleContext({
       store: new MemoryStore(),
       character: { id: 'c', name: '小灵' },
       sessionId: 's',
       userText: 'hi',
-      memories: ['用户养了只猫，名字叫年糕', '用户在深圳工作'],
+      memory: {
+        resident: ['### 用户档案\n用户在深圳工作'],
+        pages: [{ title: '年糕', body: '用户养的猫，名字叫年糕' }],
+      },
     });
     const sys = req.messages[0]!.content;
-    expect(sys).toContain('关于用户的长期记忆');
+    expect(sys).toContain('## 记忆');
+    expect(sys).toContain('### 用户档案');
+    expect(sys).toContain('### 年糕');
     expect(sys).toContain('年糕');
     expect(sys).toContain('行为标签'); // 桌宠边界不变
     // 记忆只进 system，不进消息数组
@@ -136,14 +171,14 @@ describe('assembleContext', () => {
       sessionId: 's',
       userText: 'hi',
       sessionSummary: '之前聊了工作压力，约好周末去爬山',
-      memories: ['用户在深圳工作'],
+      memory: { resident: ['### 用户档案\n用户在深圳工作'], pages: [] },
       loreHits: ['城建在悬崖上'],
     });
     const sys = req.messages[0]!.content;
     expect(sys).toContain('早前对话摘要');
     expect(sys).toContain('去爬山');
     expect(sys.indexOf('世界设定')).toBeLessThan(sys.indexOf('早前对话摘要'));
-    expect(sys.indexOf('早前对话摘要')).toBeLessThan(sys.indexOf('关于用户的长期记忆'));
+    expect(sys.indexOf('早前对话摘要')).toBeLessThan(sys.indexOf('## 记忆'));
     const bare = assembleContext({
       store: new MemoryStore(),
       character: { id: 'c', name: '小灵' },
@@ -154,35 +189,50 @@ describe('assembleContext', () => {
   });
 });
 
-
 describe('⑫ 世界设定块 + 宏展开', () => {
   const CH2 = { id: 'a', name: '芙宁娜' };
 
   it('loreHits 注入「世界设定」块且宏展开；缺省无块', () => {
     const store = new MemoryStore();
     const req = assembleContext({
-      store, character: CH2, sessionId: 's', userText: 'hi',
+      store,
+      character: CH2,
+      sessionId: 's',
+      userText: 'hi',
       loreHits: ['{{char}}的城堡在悬崖上'],
       macroCtx: { user: '旅行者' },
     });
     const sys = req.messages[0]?.content ?? '';
     expect(sys).toContain('## 世界设定');
     expect(sys).toContain('芙宁娜的城堡在悬崖上');
-    const bare = assembleContext({ store, character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi' });
+    const bare = assembleContext({
+      store,
+      character: { id: 'a', name: 'A' },
+      sessionId: 's',
+      userText: 'hi',
+    });
     expect(bare.messages[0]?.content).not.toContain('## 世界设定');
   });
   it('personaPrompt 与 beginDialogs 宏展开；未给 macroCtx 不展开（向后兼容）', () => {
     const store = new MemoryStore();
     const req = assembleContext({
-      store, character: CH2, sessionId: 's', userText: 'hi',
-      personaPrompt: '你是{{char}}，称呼对方{{user}}', beginDialogs: ['{{user}}你好', '嗯，{{char}}在'],
+      store,
+      character: CH2,
+      sessionId: 's',
+      userText: 'hi',
+      personaPrompt: '你是{{char}}，称呼对方{{user}}',
+      beginDialogs: ['{{user}}你好', '嗯，{{char}}在'],
       macroCtx: { user: '旅行者' },
     });
     expect(req.messages[0]?.content).toContain('你是芙宁娜，称呼对方旅行者');
     expect(req.messages[1]?.content).toBe('旅行者你好');
     expect(req.messages[2]?.content).toBe('嗯，芙宁娜在');
     const raw = assembleContext({
-      store, character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi', personaPrompt: '{{user}}',
+      store,
+      character: { id: 'a', name: 'A' },
+      sessionId: 's',
+      userText: 'hi',
+      personaPrompt: '{{user}}',
     });
     expect(raw.messages[0]?.content).toContain('{{user}}');
   });
@@ -192,10 +242,17 @@ describe('⑭ 风格锚 + idle_duration', () => {
   it('styleAnchor 以 system 消息插在 history 之后、当前 user 之前，且宏展开', () => {
     const store = new MemoryStore();
     store.appendMessage({
-      characterId: 'a', sessionId: 's', role: 'user', text: '早', ts: Date.now() - 3_600_000,
+      characterId: 'a',
+      sessionId: 's',
+      role: 'user',
+      text: '早',
+      ts: Date.now() - 3_600_000,
     });
     const req = assembleContext({
-      store, character: { id: 'a', name: '芙宁娜' }, sessionId: 's', userText: 'hi',
+      store,
+      character: { id: 'a', name: '芙宁娜' },
+      sessionId: 's',
+      userText: 'hi',
       styleAnchor: '你是{{char}}，{{idle_duration}}没聊了，说话要短',
       macroCtx: { user: '旅行者' },
     });
@@ -208,7 +265,10 @@ describe('⑭ 风格锚 + idle_duration', () => {
   });
   it('无 styleAnchor 不插消息（向后兼容）', () => {
     const req = assembleContext({
-      store: new MemoryStore(), character: { id: 'a', name: 'A' }, sessionId: 's', userText: 'hi',
+      store: new MemoryStore(),
+      character: { id: 'a', name: 'A' },
+      sessionId: 's',
+      userText: 'hi',
     });
     expect(req.messages.filter((m) => m.role === 'system')).toHaveLength(1); // 只有开头 system
   });

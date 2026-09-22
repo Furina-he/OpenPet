@@ -18,8 +18,11 @@
  * session_meta 加 `summary`/`summary_upto`（会话滚动摘要 + 已覆盖消息 id 水位）。首次出现
  * **对既有表加列**——CREATE IF NOT EXISTS 不改旧表，旧库由 SqliteStore 构造时按
  * pragma table_info 条件 ALTER（见 sqlite-store.ts MIGRATE_COLUMNS），additive → 5。
+ *
+ * ⑲ 记忆 v2：memory_page_index（wiki 页级向量缓存：path 主键 + 内容 hash + 向量；markdown 文件
+ * 才是真源，本表可随时重建），additive → 6。memory_fact 保留只读（迁移源，spec §4）。
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS messages (
@@ -101,6 +104,13 @@ CREATE TABLE IF NOT EXISTS memory_fact (
   updated_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_memory_char ON memory_fact(character_id, pinned);
+
+CREATE TABLE IF NOT EXISTS memory_page_index (
+  path        TEXT PRIMARY KEY,
+  hash        TEXT NOT NULL,
+  vector      BLOB,
+  updated_at  INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS session_meta (
   session_id   TEXT PRIMARY KEY,

@@ -7,8 +7,18 @@
  *
  * kbStage 带 1.5s 超时兜底（arch-evolution #5）：检索超时/异常 → 空 hits，不阻断对话。
  */
-import { activateLorebook, type ChatRequest, type ChatTool, type PackLorebook } from '@openpet/protocol';
-import { assembleContext } from './context-assembler.js';
+import {
+  activateLorebook,
+  type ChatRequest,
+  type ChatTool,
+  type PackLorebook,
+} from '@openpet/protocol';
+import { assembleContext, type MemoryInjection } from './context-assembler.js';
+
+/** retrieveMemory 返回形状（memory-service.MemoryRetrieval 的管道视角；stats 只进 trace）。 */
+export interface MemoryRetrievalLite extends MemoryInjection {
+  stats?: { resident: number; keyword: number; vector: number; chars: number };
+}
 import type { ConversationStore } from './db/index.js';
 
 export interface PipelineCharacterRef {
@@ -23,8 +33,10 @@ export interface ContextPipelineDeps {
   character: () => PipelineCharacterRef;
   /** §5 自动 RAG 检索器；缺省不检索。 */
   retrieveKb?: ((query: string) => Promise<{ text: string }[]>) | undefined;
-  /** 批次⑥ 长期记忆检索器（memory-service.retrieveForChat）；缺省不注入。 */
-  retrieveMemory?: ((query: string) => Promise<string[]>) | undefined;
+  /** ⑲ 三路记忆检索器（memory-service.retrieveForChat）；history = 最近消息（与 lore 同源）。缺省不注入。 */
+  retrieveMemory?:
+    | ((query: string, history: readonly string[]) => Promise<MemoryRetrievalLite>)
+    | undefined;
   /** §4 MCP 工具定义源；缺省无工具。 */
   mcp?: { activeToolDefs: (serverActive: (id: string) => boolean) => ChatTool[] } | undefined;
   /** §6 当前生效 persona（绑定>默认>null=内置）；ipc-router 注入 persona-service.resolveFor。 */
@@ -49,10 +61,12 @@ export interface BuildInput {
 
 /** KB 检索在发送路径上的最长等待；超时放行（空 hits）。 */
 export const KB_RETRIEVE_TIMEOUT_MS = 1500;
+/** ⑲ memoryStage 关键词路扫描的最近消息条数（= MEMORY_QUOTAS.keywordScanDepth）。 */
+export const MEMORY_HISTORY_DEPTH = 4;
 
 interface StageBag {
   kbHits: { text: string }[];
-  memories: string[];
+  memory: MemoryInjection | null;
   loreHits: string[];
   sessionSummary: string;
   tools: ChatTool[];
@@ -82,14 +96,19 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
   };
 
   const memoryStage = async (input: BuildInput, bag: StageBag): Promise<void> => {
-    // 批次⑥：长期记忆注入（镜像 kbStage——1.5s 超时、异常放行，检索失败不阻断对话）。
+    // ⑲ 三路记忆注入（镜像 kbStage——1.5s 超时、异常放行，检索失败不阻断对话）。
+    // history 取最近 4 条（与 lore scanDepth 同口径，关键词路扫描窗）。
     if (!deps.retrieveMemory) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let got: MemoryRetrievalLite | null = null;
     try {
-      bag.memories = await Promise.race([
-        deps.retrieveMemory(input.userText),
-        new Promise<string[]>((resolve) => {
-          timer = setTimeout(() => resolve([]), KB_RETRIEVE_TIMEOUT_MS);
+      const history = deps.store
+        .recentMessages(deps.character().id, input.sessionId, MEMORY_HISTORY_DEPTH)
+        .map((r) => r.text);
+      got = await Promise.race([
+        deps.retrieveMemory(input.userText, history),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), KB_RETRIEVE_TIMEOUT_MS);
         }),
       ]);
     } catch {
@@ -97,7 +116,17 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
-    input.trace?.('context.memory', { hits: bag.memories.length });
+    if (got && (got.resident.length > 0 || got.pages.length > 0))
+      bag.memory = { resident: got.resident, pages: got.pages };
+    input.trace?.(
+      'context.memory',
+      got?.stats ?? {
+        resident: got?.resident.length ?? 0,
+        keyword: got?.pages.length ?? 0,
+        vector: 0,
+        chars: 0,
+      },
+    );
   };
 
   const loreStage = async (input: BuildInput, bag: StageBag): Promise<void> => {
@@ -129,7 +158,13 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
 
   return {
     async build(input: BuildInput): Promise<ChatRequest> {
-      const bag: StageBag = { kbHits: [], memories: [], loreHits: [], sessionSummary: '', tools: [] };
+      const bag: StageBag = {
+        kbHits: [],
+        memory: null,
+        loreHits: [],
+        sessionSummary: '',
+        tools: [],
+      };
       await Promise.all(retrievalStages.map((stage) => stage(input, bag).catch(() => {})));
       await toolsStage(input, bag); // 同步取定义，无 IO
       // ContextAssembler：system prompt(人设+persona+行为标签规约 + §5 参考资料) + 最近 20 轮 + 当前 user。
@@ -143,7 +178,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         userText: input.userText,
         ...(input.model ? { model: input.model } : {}),
         ...(bag.kbHits.length > 0 ? { kbHits: bag.kbHits } : {}),
-        ...(bag.memories.length > 0 ? { memories: bag.memories } : {}),
+        ...(bag.memory ? { memory: bag.memory } : {}),
         ...(bag.loreHits.length > 0 ? { loreHits: bag.loreHits } : {}),
         ...(bag.sessionSummary ? { sessionSummary: bag.sessionSummary } : {}),
         ...(mc ? { macroCtx: mc } : {}),

@@ -45,6 +45,7 @@ import { createKbService } from './kb-service.js';
 import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
+import { MemoryWiki } from './memory-wiki.js';
 import { createMemoryExtractor } from './memory-extractor.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
@@ -441,8 +442,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       ),
     );
   };
+  // ⑲ 记忆 wiki：markdown 真源（userData/memory）；service 三路注入 + F3 RPC。
+  const memoryWiki = new MemoryWiki(memoryRoot);
   const memoryService = createMemoryService({
     store,
+    wiki: memoryWiki,
     embed: memoryEmbed,
     getPrefs: () => prefsStore.getAll(),
     character: () => ({ id: characters.current().characterId }),
@@ -565,7 +569,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       );
     },
     retrieveKb: (q) => kbService.retrieveForChat(q),
-    retrieveMemory: (q) => memoryService.retrieveForChat(q),
+    retrieveMemory: (q, h) => memoryService.retrieveForChat(q, h),
     // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
     onTurnEnd: (sid) => {
       if (imService?.shouldExtractMemory(sid) ?? true) void memoryExtractor.onTurnEnd(sid);
@@ -669,7 +673,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   // retrieveForChat / ingest 是 chat/router 内部用的注入 API，非 RPC handler —— 从 spread 里剔除。
   const { retrieveForChat: _retrieveForChat, ingest: _kbIngest, ...kbHandlers } = kbService;
   // memory 同款：retrieveForChat 是 memoryStage 注入源，非 RPC handler。
-  const { retrieveForChat: _memRetrieve, ...memoryHandlers } = memoryService;
+  const {
+    retrieveForChat: _memRetrieve,
+    reindexVectors: _memReindex,
+    ...memoryHandlers
+  } = memoryService;
   // resolveFor 是组装链内部 API，非 RPC handler —— 从 spread 里剔除（同 kb retrieveForChat 手法）。
   const { resolveFor: _personaResolve, ...personaHandlers } = personaService;
   // 线 B-2：startAll 是启动期内部 API，非 RPC handler —— 同款剔除。

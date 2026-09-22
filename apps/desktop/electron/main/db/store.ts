@@ -99,6 +99,13 @@ export interface ConversationStore {
   memoryDelete(id: number): void;
   memorySetPinned(id: number, pinned: boolean): void;
   memoryClear(characterId: string): void;
+  /** 旧表行数（⑲ 迁移检测 + F3 横幅）。 */
+  memoryCount(characterId: string): number;
+
+  // --- ⑲ 记忆 v2：wiki 页级向量索引（memory_page_index；path 全局唯一，user/ 页跨角色共享）---
+  pageIndexUpsert(path: string, hash: string, vector: number[], updatedAt: number): void;
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }>;
+  pageIndexDelete(path: string): void;
 
   // --- ⑮ 记忆域：会话滚动摘要（session_meta.summary/summary_upto）与区间读取 ---
   sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null };

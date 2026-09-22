@@ -39,7 +39,11 @@ import {
 } from './plugin-gateway.js';
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { createConversationStore, MemoryStore, type ConversationStore } from './db/index.js';
-import { createContextPipeline, type ContextPipeline } from './context-pipeline.js';
+import {
+  createContextPipeline,
+  type MemoryRetrievalLite,
+  type ContextPipeline,
+} from './context-pipeline.js';
 import { TurnOrchestrator } from './turn-orchestrator.js';
 import { resolveSendTarget } from './chat-resolve.js';
 import { exportDsbak } from './db/export-bundle.js';
@@ -83,8 +87,8 @@ export interface ChatServiceOptions {
    * kbStage，1.5s 超时兜底）。缺省=不检索。ipc-router 装配时构造注入（单向依赖）。
    */
   retrieveKb?: (query: string) => Promise<{ text: string }[]>;
-  /** 批次⑥ F-AI-06：长期记忆检索（memoryStage 注入源）；缺省=不注入。 */
-  retrieveMemory?: (query: string) => Promise<string[]>;
+  /** ⑲ 三路记忆检索（memoryStage 注入源；history = 最近消息文本）；缺省=不注入。 */
+  retrieveMemory?: (query: string, history: readonly string[]) => Promise<MemoryRetrievalLite>;
   /** 批次⑥：轮末（done stop）钩子——memory-extractor 提炼入口；fire-and-forget。 */
   onTurnEnd?: (sessionId: string) => void;
   /**
@@ -160,7 +164,9 @@ export class ChatService {
   private readonly providerChain: string[];
   /** 无显式 providerId 时，从 prefs 取当前 chat 目标（ipc-router 注入两层 resolveChatTarget）。 */
   private readonly resolveModel: (() => ChatTarget | null) | undefined;
-  private readonly intercept: ((sessionId: string, text: string) => Promise<string | null>) | undefined;
+  private readonly intercept:
+    | ((sessionId: string, text: string) => Promise<string | null>)
+    | undefined;
   /** send 前置上下文管道（§5 RAG + §4 tools + ContextAssembler）。 */
   private readonly pipeline: ContextPipeline;
   /** 在途轮编排（降级链 / 工具回灌）。 */
@@ -183,9 +189,7 @@ export class ChatService {
     string,
     { saw: boolean; text: string; intercepted: boolean }
   >();
-  private readonly emotionFallback:
-    | ((sessionId: string, cleanText: string) => void)
-    | undefined;
+  private readonly emotionFallback: ((sessionId: string, cleanText: string) => void) | undefined;
   /** §7 Trace：collector + 本轮 span（生命周期同 lastIntent——绑通知流，chat.done 时封口删除）。 */
   private readonly traceC: import('./trace-collector.js').TraceCollector | undefined;
   private readonly traceSpans = new Map<string, import('./trace-collector.js').TraceSpanHandle>();
@@ -329,7 +333,12 @@ export class ChatService {
       ...(span ? { trace: (a: string, f?: Record<string, unknown>) => span.record(a, f) } : {}),
     });
     try {
-      this.orchestrator.start(sessionId, request, { chain, baseUrl, adapter, baseProviderId }, span);
+      this.orchestrator.start(
+        sessionId,
+        request,
+        { chain, baseUrl, adapter, baseProviderId },
+        span,
+      );
     } catch {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
@@ -435,7 +444,13 @@ export class ChatService {
           this.interactions.trigger('chat.done'); // mood 累积（无 cue 表项，不发表现）
           this.onTurnEnd?.(n.sessionId); // 批次⑥：轮末记忆提炼（fire-and-forget，不 await）
           const fb = this.fallbackTurn.get(n.sessionId);
-          if (fb && !fb.saw && !fb.intercepted && fb.text.trim().length > 0 && this.emotionFallback) {
+          if (
+            fb &&
+            !fb.saw &&
+            !fb.intercepted &&
+            fb.text.trim().length > 0 &&
+            this.emotionFallback
+          ) {
             this.traceSpans
               .get(n.sessionId)
               ?.record('turn.emotionFallback', { textLen: fb.text.length });
