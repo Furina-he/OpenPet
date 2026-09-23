@@ -1,8 +1,19 @@
-/** A1 命中分区与按压判定（纯函数）。头/身按窗口高度比例分；tap = 短按未移动。 */
+/**
+ * A1 命中分区与按压判定（纯函数）。头/身按窗口高度比例分；tap = 短按未移动。
+ * ⑳ 可选可见轮廓 box（sprite 不占满窗口）：有 box 时按轮廓内 38% 分；VRM / Live2D 不传，行为不变。
+ */
 export type Zone = 'head' | 'body';
 const HEAD_RATIO = 0.38;
 
-export function tapZone(clientY: number, height: number): Zone {
+export interface ContentBox {
+  top: number;
+  bottom: number;
+}
+
+export function tapZone(clientY: number, height: number, box?: ContentBox | null): Zone {
+  if (box && box.bottom > box.top) {
+    return (clientY - box.top) / (box.bottom - box.top) <= HEAD_RATIO ? 'head' : 'body';
+  }
   return height > 0 && clientY / height <= HEAD_RATIO ? 'head' : 'body';
 }
 
