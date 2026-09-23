@@ -18,6 +18,7 @@ import {
 import { ENVELOPE } from '../character/emotion-envelope';
 import { GAZE } from '../character/gaze';
 import { ACTION_NAMES } from '../character/actions';
+import { SPRITE_2D_GAIN, SPRITE_FLAGS } from '../character/sprite-transform';
 
 export interface LifeTuning {
   breathHz: Record<Energy, number>;
@@ -35,6 +36,9 @@ export interface LifeTuning {
     wanderJitter: number;
   };
   flags: typeof LIFE_FLAGS;
+  /** ⑳ BoneOffsets → 2D 增益（sprite 引擎）。 */
+  sprite2d: typeof SPRITE_2D_GAIN;
+  spriteFlags: typeof SPRITE_FLAGS;
 }
 
 /** 当前参数快照（深拷贝，可直接 JSON 化）。 */
@@ -56,6 +60,8 @@ export function exportTuning(): LifeTuning {
         wanderJitter: GAZE.wanderJitter,
       },
       flags: LIFE_FLAGS,
+      sprite2d: SPRITE_2D_GAIN,
+      spriteFlags: SPRITE_FLAGS,
     }),
   ) as LifeTuning;
 }
@@ -79,6 +85,8 @@ export function applyTuning(t: DeepPartial<LifeTuning>): void {
   assignNumbers(ENVELOPE, t.envelope);
   assignNumbers(GAZE, t.gaze);
   assignNumbers(LIFE_FLAGS, t.flags);
+  assignNumbers(SPRITE_2D_GAIN, t.sprite2d);
+  assignNumbers(SPRITE_FLAGS, t.spriteFlags);
 }
 
 export interface HarnessHooks {
@@ -243,6 +251,65 @@ export function mountLifeHarness(root: HTMLElement, rt: CharacterRuntime, hooks:
     });
     row.append(sel, file, status);
     panel.appendChild(row);
+  }
+
+  if (hooks.loadSheet || rt.playState) {
+    // ⑳ sprite：热换图集 / 布局 / 2D 增益 / 帧·程序化通道 A/B / 状态逐个点播
+    section('帧动画（⑳）');
+    toggle('帧通道', () => SPRITE_FLAGS.frames, (v) => (SPRITE_FLAGS.frames = v));
+    toggle('程序化通道', () => SPRITE_FLAGS.procedural, (v) => (SPRITE_FLAGS.procedural = v));
+    if (hooks.loadSheet) {
+      const row = h('div', undefined, 'display:flex;gap:4px;align-items:center;flex-wrap:wrap');
+      const layout = document.createElement('select');
+      layout.style.cssText = 'font:10px ui-monospace';
+      for (const [v, label] of [
+        ['codex', 'codex smooth'],
+        ['codex-pixel', 'codex pixel'],
+        ['keep', '沿用当前描述'],
+      ] as const) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = label;
+        layout.appendChild(o);
+      }
+      const file = document.createElement('input');
+      file.type = 'file';
+      file.accept = '.png,.webp';
+      file.style.cssText = 'font:10px ui-monospace;width:120px';
+      const status = h('span', '', 'color:#9f9');
+      file.addEventListener('change', () => {
+        const f = file.files?.[0];
+        if (!f) return;
+        const sprite: SpriteSheet | undefined =
+          layout.value === 'keep'
+            ? undefined
+            : { layout: 'codex', ...(layout.value === 'codex-pixel' ? { smoothing: 'pixel' as const } : {}) };
+        hooks.loadSheet!(f, sprite).then(
+          () => (status.textContent = `✓ ${f.name}`),
+          (e: unknown) => (status.textContent = `✗ ${String(e)}`),
+        );
+      });
+      row.append(layout, file, status);
+      panel.appendChild(row);
+    }
+    if (rt.playState && rt.listStates) {
+      const stRow = h('div');
+      for (const s of rt.listStates()) button(s, () => rt.playState!(s), stRow);
+      panel.appendChild(stRow);
+    }
+    const g = SPRITE_2D_GAIN;
+    slider('hipsY', () => g.hipsY, (v) => (g.hipsY = v), 0, 5, 0.1);
+    slider('hipsX', () => g.hipsX, (v) => (g.hipsX = v), 0, 5, 0.1);
+    slider('chestPitch', () => g.chestPitch, (v) => (g.chestPitch = v), 0, 2, 0.05);
+    slider('spinePitch', () => g.spinePitch, (v) => (g.spinePitch = v), 0, 2, 0.05);
+    slider('headPitch', () => g.headPitch, (v) => (g.headPitch = v), 0, 2, 0.05);
+    slider('volume', () => g.volume, (v) => (g.volume = v), 0, 1, 0.05);
+    slider('headRoll', () => g.headRoll, (v) => (g.headRoll = v), 0, 2, 0.05);
+    slider('spineRoll', () => g.spineRoll, (v) => (g.spineRoll = v), 0, 3, 0.05);
+    slider('spineYaw', () => g.spineYaw, (v) => (g.spineYaw = v), 0, 2, 0.05);
+    slider('headYaw', () => g.headYaw, (v) => (g.headYaw = v), 0, 1, 0.01);
+    slider('drag', () => g.drag, (v) => (g.drag = v), 0, 2, 0.05);
+    slider('mouth', () => g.mouth, (v) => (g.mouth = v), 0, 0.05, 0.001);
   }
 
   section('导出');

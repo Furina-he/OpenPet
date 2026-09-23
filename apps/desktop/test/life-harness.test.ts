@@ -3,6 +3,8 @@ import { applyTuning, exportTuning } from '../src/renderer/dev/life-harness';
 import { BREATH_HZ, LIFE_FLAGS, breathParams } from '../src/renderer/character/life-layers';
 import { ENVELOPE, attackCurve } from '../src/renderer/character/emotion-envelope';
 import { GAZE } from '../src/renderer/character/gaze';
+import { ZERO_OFFSETS } from '../src/renderer/character/actions';
+import { SPRITE_2D_GAIN, SPRITE_FLAGS, offsetsTo2D } from '../src/renderer/character/sprite-transform';
 
 const snapshot = exportTuning();
 afterEach(() => applyTuning(snapshot)); // 每例回滚，避免污染其它测试文件（vitest 同进程隔离模块，仍稳妥）
@@ -32,5 +34,15 @@ describe('⑱ life harness 参数导出 / 回写', () => {
     const a = exportTuning();
     applyTuning(JSON.parse(JSON.stringify(a)));
     expect(exportTuning()).toEqual(a);
+  });
+
+  it('⑳ 导出含 SPRITE_2D_GAIN 与帧/程序化通道开关；回写即被 offsetsTo2D 读到', () => {
+    const t = exportTuning();
+    expect(t.sprite2d.hipsY).toBe(2);
+    expect(t.spriteFlags).toEqual({ frames: true, procedural: true });
+    applyTuning({ sprite2d: { hipsY: 1 }, spriteFlags: { procedural: false } });
+    expect(SPRITE_2D_GAIN.hipsY).toBe(1);
+    expect(SPRITE_FLAGS.procedural).toBe(false);
+    expect(offsetsTo2D({ ...ZERO_OFFSETS, hipsY: 0.06 }, 100).dy).toBeCloseTo(-6, 5);
   });
 });

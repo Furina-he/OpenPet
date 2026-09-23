@@ -33,6 +33,9 @@ export const SPRITE_2D_GAIN = {
   mouth: 0.012,
 };
 
+/** harness A/B：帧通道（关 = 定格 idle 第 0 帧）/ 程序化通道（关 = 不叠 2D 变换）。生产全开。 */
+export const SPRITE_FLAGS = { frames: true, procedural: true };
+
 export interface Transform2D {
   /** 位移（源像素 = 格像素；smooth 模式由 runtime 再乘 fit.scale）。 */
   dx: number;

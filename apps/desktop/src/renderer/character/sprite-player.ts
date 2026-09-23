@@ -141,20 +141,22 @@ export class SpriteDirector {
   }
 
   /** 映射到行的动作：loop=false 播一轮；loop=true 按动作时长循环。新动作打断旧一次性行。 */
-  playAction(name: string, durMs: number | null | undefined, _now: number): ActionRoute {
+  playAction(name: string, durMs: number | null | undefined, now: number): ActionRoute {
     const route = this.routeAction(name);
     if (route.kind !== 'row') return route;
-    const st = this.cfg.states[route.state]!;
-    const total = st.durationsMs.reduce((s, d) => s + d, 0);
-    const mode: PlayMode = !st.loop
-      ? { kind: 'once' }
-      : {
-          kind: 'forMs',
-          ms: durMs ?? (ACTION_DEFAULT_MS as Record<string, number>)[name] ?? total * 2,
-        };
-    this.oneShot = { state: route.state, mode, speed: 1 };
-    this.oneShotPending = true;
+    this.playState(route.state, durMs ?? (ACTION_DEFAULT_MS as Record<string, number>)[name], now);
     return route;
+  }
+
+  /** 直接播某状态一次（一次性行一轮；循环行按 durMs，缺省两轮）——动作映射与 harness 点播共用。 */
+  playState(state: string, durMs: number | null | undefined, _now: number): boolean {
+    if (!this.has(state)) return false;
+    const st = this.cfg.states[state]!;
+    const total = st.durationsMs.reduce((s, d) => s + d, 0);
+    const mode: PlayMode = !st.loop ? { kind: 'once' } : { kind: 'forMs', ms: durMs ?? total * 2 };
+    this.oneShot = { state, mode, speed: 1 };
+    this.oneShotPending = true;
+    return true;
   }
 
   /**

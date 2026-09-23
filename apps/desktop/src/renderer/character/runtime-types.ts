@@ -44,6 +44,9 @@ export interface CharacterRuntime {
   contentBox?: (() => { top: number; bottom: number } | null) | undefined;
   /** ⑳（可选，仅 harness）：热换图集（可同时换布局描述）；失败抛出，旧图集保持。 */
   loadSheet?: ((url: string, sprite?: SpriteSheet) => Promise<void>) | undefined;
+  /** ⑳（可选，仅 harness）：点播某帧状态一轮；返回状态名列表的 listStates 同理。 */
+  playState?: ((state: string) => boolean) | undefined;
+  listStates?: (() => string[]) | undefined;
   listEmotions(): string[];
   listActions(): string[];
   getStats(): { fps: number; budget: SceneBudget; budgetWarnings: string[] };

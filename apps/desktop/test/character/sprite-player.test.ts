@@ -252,3 +252,16 @@ describe('SpriteDirector 拖拽', () => {
     ).toThrow(/idle/);
   });
 });
+
+describe('SpriteDirector.playState（harness 点播）', () => {
+  it('一次性行一轮 / 循环行缺省两轮 / 未知状态 false', () => {
+    const d = new SpriteDirector(codexConfig(), 0);
+    expect(d.playState('waving', null, 0)).toBe(true);
+    expect(d.tick(0).state).toBe('waving');
+    expect(runTo(d, 0, 700).state).toBe('idle');
+    expect(d.playState('review', null, 800)).toBe(true);
+    expect(runTo(d, 800, 800 + 2 * 1030 - 1).state).toBe('review');
+    expect(d.tick(800 + 2 * 1030).state).toBe('idle');
+    expect(d.playState('nope', null, 0)).toBe(false);
+  });
+});

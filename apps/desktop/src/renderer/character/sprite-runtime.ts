@@ -57,7 +57,9 @@ import {
 import { SpriteDirector } from './sprite-player';
 import {
   FacingTracker,
+  IDENTITY_2D,
   SPRITE_2D_GAIN,
+  SPRITE_FLAGS,
   alphaBBox,
   contentBoxInView,
   dragPendulum,
@@ -398,7 +400,9 @@ export async function createSpriteRuntime(
 
     // 帧通道
     const f = b.director.tick(now, { active: dragState.active, vx: dragState.vx });
-    const tex = b.textures[f.state]?.[f.frame];
+    const tex = SPRITE_FLAGS.frames
+      ? b.textures[f.state]?.[f.frame]
+      : b.textures[b.resolved.slots.idle]?.[0]; // harness A/B：定格 idle 第 0 帧
     if (tex && frameSprite.texture !== tex) frameSprite.texture = tex;
     const rowActive = b.director.oneShotActive();
     if (rowWasActive && !rowActive) lastActionEnd = now;
@@ -422,8 +426,10 @@ export async function createSpriteRuntime(
       if (proximity < 1e-3) proximity = 0;
       if (LIFE_FLAGS.proximity && proximity > 0) layers.push(proximityOffsets(gaze.cursorNx(), proximity));
     }
-    const t = offsetsTo2D(addOffsets(...layers), b.cell.height, SPRITE_2D_GAIN);
-    if (!b.resolved.slots.talk) t.sy += mouthCurrent * SPRITE_2D_GAIN.mouth; // 无 talk 行：说话轻微起伏
+    const t = SPRITE_FLAGS.procedural
+      ? offsetsTo2D(addOffsets(...layers), b.cell.height, SPRITE_2D_GAIN)
+      : { ...IDENTITY_2D };
+    if (SPRITE_FLAGS.procedural && !b.resolved.slots.talk) t.sy += mouthCurrent * SPRITE_2D_GAIN.mouth; // 无 talk 行：说话轻微起伏
     let flip = 1;
     if (facing && b.resolved.flipToCursor && lookAtEnabled && cursorX !== null) {
       flip = facing.update(cursorX - (window.screenX + window.innerWidth / 2), now);
@@ -546,6 +552,8 @@ export async function createSpriteRuntime(
       budgetWarnings: [],
     }),
     contentBox: () => box,
+    playState: (state) => built.director.playState(state, null, performance.now()),
+    listStates: () => Object.keys(built.resolved.states),
     async loadSheet(url, sprite?: SpriteSheet) {
       // harness：热换图集（可同时换布局）；失败抛出，旧图集保持
       const next = sprite ? resolveSprite(sprite) : resolved;
