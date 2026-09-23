@@ -5,6 +5,7 @@
  * 模拟说话）、VRMA 文件选择；「导出」把当前参数 JSON 复制到剪贴板，贴回代码常量即定稿。
  * 纯逻辑（exportTuning / applyTuning）与 DOM 挂载分离，前者可单测。
  */
+import type { SpriteSheet } from '@openpet/protocol';
 import type { CharacterRuntime } from '../character/runtime-types';
 import {
   BREATH_AMP,
@@ -85,6 +86,8 @@ export interface HarnessHooks {
   simulateStream: () => void;
   /** T9：加载用户自备 .vrma 为某动作的片段。 */
   loadClip?: ((name: string, file: File) => Promise<boolean>) | undefined;
+  /** ⑳ sprite：热换图集（可同时换布局描述）。 */
+  loadSheet?: ((file: File, sprite?: SpriteSheet) => Promise<void>) | undefined;
 }
 
 const EMOTION_BUTTONS = ['happy', 'sad', 'angry', 'surprised', 'relaxed', 'shy', 'sleepy', 'thinking'];
