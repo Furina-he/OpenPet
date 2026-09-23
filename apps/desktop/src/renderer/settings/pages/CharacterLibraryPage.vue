@@ -8,12 +8,15 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { MoreVertical, X } from 'lucide-vue-next';
-import { DEFAULT_MARKET_SOURCES, type MarketItem } from '@openpet/protocol';
+import { DEFAULT_ACTIONS, DEFAULT_MARKET_SOURCES, type MarketItem } from '@openpet/protocol';
 import Button from '../../components/Button.vue';
 import Input from '../../components/Input.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
 import ToastHost from '../../components/ToastHost.vue';
 import ModelShowcase from '../components/ModelShowcase.vue';
+import SpriteThumb from '../components/SpriteThumb.vue';
+import { engineLabel } from '../engine-label.js';
+import { tryResolveSprite } from '../sprite-thumb.js';
 import {
   toCardVm,
   sortCards,
@@ -21,6 +24,7 @@ import {
   personaSourceOf,
   drawerMenuItems,
   cardContextMenuItems,
+  withoutEmotionOverrides,
   type CharacterListItem,
   type CharacterCardVm,
   type CharacterMenuItem,
@@ -74,11 +78,17 @@ const personaSource = computed(() =>
     ? personaSourceOf(selectedItem.value.characterId, selectedItem.value.manifest, personaAll.value)
     : 'builtin',
 );
-// 动作试播 chip：Idle + 词表前 2 个（缺省 wave/nod）
+// 动作试播 chip：Idle + 词表前 2 个（缺省 wave/nod）；⑳ sprite = 映射到行的动作（LLM 词表内的优先于系统 cue 词）
 const previewActions = computed(() => {
-  const acts = selectedItem.value?.manifest.actions ?? ['wave', 'nod'];
+  const m = selectedItem.value?.manifest;
+  const sprite = m?.engine === 'sprite' ? tryResolveSprite(m.sprite) : null;
+  const rank = (a: string): number => (DEFAULT_ACTIONS.includes(a) ? 0 : 1);
+  const acts = sprite
+    ? Object.keys(sprite.actions).sort((a, b) => rank(a) - rank(b))
+    : (m?.actions ?? ['wave', 'nod']);
   return acts.slice(0, 2);
 });
+const engineText = (engine: string): string => engineLabel(engine, t);
 
 async function load(): Promise<void> {
   const [r, p] = await Promise.all([
@@ -198,11 +208,11 @@ async function doResetEmotions(): Promise<void> {
   const item = items.value.find((x) => x.characterId === resetting.value?.id);
   resetting.value = null;
   if (!item) return;
-  const { emotions, live2dEmotions, ...rest } = item.manifest;
-  void emotions;
-  void live2dEmotions;
   try {
-    await window.openpet.rpc('character.updateManifest', { id: item.characterId, manifest: rest });
+    await window.openpet.rpc('character.updateManifest', {
+      id: item.characterId,
+      manifest: withoutEmotionOverrides(item.manifest),
+    });
     toast(t('settings.characters.emotionsReset'));
     await load();
   } catch (e) {
@@ -544,6 +554,14 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
             :alt="c.name"
             class="mx-auto mt-2.5 h-[200px] w-[200px] rounded-card object-cover"
           />
+          <!-- ⑳ 无立绘的帧动画角色：CSS 帧预览（悬停播 idle） -->
+          <SpriteThumb
+            v-else-if="c.sprite"
+            :source="c.sprite"
+            :width="200"
+            :height="200"
+            class="mx-auto mt-2.5 rounded-card bg-white/20"
+          />
           <div
             v-else
             class="mx-auto mt-2.5 flex h-[200px] w-[200px] items-center justify-center rounded-card text-5xl font-semibold text-white"
@@ -558,10 +576,9 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
             <div class="truncate font-semibold text-text-main">{{ c.name }}</div>
             <div class="mt-1 flex items-center gap-1.5 text-xs text-text-sub">
               <span>v{{ c.version }}</span>
-              <span
-                class="rounded-btn border border-glass-border px-1.5 py-0.5 uppercase"
-                >{{ c.engine }}</span
-              >
+              <span class="rounded-btn border border-glass-border px-1.5 py-0.5">{{
+                engineText(c.engine)
+              }}</span>
               <span v-if="c.builtin" class="rounded-btn border border-glass-border px-1.5 py-0.5"
                 >{{ t('settings.characters.builtin') }}</span
               >
@@ -601,15 +618,22 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           class="relative flex h-[320px] w-[220px] flex-col overflow-hidden rounded-card border border-glass-border"
         >
           <span
-            class="absolute left-2 top-2 z-10 rounded-btn border border-glass-border bg-white/60 px-1.5 py-0.5 text-xs uppercase text-text-sub"
+            class="absolute left-2 top-2 z-10 rounded-btn border border-glass-border bg-white/60 px-1.5 py-0.5 text-xs text-text-sub"
           >
-            {{ b.engine }}
+            {{ engineText(b.engine) }}
           </span>
           <img
             v-if="b.previewUrl"
             :src="b.previewUrl"
             :alt="b.name"
             class="mx-auto mt-2.5 h-[160px] w-[200px] rounded-card object-cover"
+          />
+          <SpriteThumb
+            v-else-if="b.sprite"
+            :source="b.sprite"
+            :width="200"
+            :height="160"
+            class="mx-auto mt-2.5 rounded-card bg-white/20"
           />
           <div
             v-else
@@ -853,7 +877,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
         <div class="mt-3">
           <div v-if="!renaming" class="flex items-center gap-2">
             <span class="text-lg font-semibold text-text-main">{{ selected.name }}</span>
-            <span class="rounded-btn border border-glass-border px-1.5 py-0.5 text-xs uppercase text-text-sub">{{ selected.engine }}</span>
+            <span class="rounded-btn border border-glass-border px-1.5 py-0.5 text-xs text-text-sub">{{ engineText(selected.engine) }}</span>
             <span class="rounded-btn border border-glass-border px-1.5 py-0.5 text-xs text-text-sub">v{{ selected.version }}</span>
             <span v-if="selected.builtin" class="rounded-btn border border-glass-border px-1.5 py-0.5 text-xs text-text-sub">{{ t('settings.characters.builtin') }}</span>
           </div>
@@ -949,7 +973,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           <div class="mb-1 text-xs font-medium uppercase tracking-wide text-text-sub">{{ t('settings.characters.bindingSection') }}</div>
           <div class="flex justify-between border-b border-glass-border py-2">
             <span class="text-text-sub">{{ t('settings.characters.engine') }}</span>
-            <span class="uppercase text-text-main">{{ selected.engine }}</span>
+            <span class="text-text-main">{{ engineText(selected.engine) }}</span>
           </div>
           <div class="flex justify-between border-b border-glass-border py-2">
             <span class="text-text-sub">{{ t('settings.characters.modelFile') }}</span>
@@ -1012,7 +1036,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           </div>
           <div class="flex justify-between">
             <span class="text-text-sub">{{ t('settings.characters.engine') }}</span>
-            <span class="uppercase text-text-main">{{ confirmImport.summary.engine }}</span>
+            <span class="text-text-main">{{ engineText(confirmImport.summary.engine) }}</span>
           </div>
         </div>
         <div class="mt-5 flex justify-end gap-2">
@@ -1152,12 +1176,30 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
             :disabled="!bodyCards.length"
           >
             <option v-for="b in bodyCards" :key="b.id" :value="b.id">
-              {{ b.name }}（{{ b.engine }}）
+              {{ b.name }}（{{ engineText(b.engine) }}）
             </option>
           </select>
           <p v-if="!bodyCards.length" class="mt-1 text-xs" :style="{ color: 'var(--ds-danger)' }">
             {{ t('settings.characters.swap.noBodies') }}
           </p>
+          <!-- ⑳ 所选形象预览：立绘 / 帧动画常动 -->
+          <div v-if="swapBodyCard?.previewUrl || swapBodyCard?.sprite" class="mt-2 flex justify-center">
+            <img
+              v-if="swapBodyCard.previewUrl"
+              :src="swapBodyCard.previewUrl"
+              :alt="swapBodyCard.name"
+              class="h-[120px] w-[120px] rounded-card object-cover"
+            />
+            <SpriteThumb
+              v-else-if="swapBodyCard.sprite"
+              :key="swapBodyCard.id"
+              :source="swapBodyCard.sprite"
+              :width="120"
+              :height="120"
+              autoplay
+              class="rounded-card bg-white/20"
+            />
+          </div>
         </div>
 
         <div class="mt-3 rounded-card border border-glass-border p-2.5 text-sm">
@@ -1166,8 +1208,8 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           <p v-if="swapCrossEngine" class="mt-1 text-xs text-text-sub">
             {{
               t('settings.characters.swap.crossEngineHint', {
-                from: swapTargetItem?.manifest.engine ?? '',
-                to: swapBodyCard?.engine ?? '',
+                from: engineText(swapTargetItem?.manifest.engine ?? ''),
+                to: engineText(swapBodyCard?.engine ?? ''),
               })
             }}
           </p>
@@ -1213,7 +1255,7 @@ const menuLabel = (key: CharacterMenuItem['key'], card: { builtin: boolean }): s
           </div>
           <div class="flex justify-between">
             <span class="text-text-sub">{{ t('settings.characters.engine') }}</span>
-            <span class="uppercase text-text-main">{{ bodyImport.summary.engine }}</span>
+            <span class="text-text-main">{{ engineText(bodyImport.summary.engine) }}</span>
           </div>
         </div>
         <div class="mt-5 flex justify-end gap-2">

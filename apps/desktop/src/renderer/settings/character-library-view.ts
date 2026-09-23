@@ -1,5 +1,20 @@
 /** E1 角色库纯逻辑（卡片 VM/排序）+ ⑩.7 E2 详情（元数据格式化/persona 生效层/菜单表）；SFC 薄渲染。 */
-import type { CharacterManifest } from '@openpet/protocol';
+import type { CharacterManifest, SpriteSheet } from '@openpet/protocol';
+import { tryResolveSprite } from './sprite-thumb.js';
+
+/** ⑳ 帧动画缩略图数据源（无 preview 的精灵卡片 / 抽屉用）。 */
+export interface SpriteThumbSource {
+  url: string;
+  sheet: SpriteSheet;
+}
+
+/** engine=sprite 且有图集描述 → 缩略图数据源；assetRoot = asset:// 的 host（角色 id / 形象 id）。 */
+export function spriteSourceOf(
+  assetRoot: string,
+  m: { engine: string; model: string; sprite?: SpriteSheet | undefined },
+): SpriteThumbSource | null {
+  return m.engine === 'sprite' && m.sprite ? { url: `asset://${assetRoot}/${m.model}`, sheet: m.sprite } : null;
+}
 
 export interface CharacterListItem {
   characterId: string;
@@ -30,12 +45,16 @@ export interface CharacterCardVm {
   voice: string | null;
   modelPath: string;
   hasEmotionOverride: boolean;
+  /** ⑳ 帧动画缩略图数据源（非 sprite = null）。 */
+  sprite: SpriteThumbSource | null;
   sizeBytes: number | undefined;
   installedAt: number | undefined;
 }
 
 export function toCardVm(item: CharacterListItem): CharacterCardVm {
   const m = item.manifest;
+  // ⑳ 帧动画：词表计数 = 映射到行的情绪 / 动作数（其余走程序化）
+  const resolved = m.engine === 'sprite' ? tryResolveSprite(m.sprite) : null;
   return {
     id: item.characterId,
     name: m.name,
@@ -46,18 +65,33 @@ export function toCardVm(item: CharacterListItem): CharacterCardVm {
     previewUrl: m.preview ? `asset://${item.characterId}/${m.preview}` : null,
     hasPersona: m.persona !== undefined,
     cueCount: m.cues?.length ?? 0,
-    emotionCount: Object.keys(m.emotions ?? {}).length,
-    actionCount: m.actions?.length ?? 0,
+    emotionCount: resolved ? Object.keys(resolved.emotions).length : Object.keys(m.emotions ?? {}).length,
+    actionCount: resolved ? Object.keys(resolved.actions).length : (m.actions?.length ?? 0),
     author: m.author ?? null,
     license: m.license ?? null,
     description: m.description ?? null,
     tags: m.tags ?? [],
     voice: m.voice ?? null,
     modelPath: m.model,
-    hasEmotionOverride: m.emotions !== undefined || m.live2dEmotions !== undefined,
+    hasEmotionOverride:
+      m.emotions !== undefined || m.live2dEmotions !== undefined || m.sprite?.emotions !== undefined,
+    sprite: spriteSourceOf(item.characterId, m),
     sizeBytes: item.sizeBytes,
     installedAt: item.installedAt,
   };
+}
+
+/** 「重置情绪映射」：删 VRM / Live2D 情绪表与 ⑳ sprite.emotions（其余图集描述保留）。 */
+export function withoutEmotionOverrides(m: CharacterManifest): CharacterManifest {
+  const { emotions, live2dEmotions, ...rest } = m;
+  void emotions;
+  void live2dEmotions;
+  if (rest.sprite?.emotions !== undefined) {
+    const { emotions: spriteEmotions, ...sprite } = rest.sprite;
+    void spriteEmotions;
+    rest.sprite = sprite;
+  }
+  return rest;
 }
 
 export function sortCards<T extends { active: boolean; builtin: boolean; name: string }>(

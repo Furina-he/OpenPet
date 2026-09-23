@@ -30,10 +30,14 @@ export function formatMemoryMb(mb: number): string {
   return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
 }
 
-export type ShowcaseMode = 'live' | 'preview' | 'initial';
-/** 降级链：vrm 且未失败 → 实时；否则 preview 图；无 preview → 首字占位。 */
-export function showcaseMode(engine: string, hasPreview: boolean, vrmFailed: boolean): ShowcaseMode {
-  if (engine === 'vrm' && !vrmFailed) return 'live';
+export type ShowcaseMode = 'live' | 'sprite' | 'preview' | 'initial';
+/**
+ * 降级链：vrm 且未失败 → 实时；⑳ sprite 且未失败 → CSS 帧预览（Hub 不载 pixi）；
+ * 否则 preview 图；无 preview → 首字占位。
+ */
+export function showcaseMode(engine: string, hasPreview: boolean, failed: boolean): ShowcaseMode {
+  if (engine === 'vrm' && !failed) return 'live';
+  if (engine === 'sprite' && !failed) return 'sprite';
   return hasPreview ? 'preview' : 'initial';
 }
 

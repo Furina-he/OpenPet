@@ -3,6 +3,7 @@
  * 形象包 preview 走 asset:// 第三根（bodies），与角色卡片同一套 URL 形状。
  */
 import type { BodyPack } from '@openpet/protocol';
+import { spriteSourceOf, type SpriteThumbSource } from './character-library-view.js';
 
 export interface InstalledBodyLike {
   body: BodyPack;
@@ -20,6 +21,8 @@ export interface BodyCardVm {
   description: string | null;
   tags: string[];
   previewUrl: string | null;
+  /** ⑳ 帧动画缩略图数据源（非 sprite = null）。 */
+  sprite: SpriteThumbSource | null;
   sizeBytes: number;
   installedAt: number;
 }
@@ -36,6 +39,7 @@ export function toBodyCard(item: InstalledBodyLike): BodyCardVm {
     description: b.description ?? null,
     tags: b.tags ?? [],
     previewUrl: b.preview ? `asset://${b.id}/${b.preview}` : null,
+    sprite: spriteSourceOf(b.id, b),
     sizeBytes: item.sizeBytes,
     installedAt: item.installedAt,
   };

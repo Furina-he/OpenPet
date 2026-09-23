@@ -104,6 +104,7 @@ export const en: LocaleMessages = {
         companion: 'Together for {days} days',
         goLibrary: 'Character library',
         liveTag: 'VRM live',
+        spriteTag: 'Sprite preview',
       },
     },
     general: {
@@ -612,6 +613,7 @@ export const en: LocaleMessages = {
       empty: 'The library is empty. Import a .dspack character pack or a folder to start.',
       version: 'Version',
       engine: 'Engine',
+      engines: { vrm: 'VRM', live2d: 'Live2D', sprite: 'Sprite' },
       source: 'Source',
       imported: 'Imported',
       persona: 'Persona',
@@ -809,6 +811,47 @@ export const en: LocaleMessages = {
       cueSayPlaceholder: 'Empty = silent',
       voiceHint: 'Bind a voice from the voice library; empty uses the default from System → Voice.',
       openFolder: 'Open character folder',
+      sprite: {
+        states: 'Sheet states',
+        statesHint:
+          'Hover to preview, click to play it on the left. Rows and frame counts come with the sheet and are not edited here.',
+        frames: '{n} frames',
+        emotionMap: 'Emotion → row',
+        emotionHint:
+          'Loop row = keeps playing while the emotion lasts; enter row = plays once first. Neither = no row change, procedural pose only.',
+        emotion: 'Emotion',
+        loop: 'Loop row',
+        enter: 'Enter row',
+        speed: 'Speed',
+        none: '(none)',
+        actionMap: 'Action → row',
+        actionHint:
+          'Actions set to procedural keep the current row and are shown with 2D motion (breathing, nod, tilt…).',
+        procedural: '(procedural)',
+        slots: 'System slots',
+        slot: {
+          idle: 'Idle',
+          idleLow: 'Idle (low energy)',
+          idleHigh: 'Idle (high energy)',
+          talk: 'Talking',
+          dragLeft: 'Dragged left',
+          dragRight: 'Dragged right',
+        },
+        display: 'Display',
+        smoothing: 'Scaling',
+        smooth: 'Smooth (painted art)',
+        pixel: 'Pixel (nearest, no pixel crawl)',
+        fit: 'Fit to window',
+        contain: 'Scale to fit',
+        integer: 'Integer multiple (crisper pixel art)',
+        facing: 'Art faces',
+        facings: { front: 'Front', left: 'Left', right: 'Right' },
+        flipToCursor: 'Turn toward cursor',
+        flipHint:
+          'Only when the art faces left or right: flips horizontally when the cursor is behind it. Best for symmetric designs.',
+        proceduralLife: 'Procedural breathing and weight shift',
+        proceduralLifeHint: 'Turn off for sheets whose frames already have a strong idle motion.',
+      },
       tabs: {
         appearance: 'Appearance',
         persona: 'Persona',
@@ -830,6 +873,7 @@ export const en: LocaleMessages = {
         emotionWeight: 'Expression weights must be between 0 and 1',
         vocabName:
           'Vocabulary names must start with a letter and contain only letters/digits/underscore/hyphen',
+        spriteInvalid: 'Sprite mapping error: every target must be a state that exists in the sheet',
       },
     },
     trace: {
