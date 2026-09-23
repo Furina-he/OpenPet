@@ -74,6 +74,8 @@ app.whenReady().then(async () => {
   const importedCharactersRoot = path.join(app.getPath('userData'), 'characters');
   // ⑰ 形象库根（userData/bodies）：肉体包（.dsbody）装这里，不进角色列表。
   const bodiesRoot = path.join(app.getPath('userData'), 'bodies');
+  // ⑲ 记忆 wiki 根（userData/memory）：markdown 真源，用户可用 Obsidian 直接打开。
+  const memoryRoot = path.join(app.getPath('userData'), 'memory');
   // 线 B-2 Desktop 插件：worker entry 同 provider 手法（真实文件路径喂 new Worker）；安装根 userData/plugins。
   const pluginEntryPath = toUnpackedPath(require.resolve('@openpet/sidecar/dist/plugin-entry.js'));
   const pluginsRoot = path.join(app.getPath('userData'), 'plugins');
@@ -95,14 +97,11 @@ app.whenReady().then(async () => {
   wins = createAppWindows();
   wins.character.webContents.once('did-finish-load', () => perf.measure('boot', 'cold-start'));
   // 每 5min 打 rss（仅 developerMode 开时，避免刷日志）；数字由用户真窗实测记 RESULTS。
-  setInterval(
-    () => {
-      if (prefsStore.getAll()['general.developerMode'] === true) {
-        console.info(`[perf] rss ${Math.round(process.memoryUsage().rss / 1048576)}MB`);
-      }
-    },
-    5 * 60_000,
-  );
+  setInterval(() => {
+    if (prefsStore.getAll()['general.developerMode'] === true) {
+      console.info(`[perf] rss ${Math.round(process.memoryUsage().rss / 1048576)}MB`);
+    }
+  }, 5 * 60_000);
   const keychain = new Keychain(path.join(app.getPath('userData'), 'secrets.kc'));
   const dataDir = path.join(app.getPath('userData'), 'data');
   mkdirSync(dataDir, { recursive: true });
@@ -130,12 +129,10 @@ app.whenReady().then(async () => {
   });
   // 窗口定位器 + 广播：registerIpcRouter 与 J2 热键（app-actions）共用同一组，避免重复。
   const targets = rendererTargets(wins);
-  const characterWindow = () =>
-    wins && !wins.character.isDestroyed() ? wins.character : null;
+  const characterWindow = () => (wins && !wins.character.isDestroyed() ? wins.character : null);
   const overlayWindow = () => (wins && !wins.overlay.isDestroyed() ? wins.overlay : null);
   const settingsWindow = () => (wins && !wins.settings.isDestroyed() ? wins.settings : null);
-  const onboardingWindow = () =>
-    wins && !wins.onboarding.isDestroyed() ? wins.onboarding : null;
+  const onboardingWindow = () => (wins && !wins.onboarding.isDestroyed() ? wins.onboarding : null);
   const broadcast = (channel: string, params: unknown): void => {
     for (const wc of targets()) if (!wc.isDestroyed()) wc.send(`openpet:notify:${channel}`, params);
     // i18n：语言切换 → 托盘菜单按新字典重建（角色右键菜单每次 popup 现取，无需处理）。
@@ -149,14 +146,14 @@ app.whenReady().then(async () => {
   // 批次⑥ D7：上次会话若 stage 了 .dsbak 导入（<sqlitePath>.import），建 store 前原子换库
   //（旧库转 .bak-<ts> 兜底）。必须先于 registerIpcRouter（它持 DB 单连接）。
   const sqlitePath = path.join(dataDir, 'sessions.db');
-  applyPendingImport(sqlitePath);
+  applyPendingImport(sqlitePath, Date.now, memoryRoot); // ⑲ 同时原子替换 wiki 目录
   // ⑪ 自动更新：dev/portable 门控；electron-updater CJS 动态载入（仅 packaged 需要）。
   const updateMode: UpdateMode = !app.isPackaged
     ? 'dev'
     : process.env.PORTABLE_EXECUTABLE_DIR
       ? 'portable'
       : 'packaged';
-  const { autoUpdater } = (require('electron-updater') as typeof import('electron-updater'));
+  const { autoUpdater } = require('electron-updater') as typeof import('electron-updater');
   const updateService = createUpdateService({
     updater: autoUpdater,
     mode: updateMode,
@@ -186,6 +183,7 @@ app.whenReady().then(async () => {
     charactersRoot,
     importedCharactersRoot,
     bodiesRoot,
+    memoryRoot,
     pickCharacterPath: async (kind) => {
       const r = await dialog.showOpenDialog({
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
@@ -225,9 +223,7 @@ app.whenReady().then(async () => {
     pickStarPath: async (kind) => {
       const r = await dialog.showOpenDialog({
         properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
-        ...(kind === 'zip'
-          ? { filters: [{ name: 'AstrBot 插件包', extensions: ['zip'] }] }
-          : {}),
+        ...(kind === 'zip' ? { filters: [{ name: 'AstrBot 插件包', extensions: ['zip'] }] } : {}),
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },
@@ -260,6 +256,7 @@ app.whenReady().then(async () => {
       return r.canceled ? null : (r.filePath ?? null);
     },
     openDataDir: () => void shell.openPath(app.getPath('userData')),
+    openPath: (dir) => void shell.openPath(dir),
     relaunch: () => {
       app.relaunch();
       app.exit(0);
@@ -352,7 +349,8 @@ app.whenReady().then(async () => {
     actions: {
       chat: () => appActions.showChat(overlayWindow),
       toggleHide: () => appActions.toggleCharacter(characterWindow),
-      clickThrough: () => appActions.toggleClickThroughPref({ prefsStore, characterWindow, broadcast }),
+      clickThrough: () =>
+        appActions.toggleClickThroughPref({ prefsStore, characterWindow, broadcast }),
       dnd: () => appActions.toggleDndPref({ prefsStore, broadcast }),
       openHub: () => appActions.openHub(settingsWindow),
     },

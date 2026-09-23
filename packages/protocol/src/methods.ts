@@ -19,6 +19,12 @@ import {
 } from './plugin-config.js';
 import { KbSchema, KbDocSchema, KbHitSchema } from './kb-config.js';
 import { MemoryFactSchema } from './memory-config.js';
+import {
+  MemoryPageSchema,
+  MemoryStatusSchema,
+  MemoryTreeSchema,
+  MEMORY_PAGE_PATH_RE,
+} from './memory-wiki.js';
 import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
@@ -50,6 +56,16 @@ export const Methods = {
   },
   'chat.cancel': {
     params: z.object({ sessionId: z.string() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'chat.retry': {
+    // 出错后"以当前这句再试"：以最后一条 user 重新生成，删掉其后的 assistant 行，不重复入库 user。
+    params: z.object({ sessionId: z.string() }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'chat.editResend': {
+    // 编辑已发消息后重发：删掉最后一轮（user + 其后全部）再按新文本发送。
+    params: z.object({ sessionId: z.string(), text: z.string() }),
     result: z.object({ ok: z.literal(true) }),
   },
   'chat.snapshot': {
@@ -204,7 +220,11 @@ export const Methods = {
     params: z.object({}),
     result: z.union([
       z.object({ cancelled: z.literal(true) }),
-      z.object({ cancelled: z.literal(false), ok: z.literal(true), requiresRestart: z.literal(true) }),
+      z.object({
+        cancelled: z.literal(false),
+        ok: z.literal(true),
+        requiresRestart: z.literal(true),
+      }),
     ]),
   },
   'app.exportDataPick': {
@@ -212,7 +232,12 @@ export const Methods = {
     params: z.object({}),
     result: z.union([
       z.object({ cancelled: z.literal(true) }),
-      z.object({ cancelled: z.literal(false), ok: z.literal(true), bytes: z.number().int(), path: z.string() }),
+      z.object({
+        cancelled: z.literal(false),
+        ok: z.literal(true),
+        bytes: z.number().int(),
+        path: z.string(),
+      }),
     ]),
   },
   'app.relaunch': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },
@@ -309,13 +334,14 @@ export const Methods = {
   'app.prefs.changed': {
     params: z.object({
       key: z.string().min(1),
-      // record：会话管理指针 chat.activeSessions 经 chat.setActiveSession 广播（set 面仍不收对象）。
+      // record：会话管理指针 chat.activeSessions 经 chat.setActiveSession 广播；⑱ pet.mood
+      // {value, updatedAt} 经 MoodState 直写 store 后手动广播（set 面仍不收对象）。
       value: z.union([
         z.string(),
         z.number(),
         z.boolean(),
         z.array(z.unknown()),
-        z.record(z.string()),
+        z.record(z.unknown()),
       ]),
     }),
     result: z.null(),
@@ -558,6 +584,12 @@ export const Methods = {
     params: z.object({ x: z.number(), y: z.number() }),
     result: z.null(),
   },
+  // ⑱ 节拍手势：⑭ 自然节奏每发一段，按段尾标点发一拍（仅 default 会话、仅 pet.beatGestures 开）。
+  // 渲染端把它当点缀：有活动作/间隔不足即丢弃，永不排队。
+  'behavior.beat': {
+    params: z.object({ sessionId: z.string(), kind: z.enum(['question', 'exclaim', 'period']) }),
+    result: z.null(),
+  },
 
   // --- request/response: Worker → Main（经 MessagePort 的 plugin.request 帧；
   //     身份来自通道（哪个 worker 的 port），不自报 pluginId —— M5 多 worker 时
@@ -590,6 +622,11 @@ export const Methods = {
     params: z.object({ source: ProviderSourceSchema }),
     result: z.object({ ok: z.literal(true), id: z.string() }),
   },
+  'provider.renameSource': {
+    // D3：改供应商源 ID（照 AstrBot 源 id 可编辑）——连带迁移其模型条目 id/sourceId 与各能力默认/杂务模型指针。
+    params: z.object({ from: z.string().min(1), to: z.string().min(1) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
   'provider.deleteSource': {
     params: z.object({ id: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
@@ -599,6 +636,11 @@ export const Methods = {
     result: z.object({ models: z.array(z.string()) }),
   },
   'provider.addModel': {
+    params: z.object({ entry: ModelEntrySchema }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'provider.updateModel': {
+    // 模型条目整体更新（启用 / 能力 / 上下文窗口；id 不变）——D3 模型配置弹窗。
     params: z.object({ entry: ModelEntrySchema }),
     result: z.object({ ok: z.literal(true) }),
   },
@@ -907,6 +949,7 @@ export const Methods = {
   },
 
   // --- request/response: Renderer → Main（批次⑥ F-AI-06 长期记忆 / F3 记忆页）---
+  // ⑲ 兼容期：list = profile 各节行视图（只读）；add = 写 profile「杂项」节（source:user）。
   'memory.list': {
     params: z.object({}),
     result: z.object({ facts: z.array(MemoryFactSchema) }), // 当前角色
@@ -915,15 +958,57 @@ export const Methods = {
     params: z.object({ text: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), id: z.number().int() }),
   },
+  /** @deprecated ⑲ 起 F3 不再调用（wiki 无 id 行）；下批删。 */
   'memory.delete': {
     params: z.object({ id: z.number().int() }),
     result: z.object({ ok: z.literal(true) }),
   },
+  /** @deprecated ⑲ 起由节级 `<!-- locked -->` 取代；下批删。 */
   'memory.setPinned': {
     params: z.object({ id: z.number().int(), pinned: z.boolean() }),
     result: z.object({ ok: z.literal(true) }),
   },
+  /** ⑲ 语义改为：清 wiki（当前角色页 + 共享 user/）+ 旧 memory_fact 表。 */
   'memory.clear': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },
+
+  // --- ⑲ 记忆 v2 角色 wiki（spec §6）：F3 wiki 浏览器 RPC 面 ---
+  'memory.tree': { params: z.object({}), result: MemoryTreeSchema },
+  'memory.readPage': {
+    params: z.object({ path: z.string().regex(MEMORY_PAGE_PATH_RE) }),
+    // raw = 文件全文（frontmatter + 正文，编辑器编辑对象）；page = 解析后结构。
+    result: z.object({ raw: z.string(), page: MemoryPageSchema }),
+  },
+  'memory.writePage': {
+    // content = 文件全文；Main 解析 frontmatter → MemoryPageSchema 校验 → source:user → 原子写 + 重索引。
+    params: z.object({
+      path: z.string().regex(MEMORY_PAGE_PATH_RE),
+      content: z.string().max(40_000),
+    }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'memory.deletePage': {
+    // 仅 people/topics 可删；固定页（profile/relationship/timeline）删 = 重置为骨架。
+    params: z.object({ path: z.string().regex(MEMORY_PAGE_PATH_RE) }),
+    result: z.object({ ok: z.literal(true) }),
+  },
+  'memory.compileNow': {
+    params: z.object({}),
+    result: z.object({
+      ok: z.boolean(),
+      ops: z.number().int().nonnegative(),
+      error: z.string().optional(),
+    }),
+  },
+  'memory.openFolder': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },
+  'memory.search': {
+    params: z.object({ q: z.string().max(200) }),
+    result: z.object({
+      hits: z.array(z.object({ path: z.string(), title: z.string(), snippet: z.string() })),
+    }),
+  },
+  'memory.status': { params: z.object({}), result: MemoryStatusSchema },
+  // --- notification: Main → Hub（⑲ wiki 页变更：编译器落盘 / 用户保存 / 迁移完成）---
+  'memory.changed': { params: z.object({ pages: z.array(z.string()) }), result: z.null() },
 
   // --- request/response: Renderer → Main（§6 Persona 管理）---
   'persona.getAll': {

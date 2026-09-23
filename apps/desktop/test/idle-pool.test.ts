@@ -11,6 +11,7 @@ describe('IDLE_POOL', () => {
   it('every variant is low-amplitude and references a real action', () => {
     const actions = ['wave', 'nod', 'shake', 'fidget', 'stretch', 'sigh', 'jump', 'tilt'];
     for (const v of IDLE_POOL) {
+      expect(Math.abs(v.scale)).toBeLessThanOrEqual(0.7);
       expect(actions).toContain(v.action);
       expect(v.scale).toBeGreaterThan(0);
       expect(v.scale).toBeLessThanOrEqual(0.7); // idle 变体必须低幅，不与显式动作混淆
@@ -55,7 +56,7 @@ describe('selectIdleVariants', () => {
 });
 
 describe('planNextIdle', () => {
-  it('schedules within [4s, 10s] and picks from the subset', () => {
+  it('schedules within [5s, 11s]（mid）and picks from the subset', () => {
     const subset = selectIdleVariants({ mood: 'neutral', energy: 'mid' });
     const lo = planNextIdle(1000, subset, () => 0);
     const hi = planNextIdle(1000, subset, () => 0.999999);

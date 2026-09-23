@@ -167,3 +167,54 @@ describe('⑭ 气泡分段显示（newBubble，display-only）', () => {
     expect(explodeSegments(view.messages)).toEqual(view.messages); // 引用透传（情绪 chip 判定依赖）
   });
 });
+
+describe('ChatView · 重试 / 编辑重发乐观视图', () => {
+  it('beginRetry：去掉最后 user 之后的出错回复，补空 assistant 进入流式；无 user → false', () => {
+    const { view } = make();
+    expect(view.beginRetry()).toBe(false);
+    view.applySnapshot({
+      sessionId: S,
+      seq: 2,
+      streaming: false,
+      messages: [
+        { role: 'user', text: '一', finishReason: null },
+        { role: 'assistant', text: '回一', finishReason: 'stop' },
+        { role: 'user', text: '二', finishReason: null },
+        { role: 'assistant', text: '', finishReason: 'error', errorKind: 'network' },
+      ],
+    });
+    expect(view.beginRetry()).toBe(true);
+    expect(view.messages.map((m) => [m.role, m.text, m.finishReason])).toEqual([
+      ['user', '一', null],
+      ['assistant', '回一', 'stop'],
+      ['user', '二', null],
+      ['assistant', '', null],
+    ]);
+    expect(view.streaming).toBe(true);
+    view.onStream({ sessionId: S, seq: 3, text: '重来' });
+    view.onDone({ sessionId: S, finishReason: 'stop' });
+    expect(view.messages.at(-1)).toEqual({ role: 'assistant', text: '重来', finishReason: 'stop' });
+  });
+
+  it('beginEdit：删最后一轮后以新文本回显；lastUserIndex 定位', () => {
+    const { view } = make();
+    view.applySnapshot({
+      sessionId: S,
+      seq: 0,
+      streaming: false,
+      messages: [
+        { role: 'user', text: '一', finishReason: null },
+        { role: 'assistant', text: '回一', finishReason: 'stop' },
+        { role: 'user', text: '二', finishReason: null },
+        { role: 'assistant', text: '回二', finishReason: 'stop' },
+      ],
+    });
+    expect(view.lastUserIndex()).toBe(2);
+    view.beginEdit('二改');
+    expect(view.messages.map((m) => m.text)).toEqual(['一', '回一', '二改', '']);
+    expect(view.streaming).toBe(true);
+    const empty = make().view;
+    empty.beginEdit('首句');
+    expect(empty.messages.map((m) => m.text)).toEqual(['首句', '']);
+  });
+});

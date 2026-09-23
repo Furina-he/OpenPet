@@ -24,6 +24,8 @@ export const CueEventSchema = z.enum([
   'file.drop',
   'drag.start',
   'drag.end',
+  // ⑱ 节拍：段尾感叹号（ConversationCore 每轮至多发 1 次；只做 mood 微增量，无表现）
+  'beat.exclaim',
 ]);
 export type CueEvent = z.infer<typeof CueEventSchema>;
 

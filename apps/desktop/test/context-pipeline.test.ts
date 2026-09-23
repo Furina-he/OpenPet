@@ -3,6 +3,8 @@ import { PackLorebookSchema } from '@openpet/protocol';
 import { createContextPipeline } from '../electron/main/context-pipeline.js';
 import { MemoryStore } from '../electron/main/db/memory-store.js';
 
+const MEM_SZ = { resident: ['### 用户档案\n用户在深圳工作'], pages: [] };
+
 describe('context-pipeline', () => {
   it('§6 persona dep 注入 assembleContext', async () => {
     const pipeline = createContextPipeline({
@@ -26,11 +28,37 @@ describe('context-pipeline', () => {
     expect(req.messages[1]).toEqual({ role: 'user', content: 'hi' });
   });
 
-  it('批次⑥ memoryStage：retrieveMemory 命中 → 注入；异常 → 放行', async () => {
+  it('⑲ memoryStage：retrieveMemory 命中 → 注入 + history 传入 + trace 三路计数；异常 → 放行', async () => {
+    const store = new MemoryStore();
+    store.appendMessage({
+      characterId: 'c',
+      sessionId: 's',
+      role: 'user',
+      text: '早些的消息',
+      ts: 1,
+    });
+    let gotHistory: readonly string[] = [];
+    const trace: Array<[string, unknown]> = [];
+    const p2 = createContextPipeline({
+      store,
+      character: () => ({ id: 'c', name: '小灵' }),
+      retrieveMemory: async (_q, h) => {
+        gotHistory = h;
+        return { ...MEM_SZ, stats: { resident: 1, keyword: 2, vector: 0, chars: 30 } };
+      },
+    });
+    await p2.build({ sessionId: 's', userText: 'hi', trace: (a, f) => trace.push([a, f]) });
+    expect(gotHistory).toEqual(['早些的消息']);
+    expect(trace.find(([a]) => a === 'context.memory')?.[1]).toEqual({
+      resident: 1,
+      keyword: 2,
+      vector: 0,
+      chars: 30,
+    });
     const pipeline = createContextPipeline({
       store: new MemoryStore(),
       character: () => ({ id: 'c', name: '小灵' }),
-      retrieveMemory: async () => ['用户在深圳工作'],
+      retrieveMemory: async () => MEM_SZ,
     });
     const req = await pipeline.build({ sessionId: 's', userText: 'hi' });
     expect(req.messages[0]!.content).toContain('深圳');
@@ -44,7 +72,6 @@ describe('context-pipeline', () => {
     await expect(boom.build({ sessionId: 's', userText: 'hi' })).resolves.toBeTruthy();
   });
 });
-
 
 describe('⑮ summaryStage', () => {
   it('sessionSummary 供给命中 → 注入「早前对话摘要」块 + trace；返回 null / 缺省不注入', async () => {
@@ -86,7 +113,7 @@ describe('⑮ 并行检索（spec §5）', () => {
       },
       retrieveMemory: async () => {
         events.push('memory:start');
-        return ['用户在深圳工作'];
+        return MEM_SZ;
       },
     });
     const req = await pipeline.build({ sessionId: 's', userText: 'hi' });
@@ -101,7 +128,7 @@ describe('⑮ 并行检索（spec §5）', () => {
     const pipeline = createContextPipeline({
       store: new MemoryStore(),
       character: () => ({ id: 'c', name: '小灵' }),
-      retrieveMemory: async () => ['用户在深圳工作'],
+      retrieveMemory: async () => MEM_SZ,
       lorebook: () => {
         throw new Error('lore boom');
       },
@@ -114,15 +141,28 @@ describe('⑮ 并行检索（spec §5）', () => {
 describe('⑫ loreStage', () => {
   it('命中注入 + trace context.lore；无 lorebook 供给不触发', async () => {
     const store = new MemoryStore();
-    store.appendMessage({ characterId: 'a', sessionId: 's', role: 'user', text: '我们聊过 Nyx 城', ts: 1 });
+    store.appendMessage({
+      characterId: 'a',
+      sessionId: 's',
+      role: 'user',
+      text: '我们聊过 Nyx 城',
+      ts: 1,
+    });
     const trace: Array<[string, unknown]> = [];
     const pipeline = createContextPipeline({
       store,
       character: () => ({ id: 'a', name: 'A' }),
-      lorebook: () => PackLorebookSchema.parse({ entries: [{ keys: ['Nyx 城'], content: '城建在悬崖上' }] }),
+      lorebook: () =>
+        PackLorebookSchema.parse({ entries: [{ keys: ['Nyx 城'], content: '城建在悬崖上' }] }),
     });
-    const req = await pipeline.build({ sessionId: 's', userText: '继续说', trace: (a, f) => trace.push([a, f]) });
+    const req = await pipeline.build({
+      sessionId: 's',
+      userText: '继续说',
+      trace: (a, f) => trace.push([a, f]),
+    });
     expect(req.messages[0]?.content).toContain('城建在悬崖上');
-    expect(trace.some(([a, f]) => a === 'context.lore' && (f as { hits: number }).hits === 1)).toBe(true);
+    expect(trace.some(([a, f]) => a === 'context.lore' && (f as { hits: number }).hits === 1)).toBe(
+      true,
+    );
   });
 });

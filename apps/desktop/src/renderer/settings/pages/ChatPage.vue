@@ -140,14 +140,60 @@ onUnmounted(() => {
   for (const u of unsubs) u();
 });
 
+/** 编辑已发消息（最后一条 user）：发送走 chat.editResend 替换最后一轮。 */
+const editing = ref(false);
+const lastUserMessage = computed(() => {
+  for (let i = displayMessages.value.length - 1; i >= 0; i--) {
+    const m = displayMessages.value[i]!;
+    if (m.role === 'user') return m;
+  }
+  return null;
+});
+function startEdit(): void {
+  if (readonly.value || streaming.value || !ready.value) return;
+  const i = view.lastUserIndex();
+  if (i < 0) return;
+  draft.value = view.messages[i]!.text;
+  editing.value = true;
+}
+function cancelEdit(): void {
+  editing.value = false;
+  draft.value = '';
+}
+async function retry(): Promise<void> {
+  // 以当前这句重试（chat.retry）：不重复发用户消息，出错的回复被替换。
+  if (readonly.value || streaming.value || !ready.value) return;
+  reasoningItems.value = [];
+  toolCalls.value = [];
+  lastDoneError.value = null;
+  if (!view.beginRetry()) return;
+  scrollToBottom();
+  try {
+    await window.openpet.rpc('chat.retry', { sessionId: sessionId.value });
+  } catch {
+    await rebuild();
+  }
+}
 async function send(): Promise<void> {
   if (readonly.value || streaming.value || !ready.value || !draft.value.trim()) return;
   const text = draft.value;
   // 新一轮：清空上一轮的推理/工具呈现（reasoning 即发即弃，不留历史）
   reasoningItems.value = [];
   toolCalls.value = [];
-  view.echoUser(text);
   draft.value = '';
+  if (editing.value) {
+    editing.value = false;
+    lastDoneError.value = null;
+    view.beginEdit(text);
+    scrollToBottom();
+    try {
+      await window.openpet.rpc('chat.editResend', { sessionId: sessionId.value, text });
+    } catch {
+      await rebuild();
+    }
+    return;
+  }
+  view.echoUser(text);
   scrollToBottom();
   try {
     await window.openpet.rpc('chat.send', { sessionId: sessionId.value, text });
@@ -171,7 +217,9 @@ function isTyping(m: ChatMessage): boolean {
     <!-- 主列：消息流 + 工具卡 + 输入 -->
     <div class="ds-glass flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel">
       <!-- 会话头：标题 + 新建（只读态显示来源提示） -->
-      <div class="flex h-11 shrink-0 items-center justify-between border-b border-glass-border px-4">
+      <div
+        class="flex h-11 shrink-0 items-center justify-between border-b border-glass-border px-4"
+      >
         <div class="flex min-w-0 items-center gap-2">
           <span class="truncate text-sm font-semibold text-text-main">{{ sessionTitle }}</span>
           <span
@@ -205,7 +253,9 @@ function isTyping(m: ChatMessage): boolean {
                 : ''
             "
           >
-            {{ m.role === 'assistant' ? t('settings.shell.avatarInitial') : t('settings.chat.you') }}
+            {{
+              m.role === 'assistant' ? t('settings.shell.avatarInitial') : t('settings.chat.you')
+            }}
           </span>
           <div
             class="max-w-[78%] rounded-bubble px-3.5 py-2.5 text-base leading-relaxed"
@@ -233,17 +283,34 @@ function isTyping(m: ChatMessage): boolean {
               v-else-if="m.role === 'assistant' && m.finishReason === 'error'"
               style="color: var(--ds-danger)"
             >
-              {{ t('settings.chat.replyError', { kind: m.errorKind ?? lastDoneError?.kind ?? t('settings.chat.unknown') }) }}<template
-                v-if="lastDoneError?.message"
-              >
+              {{
+                t('settings.chat.replyError', {
+                  kind: m.errorKind ?? lastDoneError?.kind ?? t('settings.chat.unknown'),
+                })
+              }}<template v-if="lastDoneError?.message">
                 {{ ': ' + lastDoneError.message }}</template
               >
+              <button
+                v-if="!readonly && !streaming"
+                class="ml-2 rounded-btn border border-glass-border px-2 py-0.5 text-sm text-text-sub hover:text-text-main"
+                @click="retry"
+              >
+                {{ t('settings.chat.retry') }}
+              </button>
             </span>
             <span v-else-if="isEmptyReply(m)" class="italic text-text-sub">
               {{ t('settings.chat.emptyReply') }}
             </span>
             <span v-else class="whitespace-pre-wrap break-words">{{ m.text }}</span>
           </div>
+          <button
+            v-if="!readonly && !streaming && ready && m === lastUserMessage"
+            class="self-center rounded-btn px-2 py-0.5 text-xs text-text-sub opacity-0 transition hover:text-text-main focus:opacity-100 group-hover:opacity-100"
+            :title="t('settings.chat.edit')"
+            @click="startEdit"
+          >
+            {{ t('settings.chat.edit') }}
+          </button>
         </div>
 
         <!-- 本轮工具调用卡 -->
@@ -256,12 +323,23 @@ function isTyping(m: ChatMessage): boolean {
           v-if="ready && messages.length === 0 && toolCalls.length === 0"
           class="flex h-full flex-col items-center justify-center text-text-sub"
         >
-          <span class="ds-avatar mb-3 flex h-12 w-12 items-center justify-center text-lg">{{ t('settings.shell.avatarInitial') }}</span>
+          <span class="ds-avatar mb-3 flex h-12 w-12 items-center justify-center text-lg">{{
+            t('settings.shell.avatarInitial')
+          }}</span>
           <p class="text-base">{{ t('settings.chat.emptyHint') }}</p>
         </div>
       </div>
 
       <div v-if="!readonly" class="border-t border-glass-border p-3">
+        <div
+          v-if="editing"
+          class="mb-2 flex items-center justify-between px-1 text-xs text-text-sub"
+        >
+          <span>{{ t('settings.chat.editingHint') }}</span>
+          <button class="hover:text-text-main" @click="cancelEdit">
+            {{ t('settings.chat.cancelEdit') }}
+          </button>
+        </div>
         <ChatInput
           v-model="draft"
           :disabled="!ready"

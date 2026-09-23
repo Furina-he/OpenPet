@@ -9,9 +9,15 @@ import { isThinking, shouldFold } from '../bubble-view';
 import { errorCopy, type ErrorAction } from '../error-copy';
 import EmotionChip from './EmotionChip.vue';
 
-const props = defineProps<{ message: ChatMessage; streaming: boolean; emotion?: string }>();
+const props = defineProps<{
+  message: ChatMessage;
+  streaming: boolean;
+  emotion?: string;
+  /** 最后一条 user 且非流式：显示「编辑」（编辑后重发 = 替换最后一轮）。 */
+  editable?: boolean;
+}>();
 const { t } = useI18n();
-const emit = defineEmits<{ action: [ErrorAction] }>();
+const emit = defineEmits<{ action: [ErrorAction]; edit: [] }>();
 
 const expanded = ref(false);
 const thinking = computed(() => isThinking(props.message, props.streaming));
@@ -73,7 +79,7 @@ const ACTION_LABEL = computed<Record<ErrorAction, string>>(() => ({
   <!-- 常态气泡 -->
   <div
     v-else
-    class="max-w-[86%] whitespace-pre-wrap break-words rounded-bubble px-3.5 py-2.5 text-base leading-relaxed"
+    class="group relative max-w-[86%] whitespace-pre-wrap break-words rounded-bubble px-3.5 py-2.5 text-base leading-relaxed"
     :class="message.role === 'user' ? 'self-end text-white' : 'ds-glass self-start text-text-main'"
     :style="
       message.role === 'user'
@@ -82,7 +88,9 @@ const ACTION_LABEL = computed<Record<ErrorAction, string>>(() => ({
     "
   >
     <EmotionChip v-if="emotion" :label="emotion" class="mb-1 mr-1" />
-    <span v-if="isEmptyReply(message)" class="italic text-text-sub">{{ t('overlay.emptyReply') }}</span>
+    <span v-if="isEmptyReply(message)" class="italic text-text-sub">{{
+      t('overlay.emptyReply')
+    }}</span>
     <span v-else :class="folded ? 'line-clamp-3' : ''">{{ message.text }}</span>
     <span
       v-if="message.role === 'assistant' && message.finishReason === null && streaming"
@@ -102,5 +110,15 @@ const ACTION_LABEL = computed<Record<ErrorAction, string>>(() => ({
     >
       {{ t('overlay.cancelled') }}
     </span>
+    <!-- 最后一条 user：悬停出「编辑」——编辑后重发替换最后一轮（chat.editResend） -->
+    <button
+      v-if="editable"
+      class="absolute -left-1 top-1/2 -translate-x-full -translate-y-1/2 rounded-btn px-2 py-0.5 text-xs text-text-sub opacity-0 transition hover:text-text-main focus:opacity-100 group-hover:opacity-100"
+      :title="t('overlay.actionEdit')"
+      :aria-label="t('overlay.actionEdit')"
+      @click="emit('edit')"
+    >
+      {{ t('overlay.actionEdit') }}
+    </button>
   </div>
 </template>

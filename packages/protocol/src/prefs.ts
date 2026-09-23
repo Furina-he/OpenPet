@@ -113,6 +113,12 @@ export const PrefsSchema = z.object({
     .object({ value: z.number().min(-1).max(1), updatedAt: z.number() })
     .default({ value: 0, updatedAt: 0 }),
   'pet.lastGreet': z.string().default(''), // 'YYYY-MM-DD/morning' 防跨重启重复问候
+  // ⑱ 生命感 v2：总闸（false = 底噪/姿态/视线状态机/节拍全关，回到本批前表现；也是减少动效的无障碍出口）
+  'pet.lifeLayers': z.boolean().default(true),
+  // ⑱ 节拍手势（⑭ 分段句尾标点 → 轻歪头/轻点头）
+  'pet.beatGestures': z.boolean().default(true),
+  // ⑱ mood + intent.energy → TTS 语速因子
+  'pet.moodAffectsVoice': z.boolean().default(true),
   // persona（§6 人设管理）
   'persona.list': z.array(PersonaSchema).default([]),
   'persona.defaultId': z.string().default(''), // '' = 内置人设（现状行为）

@@ -34,3 +34,51 @@ export function dragToParams(vx: number, _vy: number): { angleZ: number; bodyAng
 }
 
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+// ---- ⑱ 生命层 → Cubism 标准参数（spec §5）：纯映射，runtime 在 beforeModelUpdate 叠加写入 ----
+const RAD2DEG = 180 / Math.PI;
+const clampAbsN = (v: number, max: number): number => Math.max(-max, Math.min(max, v));
+
+export interface LifeParamDeltas {
+  /** 呼吸 0–1（叠加值，围绕 0）。 */
+  ParamBreath: number;
+  ParamAngleX: number;
+  ParamAngleY: number;
+  ParamAngleZ: number;
+  ParamBodyAngleX: number;
+  ParamEyeBallX: number;
+  ParamEyeBallY: number;
+}
+
+/**
+ * BoneOffsets（rad/m）+ 视线归一化 → Cubism 参数增量（度 / 归一化）。
+ * 头部角度 ±30、身体 ±10、眼球 ±1 夹紧；视线同时带一点头部朝向（EyeBall 单独太"斗鸡眼"）。
+ * AngleY：VRM headPitch 正 = 低头；Cubism AngleY 正 = 抬头 → 取反。
+ */
+export function lifeToParams(
+  off: { headYaw: number; headPitch: number; headRoll: number; spineYaw: number; spineRoll: number; chestPitch: number },
+  gaze: { nx: number; ny: number },
+): LifeParamDeltas {
+  const breathAmpMax = 0.03 * 1.3; // BREATH_AMP.high × sleepy 放大
+  return {
+    ParamBreath: clampAbsN(off.chestPitch / breathAmpMax, 1) * 0.5,
+    ParamAngleX: clampAbsN(off.headYaw * RAD2DEG + gaze.nx * 12, 30),
+    ParamAngleY: clampAbsN(-off.headPitch * RAD2DEG + gaze.ny * 8, 30),
+    ParamAngleZ: clampAbsN(off.headRoll * RAD2DEG, 30),
+    ParamBodyAngleX: clampAbsN((off.spineYaw + off.spineRoll) * RAD2DEG, 10),
+    ParamEyeBallX: clampAbsN(gaze.nx, 1),
+    ParamEyeBallY: clampAbsN(gaze.ny, 1),
+  };
+}
+
+/** ⑱ energy → idle 组：IdleLow/IdleHigh 存在则用，否则回 Idle（模型没有该组 = 保持库默认）。 */
+export function pickIdleGroup(available: readonly string[], energy: string, fallback = 'Idle'): string {
+  const want = energy === 'low' ? 'IdleLow' : energy === 'high' ? 'IdleHigh' : fallback;
+  if (available.includes(want)) return want;
+  return available.includes(fallback) ? fallback : (available[0] ?? fallback);
+}
+
+/** ⑱ 节拍 → 动作名（live2dMotions 里查；缺则 no-op）。period 由调用方按 20% 掷骰。 */
+export function beatMotionName(kind: 'question' | 'exclaim' | 'period'): 'tilt' | 'nod' {
+  return kind === 'question' ? 'tilt' : 'nod';
+}

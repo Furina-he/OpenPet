@@ -1,6 +1,10 @@
 import { createRequire } from 'node:module';
 import type DatabaseT from 'better-sqlite3';
-import { PersonaStateBlobSchema, type PersonaStateBlob, type StorageUsage } from '@openpet/protocol';
+import {
+  PersonaStateBlobSchema,
+  type PersonaStateBlob,
+  type StorageUsage,
+} from '@openpet/protocol';
 import type {
   AppendMessageInput,
   ConversationStore,
@@ -244,7 +248,9 @@ export class SqliteStore implements ConversationStore {
       text: r.text,
       pinned: r.pinned === 1,
       vector: r.vector
-        ? Array.from(new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4))
+        ? Array.from(
+            new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4),
+          )
         : [],
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
@@ -263,11 +269,48 @@ export class SqliteStore implements ConversationStore {
     this.db.prepare('DELETE FROM memory_fact WHERE character_id = ?').run(characterId);
   }
 
+  memoryCount(characterId: string): number {
+    const r = this.db
+      .prepare('SELECT COUNT(*) AS n FROM memory_fact WHERE character_id = ?')
+      .get(characterId) as { n: number };
+    return r.n;
+  }
+
+  // --- ⑲ 记忆 v2：wiki 页级向量索引 ---
+  pageIndexUpsert(path: string, hash: string, vector: number[], updatedAt: number): void {
+    const buf = vector.length > 0 ? Buffer.from(new Float32Array(vector).buffer) : null;
+    this.db
+      .prepare(
+        `INSERT INTO memory_page_index(path, hash, vector, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, vector = excluded.vector, updated_at = excluded.updated_at`,
+      )
+      .run(path, hash, buf, updatedAt);
+  }
+
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }> {
+    const rows = this.db
+      .prepare('SELECT path, hash, vector FROM memory_page_index ORDER BY path ASC')
+      .all() as Array<{ path: string; hash: string; vector: Buffer | null }>;
+    return rows.map((r) => ({
+      path: r.path,
+      hash: r.hash,
+      vector: r.vector
+        ? Array.from(
+            new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4),
+          )
+        : [],
+    }));
+  }
+
+  pageIndexDelete(path: string): void {
+    this.db.prepare('DELETE FROM memory_page_index WHERE path = ?').run(path);
+  }
+
   storageUsage(): StorageUsage {
     const msg = this.db.prepare('SELECT COUNT(*) AS n FROM messages').get() as { n: number };
-    const chr = this.db
-      .prepare('SELECT COUNT(DISTINCT character_id) AS n FROM messages')
-      .get() as { n: number };
+    const chr = this.db.prepare('SELECT COUNT(DISTINCT character_id) AS n FROM messages').get() as {
+      n: number;
+    };
     const pages = this.db.pragma('page_count', { simple: true }) as number;
     const pageSize = this.db.pragma('page_size', { simple: true }) as number;
     return { dbBytes: pages * pageSize, messageCount: msg.n, characterCount: chr.n };
@@ -287,9 +330,9 @@ export class SqliteStore implements ConversationStore {
 
   // --- 总览页统计（spec 2026-07-09）；SQLite 整数 `/` = 整除（epoch 正数下同 floor）---
   statsMessageCount(sinceTs: number): number {
-    const r = this.db
-      .prepare('SELECT COUNT(*) AS n FROM messages WHERE ts >= ?')
-      .get(sinceTs) as { n: number };
+    const r = this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE ts >= ?').get(sinceTs) as {
+      n: number;
+    };
     return r.n;
   }
 
@@ -432,6 +475,20 @@ export class SqliteStore implements ConversationStore {
          FROM messages WHERE character_id = ? AND session_id = ? ORDER BY ts ASC, id ASC`,
       )
       .all(characterId, sessionId) as StoredRow[];
+  }
+
+  lastUserMessage(characterId: string, sessionId: string): { id: number; text: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, text FROM messages WHERE character_id = ? AND session_id = ? AND role = 'user'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .get(characterId, sessionId) as { id: number; text: string } | undefined;
+    return row ?? null;
+  }
+
+  deleteMessagesFrom(sessionId: string, fromId: number): void {
+    this.db.prepare('DELETE FROM messages WHERE session_id = ? AND id >= ?').run(sessionId, fromId);
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---

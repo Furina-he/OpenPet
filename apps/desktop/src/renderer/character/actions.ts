@@ -4,12 +4,24 @@
  *
  * 不变量：phase=0 与 phase=1 时全零（bump 包络保证）——动作从 idle 无缝起、
  * 无缝收，ActionPlayer 不需要额外的混入/混出逻辑。纯函数可单测。
+ *
+ * ⑱ 三段包络 `sampleActionEnvelope(name, tMs, durMs)`：预备（大动作前 120ms 反向 15%）→
+ * 主体（现有曲线）→ 余震（300ms，与拖拽回归同源的阻尼振荡一次过冲 12%），
+ * 不变量改为 t=0 与 t=durMs+TAIL_MS 两端零。协同表 ACTION_COMPANIONS 让动作层向
+ * 视线/眨眼/嘴/呼吸/姿态发"伴随指令"（点头压视线、叹气半合眼…）。
  */
+import { settleFromZero } from './settle';
 export interface BoneOffsets {
   /** hips 纵向位移（米，normalized rig）。 */
   hipsY: number;
+  /** ⑱ hips 横向位移（重心转移，米）。 */
+  hipsX: number;
   spinePitch: number;
   spineYaw: number;
+  /** ⑱ 脊柱侧倾（重心转移配合）。 */
+  spineRoll: number;
+  /** ⑱ 胸腔俯仰（呼吸）。 */
+  chestPitch: number;
   headPitch: number;
   headYaw: number;
   headRoll: number;
@@ -20,8 +32,11 @@ export interface BoneOffsets {
 
 export const ZERO_OFFSETS: BoneOffsets = {
   hipsY: 0,
+  hipsX: 0,
   spinePitch: 0,
   spineYaw: 0,
+  spineRoll: 0,
+  chestPitch: 0,
   headPitch: 0,
   headYaw: 0,
   headRoll: 0,
@@ -105,3 +120,72 @@ export function sampleAction(name: string, phase: number): BoneOffsets {
   if (!curve || phase <= 0 || phase >= 1) return { ...ZERO_OFFSETS };
   return { ...ZERO_OFFSETS, ...curve(phase) };
 }
+
+// ---- ⑱ 三段包络 ----
+/** 预备段：只有"大动作"有反向预备。 */
+export const PREP_ACTIONS: ReadonlySet<string> = new Set(['jump', 'wave', 'stretch']);
+export const PREP_MS = 120;
+export const PREP_RATIO = 0.15;
+export const TAIL_MS = 300;
+export const TAIL_OVERSHOOT = 0.12;
+/** 幅度三档（防"抽搐"）：显式 playAction 1 / idle 变体 ≤0.7 / 节拍手势 ≤0.3。 */
+export const ACTION_SCALE = { explicit: 1, idle: 0.7, beat: 0.3 } as const;
+
+const KEYS = Object.keys(ZERO_OFFSETS) as Array<keyof BoneOffsets>;
+const scaleOffsets = (o: BoneOffsets, k: number): BoneOffsets => {
+  const out = { ...o };
+  for (const key of KEYS) out[key] = o[key] * k;
+  return out;
+};
+
+/** 动作总时长（含预备与余震）。 */
+export function actionTotalMs(name: string, durMs: number): number {
+  return (PREP_ACTIONS.has(name) ? PREP_MS : 0) + durMs + TAIL_MS;
+}
+
+/**
+ * 三段包络采样：tMs ∈ [0, actionTotalMs]。
+ *   预备 [0, PREP_MS)：主体中点姿态的反向 15% × 半正弦
+ *   主体 [PREP_MS, PREP_MS+durMs)：现有曲线
+ *   余震 [.., +TAIL_MS)：主体尾段姿态反向 12% × 从零起的阻尼振荡（与拖拽回归同源），线性淡出到零
+ */
+export function sampleActionEnvelope(name: string, tMs: number, durMs: number): BoneOffsets {
+  const prep = PREP_ACTIONS.has(name) ? PREP_MS : 0;
+  const total = prep + durMs + TAIL_MS;
+  if (tMs <= 0 || tMs >= total) return { ...ZERO_OFFSETS };
+  if (tMs < prep) {
+    const k = -PREP_RATIO * Math.sin((Math.PI * tMs) / prep);
+    return scaleOffsets(sampleAction(name, 0.5), k);
+  }
+  const tMain = tMs - prep;
+  if (tMain < durMs) return sampleAction(name, tMain / durMs);
+  const tTail = tMain - durMs;
+  const ref = sampleAction(name, 0.85); // 收尾前的姿态方向
+  const k = -TAIL_OVERSHOOT * settleFromZero(tTail) * (1 - tTail / TAIL_MS);
+  return scaleOffsets(ref, k);
+}
+
+// ---- ⑱ 协同表：动作 → 视线/眨眼/嘴/呼吸/姿态伴随指令 ----
+export interface ActionCompanion {
+  gaze?: 'down' | 'user' | 'scanLR' | 'suppressWander';
+  /** gaze 指令时长（缺省 = 动作时长）。 */
+  gazeMs?: number;
+  blink?: 'blink' | 'eyesHalf' | 'eyesClosed';
+  blinkLevel?: number;
+  /** 嘴微张（aa 权重），持续动作时长。 */
+  mouth?: number;
+  breath?: 'inhale' | 'exhale';
+  /** 动作期间临时姿态（结束后回情绪姿态）。 */
+  posture?: string;
+}
+
+export const ACTION_COMPANIONS: Partial<Record<ActionName, ActionCompanion>> = {
+  nod: { gaze: 'down', blink: 'blink' },
+  sigh: { blink: 'eyesHalf', blinkLevel: 0.5, mouth: 0.15, breath: 'exhale' },
+  jump: { breath: 'inhale', blink: 'blink' },
+  wave: { gaze: 'user' },
+  stretch: { blink: 'eyesClosed', mouth: 0.2 },
+  tilt: { gaze: 'suppressWander', gazeMs: 2000 },
+  searching: { gaze: 'scanLR' },
+  droop: { posture: 'sad' },
+};

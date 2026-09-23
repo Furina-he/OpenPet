@@ -23,7 +23,7 @@ import OverviewPage from './pages/OverviewPage.vue';
 import GeneralPage from './pages/GeneralPage.vue';
 import DisplayPage from './pages/DisplayPage.vue';
 import PrivacyPage from './pages/PrivacyPage.vue';
-import ModelApiPage from './pages/ModelApiPage.vue';
+import ProviderPage from './pages/ProviderPage.vue';
 import AboutPage from './pages/AboutPage.vue';
 import HotkeysPage from './pages/HotkeysPage.vue';
 import ChatPage from './pages/ChatPage.vue';
@@ -330,7 +330,7 @@ const navTree = computed(() =>
           <GeneralPage v-else-if="active === 'system.general'" @saved="saved" />
           <DisplayPage v-else-if="active === 'system.display'" @saved="saved" />
           <PrivacyPage v-else-if="active === 'system.privacy'" @saved="saved" />
-          <ModelApiPage v-else-if="active === 'model'" @saved="saved" />
+          <ProviderPage v-else-if="active === 'model'" @saved="saved" />
           <McpToolsPage v-else-if="active === 'tools'" />
           <ConnectionsPage v-else-if="active === 'connections'" @saved="saved" />
           <PluginsPage v-else-if="active === 'plugins'" />

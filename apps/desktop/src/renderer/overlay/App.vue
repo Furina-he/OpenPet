@@ -3,7 +3,17 @@
      ?fixture=chat：注入假快照做视觉 harness（不连 Main）。 -->
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { Bookmark, History, Loader2, Mic, Paperclip, Send, Settings, Square, X } from 'lucide-vue-next';
+import {
+  Bookmark,
+  History,
+  Loader2,
+  Mic,
+  Paperclip,
+  Send,
+  Settings,
+  Square,
+  X,
+} from 'lucide-vue-next';
 import { useI18n } from 'vue-i18n';
 import { ChatView, explodeSegments } from './chat-view';
 import type { ChatMessage } from './chat-view';
@@ -42,10 +52,7 @@ async function rebuild(): Promise<void> {
     window.openpet.rpc('character.current', {}).catch(() => null),
   ]);
   sessionId.value = cur
-    ? resolveActiveSession(
-        prefs['chat.activeSessions'] as Record<string, string>,
-        cur.characterId,
-      )
+    ? resolveActiveSession(prefs['chat.activeSessions'] as Record<string, string>, cur.characterId)
     : 'default';
   ready.value = false;
   view = new ChatView(sessionId.value, () => {
@@ -128,11 +135,34 @@ onUnmounted(() => {
   for (const u of unsubs) u();
 });
 
+/** 编辑已发消息：true = 正在编辑最后一条 user（发送走 chat.editResend 替换最后一轮）。 */
+const editing = ref(false);
+function startEdit(): void {
+  if (streaming.value || !ready.value) return;
+  const i = view.lastUserIndex();
+  if (i < 0) return;
+  draft.value = view.messages[i]!.text;
+  editing.value = true;
+}
+function cancelEdit(): void {
+  editing.value = false;
+  draft.value = '';
+}
 async function send(): Promise<void> {
   if (streaming.value || !ready.value || !draft.value.trim()) return;
   const text = draft.value;
-  view.echoUser(text);
   draft.value = '';
+  if (editing.value) {
+    editing.value = false;
+    view.beginEdit(text);
+    try {
+      await window.openpet.rpc('chat.editResend', { sessionId: sessionId.value, text });
+    } catch {
+      await rebuild();
+    }
+    return;
+  }
+  view.echoUser(text);
   try {
     await window.openpet.rpc('chat.send', { sessionId: sessionId.value, text });
   } catch {
@@ -151,22 +181,14 @@ function closeOverlay(): void {
   // 之后双击/托盘/热键的 showChat 全部失效（2026-07 实测）。收起一律走 Main。
   void window.openpet.rpc('app.window.hideSelf', {});
 }
-function lastUserText(): string {
-  for (let i = messages.value.length - 1; i >= 0; i--) {
-    const m = messages.value[i]!;
-    if (m.role === 'user') return m.text;
-  }
-  return '';
-}
 async function onAction(a: ErrorAction): Promise<void> {
   if (a === 'retry') {
-    const text = lastUserText();
-    if (!text || streaming.value) return;
-    view.echoUser(text);
+    // 以当前这句重试（chat.retry）：不重复发用户消息，出错的回复被替换。
+    if (streaming.value || !view.beginRetry()) return;
     try {
-      await window.openpet.rpc('chat.send', { sessionId: sessionId.value, text });
+      await window.openpet.rpc('chat.retry', { sessionId: sessionId.value });
     } catch {
-      view.rollbackEcho();
+      await rebuild();
     }
     return;
   }
@@ -174,6 +196,14 @@ async function onAction(a: ErrorAction): Promise<void> {
 }
 // 情绪 chip 只挂在「最后一条、流式中的 assistant」气泡（⑭ 分段后以显示列表末条判定）。
 const displayMessages = computed(() => explodeSegments(messages.value));
+/** 最后一条 user 消息（显示列表末尾往前找）；非流式时可编辑。 */
+const lastUserMessage = computed(() => {
+  for (let i = displayMessages.value.length - 1; i >= 0; i--) {
+    const m = displayMessages.value[i]!;
+    if (m.role === 'user') return m;
+  }
+  return null;
+});
 function emotionFor(m: ChatMessage): string {
   const last = displayMessages.value[displayMessages.value.length - 1];
   return streaming.value && m === last && m.role === 'assistant' ? emotion.value : '';
@@ -232,13 +262,28 @@ const recordLabel = computed(() => {
         >
           <History :size="17" :stroke-width="1.5" />
         </button>
-        <button class="ds-icon-button border border-glass-border" :title="t('settings.nav.memory')" :aria-label="t('settings.nav.memory')" disabled>
+        <button
+          class="ds-icon-button border border-glass-border"
+          :title="t('settings.nav.memory')"
+          :aria-label="t('settings.nav.memory')"
+          disabled
+        >
           <Bookmark :size="17" :stroke-width="1.5" />
         </button>
-        <button class="ds-icon-button border border-glass-border" :title="t('settings.nav.voice')" :aria-label="t('settings.nav.voice')" disabled>
+        <button
+          class="ds-icon-button border border-glass-border"
+          :title="t('settings.nav.voice')"
+          :aria-label="t('settings.nav.voice')"
+          disabled
+        >
           <Mic :size="17" :stroke-width="1.5" />
         </button>
-        <button class="ds-icon-button border border-glass-border" :title="t('settings.nav.general')" :aria-label="t('settings.nav.general')" @click="openHub">
+        <button
+          class="ds-icon-button border border-glass-border"
+          :title="t('settings.nav.general')"
+          :aria-label="t('settings.nav.general')"
+          @click="openHub"
+        >
           <Settings :size="17" :stroke-width="1.5" />
         </button>
         <button
@@ -283,7 +328,9 @@ const recordLabel = computed(() => {
             :message="m"
             :streaming="streaming"
             :emotion="emotionFor(m)"
+            :editable="!streaming && ready && m === lastUserMessage"
             @action="onAction"
+            @edit="startEdit"
           />
         </div>
       </div>
@@ -291,8 +338,19 @@ const recordLabel = computed(() => {
 
     <!-- 输入行 -->
     <footer class="border-t border-glass-border p-3">
+      <div v-if="editing" class="mb-2 flex items-center justify-between px-1 text-xs text-text-sub">
+        <span>{{ t('overlay.editingHint') }}</span>
+        <button class="hover:text-text-main" @click="cancelEdit">
+          {{ t('overlay.cancelEdit') }}
+        </button>
+      </div>
       <div class="ds-control flex items-center gap-2 rounded-panel px-3 py-2">
-        <button class="ds-icon-button min-h-8 min-w-8" :title="t('overlay.attach')" :aria-label="t('overlay.attach')" disabled>
+        <button
+          class="ds-icon-button min-h-8 min-w-8"
+          :title="t('overlay.attach')"
+          :aria-label="t('overlay.attach')"
+          disabled
+        >
           <Paperclip :size="17" :stroke-width="1.5" />
         </button>
         <input
@@ -307,6 +365,7 @@ const recordLabel = computed(() => {
           "
           :disabled="!ready"
           @keydown.enter="send"
+          @keydown.esc="editing && cancelEdit()"
         />
         <span
           v-if="voiceState === 'recording'"

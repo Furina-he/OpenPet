@@ -1,11 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createProviderService, type ProviderServiceDeps } from '../electron/main/provider-service';
-import {
-  DEFAULT_PREFS,
-  type Prefs,
-  type ProviderSource,
-  type ModelEntry,
-} from '@openpet/protocol';
+import { DEFAULT_PREFS, type Prefs, type ProviderSource, type ModelEntry } from '@openpet/protocol';
 
 function makeDeps(over?: { http?: ProviderServiceDeps['httpGetJson']; prefs?: Partial<Prefs> }): {
   deps: ProviderServiceDeps;
@@ -202,5 +197,47 @@ describe('provider-service · models', () => {
     const svc = createProviderService(deps);
     expect(await svc['provider.ollamaDetect']({})).toEqual({ available: true, models: ['llama3'] });
     expect(http).toHaveBeenCalledWith('http://127.0.0.1:9999/api/tags');
+  });
+});
+
+describe('provider-service · renameSource（D3 源 ID 可编辑）', () => {
+  it('改名迁移：源 id / 模型 id+sourceId / 各能力默认与杂务模型指针；撞名或空 id 抛错', async () => {
+    const { deps, state } = makeDeps({
+      prefs: {
+        'model.providerSources': [openaiSource, { ...openaiSource, id: 'other' }],
+        'model.models': [
+          {
+            id: 'openai-main/gpt-4o',
+            sourceId: 'openai-main',
+            model: 'gpt-4o',
+            enabled: true,
+            caps: {},
+          },
+          { id: 'other/x', sourceId: 'other', model: 'x', enabled: true, caps: {} },
+        ],
+        'model.defaultChatModelId': 'openai-main/gpt-4o',
+        'model.utilityModelId': 'openai-main/gpt-4o',
+        'model.defaultEmbeddingModelId': 'other/x',
+      },
+    });
+    const svc = createProviderService(deps);
+    await svc['provider.renameSource']({ from: 'openai-main', to: 'oa' });
+    expect((state['model.providerSources'] as ProviderSource[]).map((s) => s.id)).toEqual([
+      'oa',
+      'other',
+    ]);
+    const ms = state['model.models'] as ModelEntry[];
+    expect(ms.find((m) => m.model === 'gpt-4o')).toMatchObject({ id: 'oa/gpt-4o', sourceId: 'oa' });
+    expect(ms.find((m) => m.model === 'x')).toMatchObject({ id: 'other/x', sourceId: 'other' });
+    expect(state['model.defaultChatModelId']).toBe('oa/gpt-4o');
+    expect(state['model.utilityModelId']).toBe('oa/gpt-4o');
+    expect(state['model.defaultEmbeddingModelId']).toBe('other/x');
+    await expect(svc['provider.renameSource']({ from: 'oa', to: 'other' })).rejects.toThrow(
+      /exists/,
+    );
+    await expect(svc['provider.renameSource']({ from: 'oa', to: '  ' })).rejects.toThrow(/empty/);
+    await expect(svc['provider.renameSource']({ from: 'nope', to: 'z' })).rejects.toThrow(
+      /not found/,
+    );
   });
 });

@@ -170,6 +170,28 @@ const THINKING = computed(() => [
       </SettingCard>
     </SettingSection>
 
+    <!-- ⑱ 生命感：总闸 / 节拍手势 / 心情影响语速 -->
+    <SettingSection :title="t('settings.general.life')">
+      <SettingCard :label="t('settings.general.lifeLayers')" :description="t('settings.general.lifeLayersDesc')">
+        <Switch
+          :model-value="prefs['pet.lifeLayers']"
+          @update:model-value="(v) => set('pet.lifeLayers', v)"
+        />
+      </SettingCard>
+      <SettingCard :label="t('settings.general.beatGestures')" :description="t('settings.general.beatGesturesDesc')">
+        <Switch
+          :model-value="prefs['pet.beatGestures']"
+          @update:model-value="(v) => set('pet.beatGestures', v)"
+        />
+      </SettingCard>
+      <SettingCard :label="t('settings.general.moodAffectsVoice')" :description="t('settings.general.moodAffectsVoiceDesc')">
+        <Switch
+          :model-value="prefs['pet.moodAffectsVoice']"
+          @update:model-value="(v) => set('pet.moodAffectsVoice', v)"
+        />
+      </SettingCard>
+    </SettingSection>
+
     <!-- ⑭ 对话拟人化：自然节奏 / 风格锚 / 口癖修正规则 -->
     <SettingSection :title="t('settings.general.humanize')">
       <SettingCard :label="t('settings.general.naturalRhythm')" :description="t('settings.general.naturalRhythmDesc')">

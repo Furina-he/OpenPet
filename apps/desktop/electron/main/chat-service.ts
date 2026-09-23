@@ -39,7 +39,11 @@ import {
 } from './plugin-gateway.js';
 import { createFetchGateway, type FetchGatewayDeps } from './fetch-gateway.js';
 import { createConversationStore, MemoryStore, type ConversationStore } from './db/index.js';
-import { createContextPipeline, type ContextPipeline } from './context-pipeline.js';
+import {
+  createContextPipeline,
+  type MemoryRetrievalLite,
+  type ContextPipeline,
+} from './context-pipeline.js';
 import { TurnOrchestrator } from './turn-orchestrator.js';
 import { resolveSendTarget } from './chat-resolve.js';
 import { exportDsbak } from './db/export-bundle.js';
@@ -61,6 +65,8 @@ export interface ChatServiceOptions {
   character?: () => CharacterRef;
   /** SqliteStore 源 db 路径（导出快照用）；缺省导出仅含 manifest。 */
   sqlitePath?: string;
+  /** ⑲ 记忆 wiki 根（.dsbak 导出纳入）。 */
+  memoryRoot?: string;
   queue?: NotificationQueueOptions;
   host?: ProviderHostOptions;
   plugins?: PluginGatewayDeps;
@@ -83,8 +89,8 @@ export interface ChatServiceOptions {
    * kbStage，1.5s 超时兜底）。缺省=不检索。ipc-router 装配时构造注入（单向依赖）。
    */
   retrieveKb?: (query: string) => Promise<{ text: string }[]>;
-  /** 批次⑥ F-AI-06：长期记忆检索（memoryStage 注入源）；缺省=不注入。 */
-  retrieveMemory?: (query: string) => Promise<string[]>;
+  /** ⑲ 三路记忆检索（memoryStage 注入源；history = 最近消息文本）；缺省=不注入。 */
+  retrieveMemory?: (query: string, history: readonly string[]) => Promise<MemoryRetrievalLite>;
   /** 批次⑥：轮末（done stop）钩子——memory-extractor 提炼入口；fire-and-forget。 */
   onTurnEnd?: (sessionId: string) => void;
   /**
@@ -149,6 +155,7 @@ export class ChatService {
   private readonly session: SessionStore;
   private readonly getCharacter: () => CharacterRef;
   private readonly sqlitePath: string | undefined;
+  private readonly memoryRoot: string | undefined;
   private readonly queue: NotificationQueue;
   /** chat.reasoning/chat.toolCall 直发通道（C′ §3，旁路背压队列）。 */
   private readonly broadcast: (channel: string, params: unknown) => void;
@@ -160,7 +167,9 @@ export class ChatService {
   private readonly providerChain: string[];
   /** 无显式 providerId 时，从 prefs 取当前 chat 目标（ipc-router 注入两层 resolveChatTarget）。 */
   private readonly resolveModel: (() => ChatTarget | null) | undefined;
-  private readonly intercept: ((sessionId: string, text: string) => Promise<string | null>) | undefined;
+  private readonly intercept:
+    | ((sessionId: string, text: string) => Promise<string | null>)
+    | undefined;
   /** send 前置上下文管道（§5 RAG + §4 tools + ContextAssembler）。 */
   private readonly pipeline: ContextPipeline;
   /** 在途轮编排（降级链 / 工具回灌）。 */
@@ -183,9 +192,7 @@ export class ChatService {
     string,
     { saw: boolean; text: string; intercepted: boolean }
   >();
-  private readonly emotionFallback:
-    | ((sessionId: string, cleanText: string) => void)
-    | undefined;
+  private readonly emotionFallback: ((sessionId: string, cleanText: string) => void) | undefined;
   /** §7 Trace：collector + 本轮 span（生命周期同 lastIntent——绑通知流，chat.done 时封口删除）。 */
   private readonly traceC: import('./trace-collector.js').TraceCollector | undefined;
   private readonly traceSpans = new Map<string, import('./trace-collector.js').TraceSpanHandle>();
@@ -203,6 +210,7 @@ export class ChatService {
     this.conv = opts.store ?? new MemoryStore();
     this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
     this.sqlitePath = opts.sqlitePath;
+    this.memoryRoot = opts.memoryRoot;
     this.session = new SessionStore({
       store: this.conv,
       characterId: () => this.getCharacter().id,
@@ -245,6 +253,7 @@ export class ChatService {
       lorebook: opts.lorebook,
       macroUser: opts.macroUser,
       styleAnchor: opts.styleAnchor,
+      mood: () => this.interactions.moodValue(), // ⑱ mood → 灵魂（心情句）
       sessionSummary: opts.sessionSummary,
     });
     this.onTurnEnd = opts.onTurnEnd;
@@ -291,11 +300,43 @@ export class ChatService {
     );
   }
 
+  /**
+   * 重试：以会话最后一条 user 消息重新生成——删掉其后出错/取消的 assistant 行，user 行不重复入库。
+   * 无可重试消息 → -32602。busy/预算门与 send 同口径。
+   */
+  retry(sessionId: string): Promise<{ ok: true }> {
+    if (this.session.isStreaming(sessionId) || this.sending.has(sessionId)) {
+      throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
+    }
+    const blocked = this.budgetGate?.();
+    if (blocked) throw new RpcError(-32003, blocked);
+    const text = this.session.truncateAfterLastUser(sessionId);
+    if (text === null) throw new RpcError(-32602, 'nothing to retry');
+    this.sending.add(sessionId);
+    return this.sendInner(sessionId, text, undefined, { persistUser: false }).finally(() =>
+      this.sending.delete(sessionId),
+    );
+  }
+
+  /** 编辑重发：删掉最后一轮（user + 其后全部）后按新文本正常发送。 */
+  editResend(sessionId: string, text: string): Promise<{ ok: true }> {
+    if (this.session.isStreaming(sessionId) || this.sending.has(sessionId)) {
+      throw new RpcError(-32001, `session busy: ${sessionId} is still streaming`);
+    }
+    const blocked = this.budgetGate?.();
+    if (blocked) throw new RpcError(-32003, blocked);
+    this.session.dropLastTurn(sessionId);
+    this.sending.add(sessionId);
+    return this.sendInner(sessionId, text).finally(() => this.sending.delete(sessionId));
+  }
+
   private async sendInner(
     sessionId: string,
     text: string,
     providerId?: string,
+    opts: { persistUser?: boolean } = {},
   ): Promise<{ ok: true }> {
+    const persistUser = opts.persistUser ?? true;
     const resolved = providerId ? undefined : this.resolveModel?.();
     const { chain, model, adapter, baseUrl } = resolveSendTarget(
       providerId,
@@ -316,7 +357,7 @@ export class ChatService {
     if (intercepted !== null) {
       span?.record('turn.intercepted', { by: 'star' });
       this.trackTurn(sessionId).intercepted = true; // ⑬ 命令输出不做表情分类
-      this.session.appendUser(sessionId, text);
+      if (persistUser) this.session.appendUser(sessionId, text);
       this.session.beginAssistant(sessionId);
       this.core.handleEvent(sessionId, { type: 'delta', text: intercepted });
       this.core.handleEvent(sessionId, { type: 'done', finishReason: 'stop' });
@@ -329,12 +370,17 @@ export class ChatService {
       ...(span ? { trace: (a: string, f?: Record<string, unknown>) => span.record(a, f) } : {}),
     });
     try {
-      this.orchestrator.start(sessionId, request, { chain, baseUrl, adapter, baseProviderId }, span);
+      this.orchestrator.start(
+        sessionId,
+        request,
+        { chain, baseUrl, adapter, baseProviderId },
+        span,
+      );
     } catch {
       throw new RpcError(-32002, 'provider unavailable (worker restarting)');
     }
-    // host.send 成功才入账：失败的发送不进历史
-    this.session.appendUser(sessionId, text);
+    // host.send 成功才入账：失败的发送不进历史（重试路径 user 行已在库，不重复）
+    if (persistUser) this.session.appendUser(sessionId, text);
     this.session.beginAssistant(sessionId);
     return { ok: true };
   }
@@ -372,7 +418,10 @@ export class ChatService {
 
   /** 一键导出 .dsbak（app.exportData 后端）：DB + manifest，无密钥。 */
   async exportData(outPath: string): Promise<{ ok: true; bytes: number }> {
-    await exportDsbak(this.conv, outPath, this.sqlitePath ? { sqlitePath: this.sqlitePath } : {});
+    await exportDsbak(this.conv, outPath, {
+      ...(this.sqlitePath ? { sqlitePath: this.sqlitePath } : {}),
+      ...(this.memoryRoot ? { memoryRoot: this.memoryRoot } : {}),
+    });
     return { ok: true, bytes: statSync(outPath).size };
   }
 
@@ -435,7 +484,13 @@ export class ChatService {
           this.interactions.trigger('chat.done'); // mood 累积（无 cue 表项，不发表现）
           this.onTurnEnd?.(n.sessionId); // 批次⑥：轮末记忆提炼（fire-and-forget，不 await）
           const fb = this.fallbackTurn.get(n.sessionId);
-          if (fb && !fb.saw && !fb.intercepted && fb.text.trim().length > 0 && this.emotionFallback) {
+          if (
+            fb &&
+            !fb.saw &&
+            !fb.intercepted &&
+            fb.text.trim().length > 0 &&
+            this.emotionFallback
+          ) {
             this.traceSpans
               .get(n.sessionId)
               ?.record('turn.emotionFallback', { textLen: fb.text.length });

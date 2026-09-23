@@ -61,3 +61,31 @@ describe('few-shot 自洽：示例必须被 BehaviorParser 零告警解析', () 
     },
   );
 });
+
+describe('⑱ mood → 心情句', () => {
+  it('moodSentence：>0.4 轻快 / <−0.3 低落 / 其余与缺省 null', async () => {
+    const { moodSentence, MOOD_SENTENCES } = await import('../src/persona-prompt-template');
+    expect(moodSentence(0.8)).toBe(MOOD_SENTENCES.high);
+    expect(moodSentence(-0.5)).toBe(MOOD_SENTENCES.low);
+    expect(moodSentence(0.2)).toBeNull();
+    expect(moodSentence(undefined)).toBeNull();
+    expect(moodSentence(Number.NaN)).toBeNull();
+  });
+
+  it('buildSystemPrompt：有 persona 时追加进【关系记忆】句；无 persona 时独立成句；neutral 不出现', async () => {
+    const { buildSystemPrompt, MOOD_SENTENCES } = await import('../src/persona-prompt-template');
+    const withPersona = buildSystemPrompt({
+      name: '小灵',
+      persona: { affinity: 50, turns: 3 },
+      moodValue: 0.9,
+    });
+    expect(withPersona).toMatch(new RegExp(`【关系记忆】[^
+]*${MOOD_SENTENCES.high}。`));
+    const noPersona = buildSystemPrompt({ name: '小灵', moodValue: -0.9 });
+    expect(noPersona).toContain(`【关系记忆】${MOOD_SENTENCES.low}。`);
+    const neutral = buildSystemPrompt({ name: '小灵', persona: { affinity: 50, turns: 3 }, moodValue: 0 });
+    expect(neutral).not.toContain(MOOD_SENTENCES.high);
+    expect(neutral).not.toContain(MOOD_SENTENCES.low);
+    expect(buildSystemPrompt({ name: '小灵' })).not.toContain('【关系记忆】');
+  });
+});

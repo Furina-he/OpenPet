@@ -96,6 +96,42 @@ export function createProviderService(deps: ProviderServiceDeps) {
       return { ok: true as const, id: p.source.id };
     },
 
+    'provider.renameSource': async (p: { from: string; to: string }) => {
+      const to = p.to.trim();
+      if (!to) throw new Error('empty source id');
+      if (to === p.from) return { ok: true as const };
+      if (sources().some((s) => s.id === to)) throw new Error(`source id already exists: ${to}`);
+      const src = findSource(p.from);
+      if (!src) throw new Error(`source not found: ${p.from}`);
+      const idMap = new Map<string, string>();
+      const nextModels = models().map((m) => {
+        if (m.sourceId !== p.from) return m;
+        const id = `${to}/${m.model}`;
+        idMap.set(m.id, id);
+        return { ...m, id, sourceId: to };
+      });
+      deps.setPref(
+        'model.providerSources',
+        sources().map((s) => (s.id === p.from ? { ...s, id: to } : s)),
+      );
+      deps.setPref('model.models', nextModels);
+      const prefs = deps.getPrefs();
+      for (const k of [
+        'model.defaultChatModelId',
+        'model.defaultAgentModelId',
+        'model.defaultSttModelId',
+        'model.defaultTtsModelId',
+        'model.defaultEmbeddingModelId',
+        'model.defaultRerankModelId',
+        'model.utilityModelId',
+      ] as const) {
+        const cur = prefs[k];
+        const mapped = idMap.get(cur);
+        if (mapped) deps.setPref(k, mapped);
+      }
+      return { ok: true as const };
+    },
+
     'provider.deleteSource': async (p: { id: string }) => {
       deps.setPref(
         'model.providerSources',
@@ -132,6 +168,14 @@ export function createProviderService(deps: ProviderServiceDeps) {
       const list = [...models()];
       if (!list.some((m) => m.id === p.entry.id)) list.push(p.entry);
       deps.setPref('model.models', list);
+      return { ok: true as const };
+    },
+
+    'provider.updateModel': async (p: { entry: ModelEntry }) => {
+      deps.setPref(
+        'model.models',
+        models().map((m) => (m.id === p.entry.id ? p.entry : m)),
+      );
       return { ok: true as const };
     },
 

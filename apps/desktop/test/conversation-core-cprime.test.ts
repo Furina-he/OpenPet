@@ -4,10 +4,10 @@ import { ConversationCore, type Notification } from '../electron/main/conversati
 function collect(): {
   core: ConversationCore;
   out: Notification[];
-  cues: Array<['chat.reasoning' | 'chat.tool', string]>;
+  cues: Array<[string, string]>;
 } {
   const out: Notification[] = [];
-  const cues: Array<['chat.reasoning' | 'chat.tool', string]> = [];
+  const cues: Array<[string, string]> = [];
   return {
     core: new ConversationCore((n) => out.push(n), { cue: (e, sid) => cues.push([e, sid]) }),
     out,

@@ -106,6 +106,27 @@ export class SessionStore {
     }
   }
 
+  /**
+   * 重试（对话出错后"以当前这句再试"）：返回最后一条 user 文本，并删掉其后的 assistant 行
+   * （出错/取消的那条），user 行保留——不产生重复的用户消息。无 user / 流中 → null。
+   */
+  truncateAfterLastUser(sessionId: string): string | null {
+    if (this.partials.has(sessionId)) return null;
+    const last = this.store.lastUserMessage(this.characterId(), sessionId);
+    if (!last) return null;
+    this.store.deleteMessagesFrom(sessionId, last.id + 1);
+    return last.text;
+  }
+
+  /** 编辑重发：删掉最后一轮（最后一条 user 及其后全部）；返回原文，无 → null。 */
+  dropLastTurn(sessionId: string): string | null {
+    if (this.partials.has(sessionId)) return null;
+    const last = this.store.lastUserMessage(this.characterId(), sessionId);
+    if (!last) return null;
+    this.store.deleteMessagesFrom(sessionId, last.id);
+    return last.text;
+  }
+
   isStreaming(sessionId: string): boolean {
     return this.partials.has(sessionId);
   }

@@ -8,7 +8,7 @@ import { mountBubble } from './bubble';
 import { resolveMode } from './desktop-state';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
 import { mouthValue, playbackRateOf } from './mouth-drive';
-import type { Prefs } from '@openpet/protocol';
+import { moodCurrent, type Prefs } from '@openpet/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
 import { charStrings } from './strings';
@@ -19,6 +19,8 @@ subscribeTheme();
 
 const FPS_REPORT_MS = 10_000;
 const IDLE_TICK_MS = 5_000;
+/** ⑱ 心情半衰在渲染端 lazy 重算的节拍（2h 半衰，30s 一算足够平滑）。 */
+const MOOD_TICK_MS = 30_000;
 
 declare global {
   interface Window {
@@ -77,7 +79,10 @@ async function bootRuntime(stageEl: HTMLElement): Promise<CharacterRuntime> {
     return createLive2dRuntime(stageEl, modelUrl, cur.manifest);
   }
   bootedEngine = 'vrm';
-  return createVrmRuntime(stageEl, modelUrl, cur.manifest);
+  // ⑱ T9：assetBase 供 manifest.actionClips（.vrma）解析成 asset:// URL
+  return createVrmRuntime(stageEl, modelUrl, cur.manifest, {
+    assetBase: `asset://${cur.characterId}/`,
+  });
 }
 
 // i18n：character 窗仅两条 toast 文案走微型字典；locale 随 prefs 初读与变更同步。
@@ -106,9 +111,31 @@ async function boot(): Promise<void> {
 
   let runtime: CharacterRuntime | null = null;
   let face: FallbackFace | null = null;
+  // ⑱ dev harness：`?harness=life`（Main 经 OPENPET_HARNESS=life 追加）。面板是 DOM，
+  // alpha 穿透会把面板区域判成透明 → 跳过穿透只留拖拽。
+  const harness = new URLSearchParams(location.search).get('harness');
   try {
     runtime = await bootRuntime(stageEl);
-    setupInteraction(runtime.hitSurface);
+    setupInteraction(harness ? null : runtime.hitSurface);
+    if (harness === 'life') {
+      const rt = runtime;
+      const { mountLifeHarness } = await import('../dev/life-harness');
+      mountLifeHarness(document.body, rt, {
+        simulateStream: () => {
+          rt.setStreaming(true);
+          rt.applyEmotion('happy', 0.8);
+          const kinds = ['exclaim', 'question', 'period'] as const;
+          kinds.forEach((k, i) => setTimeout(() => rt.playBeat(k), 400 + i * 1800));
+          setTimeout(() => {
+            rt.setStreaming(false);
+            rt.releaseEmotion();
+          }, 6000);
+        },
+        loadClip: rt.loadActionClip
+          ? (name, file) => rt.loadActionClip!(name, URL.createObjectURL(file))
+          : undefined,
+      });
+    }
   } catch (e) {
     console.warn('[character] runtime unavailable, using fallback face:', e);
     fallbackEl.style.display = 'flex';
@@ -159,6 +186,15 @@ async function boot(): Promise<void> {
     else face?.setIntent(mood, energy);
   });
 
+  // ⑱ 节拍手势：Main 每发一段来一拍；渲染端按 pet.beatGestures 门 + runtime 内部门（无活动作/≥1.5s）。
+  let beatGestures = true;
+  // 桌面会话 = 非 IM（会话管理批次起 id 不再固定为 'default'；按 'default' 判会漏掉新建会话 → 表情永不复位）。
+  const isDesktopSession = (id: string): boolean => !id.startsWith('im:');
+  window.openpet.on('behavior.beat', ({ sessionId, kind }) => {
+    if (!isDesktopSession(sessionId) || !beatGestures) return;
+    runtime?.playBeat(kind);
+  });
+
   window.openpet.on('behavior.lookAt', ({ x, y }) => {
     debug.lastLookAt = { x, y };
     runtime?.setLookAt(x, y); // 不算 activity：光标常动，算了 90s 永不触发
@@ -168,8 +204,9 @@ async function boot(): Promise<void> {
   // 线 B-1：只反映桌面会话（Main 已 tee 掉 im: 会话，此处双保险防未来新通道漏网）。
   const bubble = mountBubble(document.getElementById('bubble')!);
   window.openpet.on('chat.stream', (p) => {
-    if (p.sessionId !== 'default') return;
+    if (!isDesktopSession(p.sessionId)) return;
     markActivity();
+    runtime?.setStreaming(true); // ⑱ 说话中：呼吸收窄 + 视线看用户（chat.done 复位）
     bubble.appendStream(p.text);
   });
 
@@ -263,9 +300,32 @@ async function boot(): Promise<void> {
     applyMode();
   });
 
+  // ---- ⑱ 心情 → 渲染端（表情基线/呼吸/姿态）：pet.mood 经 app.prefs.changed 推送 + 本地半衰重算 ----
+  let moodPref = { value: 0, updatedAt: 0 };
+  const lookAtPrefs = { enabled: true, strength: 50 };
+  const pushMood = (): void => {
+    runtime?.setMood(moodCurrent(moodPref.value, moodPref.updatedAt, Date.now()));
+  };
+  setInterval(pushMood, MOOD_TICK_MS);
+
   window.openpet.on('app.prefs.changed', (p) => {
     const c = p as { key?: string; value?: unknown };
-    if (c.key === 'general.language') {
+    if (c.key === 'pet.mood') {
+      const v = c.value as { value?: unknown; updatedAt?: unknown } | undefined;
+      if (v && typeof v.value === 'number' && typeof v.updatedAt === 'number') {
+        moodPref = { value: v.value, updatedAt: v.updatedAt };
+        pushMood();
+      }
+    } else if (c.key === 'pet.lifeLayers') {
+      runtime?.setLifeLayers(c.value !== false);
+    } else if (c.key === 'pet.beatGestures') {
+      beatGestures = c.value !== false;
+    } else if (c.key === 'display.lookAt' || c.key === 'display.lookAtStrength') {
+      // ⑱ 偿"存而不接"债：两键任一变更即整体重推
+      if (c.key === 'display.lookAt') lookAtPrefs.enabled = c.value !== false;
+      else if (typeof c.value === 'number') lookAtPrefs.strength = c.value;
+      runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);
+    } else if (c.key === 'general.language') {
       if (typeof c.value === 'string') locale = c.value;
     } else if (c.key === 'display.bubbleDuration') {
       bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
@@ -277,6 +337,8 @@ async function boot(): Promise<void> {
     } else if (c.key === 'display.focusMode') {
       focus = c.value === true;
       applyMode();
+    } else if (c.key === 'voice.autoSpeak') {
+      runtime?.setAutoSpeak(c.value === true);
     } else if (c.key === 'voice.mouthSync') {
       mouthSync = c.value === true;
     } else if (c.key === 'voice.mouthStrength') {
@@ -294,17 +356,26 @@ async function boot(): Promise<void> {
       focus = pf['display.focusMode'];
       mouthSync = pf['voice.mouthSync'];
       mouthStrength = pf['voice.mouthStrength'];
+      moodPref = pf['pet.mood'];
+      runtime?.setLifeLayers(pf['pet.lifeLayers']);
+      beatGestures = pf['pet.beatGestures'];
+      lookAtPrefs.enabled = pf['display.lookAt'];
+      lookAtPrefs.strength = pf['display.lookAtStrength'];
+      runtime?.setLookAtPrefs(lookAtPrefs.enabled, lookAtPrefs.strength);
+      runtime?.setAutoSpeak(pf['voice.autoSpeak']);
+      pushMood();
       applyMode();
     })
     .catch(() => {});
 
-  // 回合结束 1.2s 后复位 neutral（S4 行为；neutral 不在情绪表 → 全零权重 = 复位）
+  // 回合结束 1.2s 后情绪退到心情基线（⑱ releaseEmotion 取代硬复位 neutral；fallback 脸仍 reset）
   window.openpet.on('chat.done', (p) => {
-    if (p.sessionId !== 'default') return;
+    if (!isDesktopSession(p.sessionId)) return;
     markActivity();
     bubble.endStream();
+    runtime?.setStreaming(false);
     setTimeout(() => {
-      if (runtime) runtime.applyEmotion('neutral', 0);
+      if (runtime) runtime.releaseEmotion();
       else face?.reset();
     }, 1200);
   });

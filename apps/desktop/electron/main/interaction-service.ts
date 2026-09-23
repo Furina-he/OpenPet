@@ -36,7 +36,11 @@ const EVENT_MOOD_DELTAS: Partial<Record<CueEvent, number>> = {
   'stroke.head': MOOD_DELTAS.stroke,
   'chat.done': MOOD_DELTAS.chatDone,
   'chat.error': MOOD_DELTAS.chatError,
+  'beat.exclaim': MOOD_DELTAS.beatExclaim, // ⑱（每轮至多 1 次由 ConversationCore 保证）
 };
+
+/** ⑱ idle.timeout 连续第 N 次起视为"长时间被冷落"，额外 mood 负增量。 */
+export const IDLE_NEGLECT_STREAK = 3;
 
 /** idle 动作池（mood 偏置，spec F-IT-05）。 */
 const IDLE_LOW = ['sigh', 'droop', 'tilt'] as const;
@@ -73,6 +77,8 @@ export class InteractionService {
   private readonly combos = new Map<string, { count: number; startedAt: number }>();
   /** ⑨ toolLong 定时器（按 sessionId）。 */
   private readonly toolTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** ⑱ 连续 idle.timeout 计数（任何其它事件清零）。 */
+  private idleStreak = 0;
 
   constructor(deps: InteractionDeps) {
     this.deps = deps;
@@ -80,11 +86,23 @@ export class InteractionService {
     this.rand = deps.rand ?? (() => Math.random());
   }
 
+  /** ⑱ 当前心情（lazy 半衰）；ChatService 供给组装链心情句。 */
+  moodValue(): number {
+    return this.deps.mood.current();
+  }
+
   /** 领域事件入口：查表 → 策略门 → 发射（语义 ①-⑦，见 plan T3）。 */
   trigger(event: CueEvent): void {
     // ⑦ mood 联动先于查表——chat.done 无 cue 也要累积。
     const delta = EVENT_MOOD_DELTAS[event];
     if (delta !== undefined) this.deps.mood.bump(delta);
+    // ⑱ 连续冷落：idle.timeout 连续第 3 次起每次 −0.04（策略门吞掉表现也照记）。
+    if (event === 'idle.timeout') {
+      this.idleStreak += 1;
+      if (this.idleStreak >= IDLE_NEGLECT_STREAK) this.deps.mood.bump(MOOD_DELTAS.idleLongNeglect);
+    } else if (event !== 'clock.hourly' && event !== 'beat.exclaim') {
+      this.idleStreak = 0;
+    }
 
     // ① 查表无该 on → no-op。
     const cue = this.deps.cues().find((c) => c.on === event);

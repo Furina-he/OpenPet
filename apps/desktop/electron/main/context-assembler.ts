@@ -6,6 +6,12 @@ import {
 } from '@openpet/protocol';
 import type { ConversationStore } from './db/store.js';
 
+/** ⑲ 「记忆」块输入：resident = 常驻块（已带 ### 小标题）；pages = 命中页。 */
+export interface MemoryInjection {
+  resident: string[];
+  pages: Array<{ title: string; body: string }>;
+}
+
 /** Working Memory 窗口（tech-design §8：最近 N=20 轮原始消息）。 */
 export const WORKING_TURNS = 20;
 
@@ -26,8 +32,8 @@ export interface AssembleInput {
    * **只进 LLM 上下文**——不进 chat.stream / 不喂 behavior-parser（§7 桌宠核心边界）。
    */
   kbHits?: { text: string }[];
-  /** 批次⑥ F-AI-06：长期记忆事实（pinned 全量 + 余弦 top3）；同 kbHits 只进 system。 */
-  memories?: string[];
+  /** ⑲ 记忆 wiki 三路注入产物（常驻块 + 命中页）；同 kbHits 只进 system。 */
+  memory?: MemoryInjection;
   /** §6 用户自定义人设正文；缺省内置一句。 */
   personaPrompt?: string;
   /** §6 情景开场白（偶数条 user/assistant 交替）；只进请求不持久化（照 AstrBot _no_save）。 */
@@ -40,6 +46,8 @@ export interface AssembleInput {
   macroCtx?: { user: string; locale?: string; hour12?: boolean };
   /** ⑭ 风格锚：以 system 消息插在 history 之后、当前 user 之前（近生成点服从度最高，spec §1）。 */
   styleAnchor?: string;
+  /** ⑱ 当前心情 [-1,1]（MoodState.current()）→ 【关系记忆】语气句。 */
+  moodValue?: number;
 }
 
 /**
@@ -67,6 +75,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
   const base = buildSystemPrompt({
     name: input.character.name,
     persona,
+    ...(input.moodValue !== undefined ? { moodValue: input.moodValue } : {}),
     ...(input.personaPrompt ? { personaPrompt: ex(input.personaPrompt) } : {}),
     ...(input.character.emotions ? { emotions: input.character.emotions } : {}),
     ...(input.character.actions ? { actions: input.character.actions } : {}),
@@ -78,12 +87,16 @@ export function assembleContext(input: AssembleInput): ChatRequest {
           .map((h, i) => `[${i + 1}] ${h.text}`)
           .join('\n\n')}`
       : '';
-  // 批次⑥ 长期记忆段（memoryStage 检索产物）；同 kbBlock 只进 system。
+  // ⑲ 「记忆」块（memoryStage 三路产物）：常驻 + `### 标题` 命中页；宏同口径展开；只进 system。
+  const memParts = [
+    ...(input.memory?.resident ?? []),
+    ...(input.memory?.pages ?? []).map((p) => `### ${p.title}\n${p.body}`),
+  ];
   const memoryBlock =
-    input.memories && input.memories.length > 0
-      ? `\n\n## 关于用户的长期记忆（供参考，自然使用，勿逐条复述）\n${input.memories
-          .map((m) => `- ${m}`)
-          .join('\n')}`
+    memParts.length > 0
+      ? `\n\n## 记忆（关于用户与我们的过往，供参考，自然使用，勿逐条复述）\n${memParts
+          .map((m) => ex(m))
+          .join('\n\n')}`
       : '';
   // ⑫ 世界设定（Lorebook 命中）；宏先展开再拼块。
   const loreBlock =

@@ -112,9 +112,13 @@ async function fetchModels(): Promise<void> {
   try {
     const r = await window.openpet.rpc('provider.fetchModels', { sourceId: s.id });
     available.value = r.models;
-    msg.value = r.models.length ? t('settings.model.fetchCount', { count: r.models.length }) : t('settings.providerUi.noModelsFound');
+    msg.value = r.models.length
+      ? t('settings.model.fetchCount', { count: r.models.length })
+      : t('settings.providerUi.noModelsFound');
   } catch (e) {
-    msg.value = t('settings.model.fetchFail', { detail: e instanceof Error ? e.message : String(e) });
+    msg.value = t('settings.model.fetchFail', {
+      detail: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 async function pickModel(model: string): Promise<void> {
@@ -135,7 +139,9 @@ async function pickModel(model: string): Promise<void> {
 
 <template>
   <section class="ds-glass rounded-panel p-5">
-    <h2 class="text-md font-semibold text-text-main">{{ t('settings.providerUi.setupChatTitle') }}</h2>
+    <h2 class="text-md font-semibold text-text-main">
+      {{ t('settings.providerUi.setupChatTitle') }}
+    </h2>
     <p class="mt-1 text-sm text-text-sub">
       {{ t('settings.providerUi.setupChatDesc') }}
     </p>
@@ -160,7 +166,9 @@ async function pickModel(model: string): Promise<void> {
           <div class="font-semibold text-text-main">{{ activeSource.name || activeSource.id }}</div>
           <div class="text-sm text-text-sub">{{ activeSource.adapter }}</div>
         </div>
-        <button class="text-sm text-text-sub underline" @click="picking = true">{{ t('settings.providerUi.changeOne') }}</button>
+        <button class="text-sm text-text-sub underline" @click="picking = true">
+          {{ t('settings.providerUi.changeOne') }}
+        </button>
       </div>
 
       <label class="block">
@@ -179,6 +187,7 @@ async function pickModel(model: string): Promise<void> {
       <label class="block">
         <span class="text-sm text-text-sub">{{ t('settings.providerUi.apiKeyPlain') }}</span>
         <KeyInput
+          :key="activeSource.id"
           class="mt-1"
           :has-key="activeSource.key !== ''"
           @save="saveKey"

@@ -42,4 +42,17 @@ describe('MoodState', () => {
     expect(MOOD_DELTAS.combo).toBeGreaterThan(MOOD_DELTAS.tapHead);
     expect(MOOD_DELTAS.chatError).toBeLessThan(0);
   });
+
+  it('⑱ MOOD_DELTAS 追加 beatExclaim（微正）/ idleLongNeglect（负）', () => {
+    expect(MOOD_DELTAS.beatExclaim).toBeGreaterThan(0);
+    expect(MOOD_DELTAS.beatExclaim).toBeLessThan(MOOD_DELTAS.chatDone);
+    expect(MOOD_DELTAS.idleLongNeglect).toBeLessThan(0);
+  });
+
+  it('⑱ current() 与 protocol moodCurrent 同源（半衰后一致）', async () => {
+    const { moodCurrent } = await import('@openpet/protocol');
+    const h = harness({ value: -0.6, updatedAt: 0 });
+    h.setNow(MOOD_HALF_LIFE_MS / 2);
+    expect(h.mood.current()).toBeCloseTo(moodCurrent(-0.6, 0, MOOD_HALF_LIFE_MS / 2), 10);
+  });
 });

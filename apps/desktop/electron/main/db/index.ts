@@ -4,7 +4,13 @@ import type { ConversationStore } from './store.js';
 import { MemoryStore } from './memory-store.js';
 import { SqliteStore, resolveNativeBinding } from './sqlite-store.js';
 
-export type { ConversationStore, AppendMessageInput, StoredRow, KbChunkRow, KbDocRow } from './store.js';
+export type {
+  ConversationStore,
+  AppendMessageInput,
+  StoredRow,
+  KbChunkRow,
+  KbDocRow,
+} from './store.js';
 export { MemoryStore } from './memory-store.js';
 export { SqliteStore, loadBetterSqlite } from './sqlite-store.js';
 
@@ -54,7 +60,9 @@ export function createConversationStore(opts: CreateStoreOptions = {}): Conversa
       throw new Error(msg);
     }
     console.warn('[db] better-sqlite3 unavailable, falling back to in-memory store:', e);
-    console.warn('[db] 会话将不会持久化！请运行 pnpm --filter @openpet/desktop dev（自动下载 Electron 版 better-sqlite3）');
+    console.warn(
+      '[db] 会话将不会持久化！请运行 pnpm --filter @openpet/desktop dev（自动下载 Electron 版 better-sqlite3）',
+    );
     return new MemoryStore();
   }
 }

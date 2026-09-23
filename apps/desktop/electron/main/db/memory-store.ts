@@ -199,6 +199,27 @@ export class MemoryStore implements ConversationStore {
     }
   }
 
+  memoryCount(characterId: string): number {
+    return this.memoryRows.filter((r) => r.characterId === characterId).length;
+  }
+
+  // --- ⑲ 记忆 v2：wiki 页级向量索引（内存等价表）---
+  private readonly pageIndex = new Map<string, { hash: string; vector: number[] }>();
+
+  pageIndexUpsert(path: string, hash: string, vector: number[], _updatedAt: number): void {
+    this.pageIndex.set(path, { hash, vector: [...vector] });
+  }
+
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }> {
+    return [...this.pageIndex.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([path, v]) => ({ path, hash: v.hash, vector: [...v.vector] }));
+  }
+
+  pageIndexDelete(path: string): void {
+    this.pageIndex.delete(path);
+  }
+
   storageUsage(): StorageUsage {
     const chars = new Set(this.rows.map((r) => r.characterId));
     return { dbBytes: 0, messageCount: this.rows.length, characterCount: chars.size };
@@ -367,6 +388,22 @@ export class MemoryStore implements ConversationStore {
         tokensIn: r.tokensIn,
         tokensOut: r.tokensOut,
       }));
+  }
+
+  lastUserMessage(characterId: string, sessionId: string): { id: number; text: string } | null {
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId && r.role === 'user')
+        return { id: r.id, text: r.text };
+    }
+    return null;
+  }
+
+  deleteMessagesFrom(sessionId: string, fromId: number): void {
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      if (this.rows[i]!.sessionId === sessionId && this.rows[i]!.id >= fromId)
+        this.rows.splice(i, 1);
+    }
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取（语义与 SqliteStore 对齐）---

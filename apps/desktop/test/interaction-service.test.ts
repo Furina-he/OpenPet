@@ -114,6 +114,28 @@ describe('InteractionService.trigger', () => {
     expect(['jump', 'wave', 'stretch']).toContain((actions[0]!.params as { name: string }).name);
   });
 
+  it('⑱ beat.exclaim：无 cue 表项不广播，mood +0.01', () => {
+    const h = harness();
+    h.svc.trigger('beat.exclaim');
+    expect(h.sent).toHaveLength(0);
+    expect(h.mood.current()).toBeCloseTo(0.01, 5);
+  });
+
+  it('⑱ 连续冷落：idle.timeout 前 2 次不扣，第 3 次起每次 −0.04；其它事件清零计数', () => {
+    const h = harness({ prefs: { 'general.proactiveFreq': 0 } }); // 表现被吞也照记
+    h.svc.trigger('idle.timeout');
+    h.svc.trigger('idle.timeout');
+    expect(h.mood.current()).toBeCloseTo(0, 5);
+    h.svc.trigger('idle.timeout');
+    expect(h.mood.current()).toBeCloseTo(-0.04, 5);
+    h.svc.trigger('idle.timeout');
+    expect(h.mood.current()).toBeCloseTo(-0.08, 5);
+    h.svc.trigger('chat.done'); // 用户回来了 → 清零（+0.03）
+    h.svc.trigger('idle.timeout');
+    h.svc.trigger('idle.timeout');
+    expect(h.mood.current()).toBeCloseTo(-0.05, 5);
+  });
+
   it('查表无该 on（chat.done 无 cue）→ 不广播，但 mood 仍 bump +0.03', () => {
     const h = harness();
     h.svc.trigger('chat.done');
