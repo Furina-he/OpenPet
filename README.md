@@ -265,7 +265,7 @@ flowchart TB
     direction TB
     E1["角色包 .dspack<br/>导入 · 热切换"]:::done
     E2["Live2D 第二引擎"]:::done
-    E7["2D 帧动画第三引擎<br/>像素图集 · 图像生成即可量产"]:::plan
+    E7["2D 帧动画第三引擎<br/>像素图集 · 图像生成即可量产"]:::active
     E3["角色编辑器 · 音色工坊"]:::done
     E4["灵魂包 .dssoul<br/>角色市场"]:::done
     E5["形象包 .dsbody<br/>一键换形象"]:::done

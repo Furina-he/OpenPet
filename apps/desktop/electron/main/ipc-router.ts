@@ -16,7 +16,6 @@ import { spawn as cpSpawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import {
   DEFAULT_CUES,
-  DEFAULT_EMOTIONS,
   DEFAULT_STYLE_ANCHOR,
   mergeCues,
   parseImOrigin,
@@ -25,6 +24,7 @@ import {
   resolveEmbeddingTarget,
   resolveRerankTarget,
   validateImPlatform,
+  vocabOf,
   type McpServer,
 } from '@openpet/protocol';
 import { ChatService } from './chat-service.js';
@@ -514,15 +514,12 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
-  // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（manifest.emotions 键 ?? DEFAULT_EMOTIONS）。
+  // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（⑳ protocol vocabOf 唯一真源）。
   const emotionFallbackSvc = createEmotionFallback({
     fetchImpl: voiceFetch,
     resolveTarget: utilityTargetWithKey,
     getPrefs: () => prefsStore.getAll(),
-    emotions: () => {
-      const m = characters.current().manifest;
-      return m.emotions ? Object.keys(m.emotions) : DEFAULT_EMOTIONS;
-    },
+    emotions: () => vocabOf(characters.current().manifest).emotions,
     broadcast,
   });
   // 批次⑥ F-AI-08：本地时区自然月起点（用量聚合月界 + 预算门共用）。
@@ -571,8 +568,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return {
         id: c.characterId,
         name: c.manifest.name,
-        ...(c.manifest.emotions ? { emotions: Object.keys(c.manifest.emotions) } : {}),
-        ...(c.manifest.actions ? { actions: c.manifest.actions } : {}),
+        ...vocabOf(c.manifest),
       };
     },
     ...(deps.sqlitePath ? { sqlitePath: deps.sqlitePath } : {}),
