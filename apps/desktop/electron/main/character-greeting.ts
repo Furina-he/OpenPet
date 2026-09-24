@@ -8,6 +8,7 @@ import {
   BehaviorParser,
   buildSystemPrompt,
   expandMacros,
+  vocabOf,
   type CharacterManifest,
 } from '@openpet/protocol';
 import type { FetchLike } from './rerank-client.js';
@@ -26,8 +27,7 @@ export function buildGreetingMessages(
   const system = buildSystemPrompt({
     name: manifest.name,
     ...(persona?.systemPrompt ? { personaPrompt: persona.systemPrompt } : {}),
-    ...(manifest.emotions ? { emotions: Object.keys(manifest.emotions) } : {}),
-    ...(manifest.actions ? { actions: manifest.actions } : {}),
+    ...vocabOf(manifest),
   });
   return [
     { role: 'system', content: system },

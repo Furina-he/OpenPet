@@ -11,6 +11,8 @@
 import { BEHAVIOR_LIMITS } from './behavior-parser.js';
 import { moodBand } from './mood.js';
 import type { PersonaStateBlob } from './state.js';
+import type { CharacterManifest } from './character-manifest.js';
+import { spriteDeclaredVocab } from './sprite-body.js';
 
 export interface BehaviorPromptOptions {
   /** 角色可用的表情名（VRM BlendShape，由角色包提供；缺省 8 基础表情）。 */
@@ -40,6 +42,28 @@ export const DEFAULT_ACTIONS: readonly string[] = [
   'jump',
   'tilt',
 ];
+
+/**
+ * ⑳ 角色词表唯一真源（Main 组 prompt / 表情兜底 / 试讲，渲染端 listEmotions/listActions 同源）。
+ * - vrm / live2d：`emotions 键 ?? DEFAULT_EMOTIONS`、`actions ?? DEFAULT_ACTIONS`（与本批前逐字一致）；
+ * - sprite：默认词表 ∪ 作者在 `sprite.emotions/actions` 显式声明的映射键——程序化兜底保证默认词表全部
+ *   有表现；预设映射里的系统 cue 专用词（thinking/confused/searching/droop）不进 LLM 词表。
+ */
+export function vocabOf(
+  m: Pick<CharacterManifest, 'engine' | 'emotions' | 'actions' | 'sprite'>,
+): { emotions: readonly string[]; actions: readonly string[] } {
+  if (m.engine === 'sprite') {
+    const declared = spriteDeclaredVocab(m.sprite);
+    return {
+      emotions: [...new Set([...DEFAULT_EMOTIONS, ...declared.emotions])],
+      actions: [...new Set([...DEFAULT_ACTIONS, ...declared.actions])],
+    };
+  }
+  return {
+    emotions: m.emotions ? Object.keys(m.emotions) : DEFAULT_EMOTIONS,
+    actions: m.actions ?? DEFAULT_ACTIONS,
+  };
+}
 
 /** few-shot 示例（与 tech-design §4.1 示例同源）；必须能被 BehaviorParser 零告警解析。 */
 export const BEHAVIOR_FEWSHOTS: readonly string[] = [

@@ -1,4 +1,5 @@
-/** 引擎中立的运行时契约（tech-design §7）：VRM(three) 与 Live2D(pixi) 各自实现。 */
+/** 引擎中立的运行时契约（tech-design §7）：VRM(three) / Live2D(pixi) / ⑳ sprite(pixi) 各自实现。 */
+import type { SpriteSheet } from '@openpet/protocol';
 import type { SceneBudget } from './perf-budget';
 
 /** alpha 命中穿透所需的最小渲染面（interaction.ts readPixels 用）。 */
@@ -36,6 +37,16 @@ export interface CharacterRuntime {
   setIdle(intent: { mood: string; energy: string }): void;
   /** ⑱ T9（VRM 专有，可选）：把 url 指向的 .vrma 装为某动作的片段；失败回 false（曲线兜底）。 */
   loadActionClip?: ((name: string, url: string) => Promise<boolean>) | undefined;
+  /**
+   * ⑳（可选，sprite 实现）：角色可见轮廓在窗口内的上下沿（CSS px）——命中分区与气泡贴轮廓用。
+   * VRM / Live2D 不实现 = 按整窗口口径（行为不变）。
+   */
+  contentBox?: (() => { top: number; bottom: number } | null) | undefined;
+  /** ⑳（可选，仅 harness）：热换图集（可同时换布局描述）；失败抛出，旧图集保持。 */
+  loadSheet?: ((url: string, sprite?: SpriteSheet) => Promise<void>) | undefined;
+  /** ⑳（可选，仅 harness）：点播某帧状态一轮；返回状态名列表的 listStates 同理。 */
+  playState?: ((state: string) => boolean) | undefined;
+  listStates?: (() => string[]) | undefined;
   listEmotions(): string[];
   listActions(): string[];
   getStats(): { fps: number; budget: SceneBudget; budgetWarnings: string[] };

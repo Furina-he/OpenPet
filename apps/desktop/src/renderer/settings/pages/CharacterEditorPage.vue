@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import {
   CueEventSchema,
   DEFAULT_CUES,
+  SPRITE_SLOT_KEYS,
   resolveChatTarget,
   type CharacterManifest,
 } from '@openpet/protocol';
@@ -16,18 +17,29 @@ import Select from '../../components/Select.vue';
 import ToastHost from '../../components/ToastHost.vue';
 import PersonaFields from '../../components/PersonaFields.vue';
 import ModelShowcase from '../components/ModelShowcase.vue';
+import SpriteThumb from '../components/SpriteThumb.vue';
+import Switch from '../../components/Switch.vue';
 import {
   cloneManifest,
   normalizeDraft,
+  normalizeSprite,
   isDirty,
   validateDraft,
+  setSpriteAction,
+  setSpriteEmotion,
+  setSpriteSlot,
+  spriteActionNames,
+  spriteEmotionNames,
   type EditorDraft,
 } from '../character-editor-state.js';
 import {
   personaSourceOf,
+  spriteSourceOf,
   type CharacterListItem,
   type PersonaAllLike,
 } from '../character-library-view.js';
+import { engineLabel } from '../engine-label.js';
+import { tryResolveSprite } from '../sprite-thumb.js';
 
 const props = defineProps<{ initialId?: string | null }>();
 const emit = defineEmits<{ navigate: [route: string] }>();
@@ -293,6 +305,31 @@ function revealFolder(): void {
   if (original.value) void window.openpet.rpc('character.revealInFolder', { id: original.value.id });
 }
 
+// --- ⑳ 帧动画映射（几何 cell/states 不在 E4 编辑；映射写作者原文，预设展开归 resolveSprite）---
+const spriteResolved = computed(() =>
+  draft.value?.engine === 'sprite' && draft.value.sprite
+    ? tryResolveSprite(normalizeSprite(draft.value.sprite))
+    : null,
+);
+const spriteSource = computed(() =>
+  original.value && draft.value ? spriteSourceOf(original.value.id, draft.value) : null,
+);
+const spriteStateNames = computed(() => Object.keys(spriteResolved.value?.states ?? {}));
+function spriteRaw(): NonNullable<EditorDraft['sprite']> {
+  return draft.value!.sprite!;
+}
+function setEmotionField(name: string, field: 'loop' | 'enter' | 'speed', raw: string): void {
+  if (!draft.value?.sprite) return;
+  const cur = spriteResolved.value?.emotions[name];
+  const next = { loop: cur?.loop, enter: cur?.enter, speed: cur?.speed ?? 1 };
+  if (field === 'speed') {
+    const n = Number(raw);
+    next.speed = Number.isFinite(n) && n >= 0.25 && n <= 4 ? n : 1;
+  } else next[field] = raw || undefined;
+  setSpriteEmotion(draft.value.sprite, name, next.loop || next.enter ? next : null);
+}
+const SPRITE_FACINGS = ['front', 'left', 'right'] as const;
+
 const TABS = [
   { key: 'appearance', label: 'settings.editor.tabs.appearance' },
   { key: 'persona', label: 'settings.editor.tabs.persona' },
@@ -423,7 +460,7 @@ const TABS = [
               <div class="grid grid-cols-2 gap-x-6 rounded-card border border-glass-border bg-white/20 p-3 text-sm">
                 <div class="flex justify-between py-1">
                   <span class="text-text-sub">{{ t('settings.characters.engine') }}</span>
-                  <span class="uppercase text-text-main">{{ draft.engine }}</span>
+                  <span class="text-text-main">{{ engineLabel(draft.engine, t) }}</span>
                 </div>
                 <div class="flex justify-between py-1">
                   <span class="text-text-sub">{{ t('settings.characters.modelFile') }}</span>
@@ -510,6 +547,163 @@ const TABS = [
 
             <!-- ③ 动画 & 情绪 -->
             <div v-else-if="activeTab === 'animation'" class="max-w-[680px] space-y-6">
+              <!-- ⑳ 帧动画：状态列表 + 情绪/动作映射 + 槽位 + 显示选项（替换 VRM 表情权重区与动作词表区） -->
+              <template v-if="draft.engine === 'sprite' && draft.sprite">
+                <p v-if="errors['sprite']" class="text-xs" style="color: var(--ds-danger)">{{ t(errors['sprite']!) }}</p>
+                <div>
+                  <span class="mb-1 block text-sm font-medium text-text-main">{{ t('settings.editor.sprite.states') }}</span>
+                  <p class="mb-2 text-xs text-text-sub">{{ t('settings.editor.sprite.statesHint') }}</p>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="st in spriteStateNames"
+                      :key="st"
+                      class="flex w-[88px] flex-col items-center rounded-card border border-glass-border bg-white/20 p-1.5 transition ease-ds hover:bg-white/40"
+                      @click="showcase?.playState(st)"
+                    >
+                      <SpriteThumb v-if="spriteSource" :source="spriteSource" :state="st" :width="72" :height="72" />
+                      <span class="mt-1 w-full truncate text-center text-[11px] text-text-main">{{ st }}</span>
+                      <span class="text-[10px] text-text-sub">
+                        {{ t('settings.editor.sprite.frames', { n: spriteResolved?.states[st]?.frames ?? 0 }) }}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <span class="mb-1 block text-sm font-medium text-text-main">{{ t('settings.editor.sprite.emotionMap') }}</span>
+                  <p class="mb-2 text-xs text-text-sub">{{ t('settings.editor.sprite.emotionHint') }}</p>
+                  <div class="grid grid-cols-[minmax(0,96px)_minmax(0,1fr)_minmax(0,1fr)_56px] items-center gap-x-2 gap-y-1.5 text-xs">
+                    <span class="text-text-sub">{{ t('settings.editor.sprite.emotion') }}</span>
+                    <span class="text-text-sub">{{ t('settings.editor.sprite.loop') }}</span>
+                    <span class="text-text-sub">{{ t('settings.editor.sprite.enter') }}</span>
+                    <span class="text-text-sub">{{ t('settings.editor.sprite.speed') }}</span>
+                    <template v-for="emo in spriteEmotionNames(draft.sprite)" :key="emo">
+                      <span class="truncate text-sm text-text-main">{{ emo }}</span>
+                      <select
+                        class="ds-control h-8 w-full min-w-0 rounded-input px-2 text-xs text-text-main"
+                        :value="spriteResolved?.emotions[emo]?.loop ?? ''"
+                        @change="setEmotionField(emo, 'loop', ($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="">{{ t('settings.editor.sprite.none') }}</option>
+                        <option v-for="st in spriteStateNames" :key="st" :value="st">{{ st }}</option>
+                      </select>
+                      <select
+                        class="ds-control h-8 w-full min-w-0 rounded-input px-2 text-xs text-text-main"
+                        :value="spriteResolved?.emotions[emo]?.enter ?? ''"
+                        @change="setEmotionField(emo, 'enter', ($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="">{{ t('settings.editor.sprite.none') }}</option>
+                        <option v-for="st in spriteStateNames" :key="st" :value="st">{{ st }}</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0.25"
+                        max="4"
+                        step="0.05"
+                        :disabled="!spriteResolved?.emotions[emo]"
+                        :value="spriteResolved?.emotions[emo]?.speed ?? 1"
+                        class="ds-control h-8 w-full min-w-0 rounded-input px-1 text-xs text-text-main disabled:opacity-40"
+                        @change="setEmotionField(emo, 'speed', ($event.target as HTMLInputElement).value)"
+                      />
+                    </template>
+                  </div>
+                </div>
+
+                <div>
+                  <span class="mb-1 block text-sm font-medium text-text-main">{{ t('settings.editor.sprite.actionMap') }}</span>
+                  <p class="mb-2 text-xs text-text-sub">{{ t('settings.editor.sprite.actionHint') }}</p>
+                  <div class="grid grid-cols-[minmax(0,120px)_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
+                    <template v-for="act in spriteActionNames(draft.sprite)" :key="act">
+                      <span class="truncate text-sm text-text-main">{{ act }}</span>
+                      <select
+                        class="ds-control h-8 w-full min-w-0 rounded-input px-2 text-xs text-text-main"
+                        :value="spriteResolved?.actions[act] ?? ''"
+                        @change="setSpriteAction(spriteRaw(), act, ($event.target as HTMLSelectElement).value || null)"
+                      >
+                        <option value="">{{ t('settings.editor.sprite.procedural') }}</option>
+                        <option v-for="st in spriteStateNames" :key="st" :value="st">{{ st }}</option>
+                      </select>
+                    </template>
+                  </div>
+                </div>
+
+                <div>
+                  <span class="mb-2 block text-sm font-medium text-text-main">{{ t('settings.editor.sprite.slots') }}</span>
+                  <div class="grid grid-cols-[minmax(0,120px)_minmax(0,1fr)] items-center gap-x-2 gap-y-1.5">
+                    <template v-for="slot in SPRITE_SLOT_KEYS" :key="slot">
+                      <span class="text-sm text-text-main">{{ t(`settings.editor.sprite.slot.${slot}`) }}</span>
+                      <select
+                        class="ds-control h-8 w-full min-w-0 rounded-input px-2 text-xs text-text-main"
+                        :value="spriteResolved?.slots[slot] ?? ''"
+                        @change="setSpriteSlot(spriteRaw(), slot, ($event.target as HTMLSelectElement).value || null)"
+                      >
+                        <option v-if="slot !== 'idle'" value="">{{ t('settings.editor.sprite.none') }}</option>
+                        <option v-for="st in spriteStateNames" :key="st" :value="st">{{ st }}</option>
+                      </select>
+                    </template>
+                  </div>
+                </div>
+
+                <div class="space-y-3 rounded-card border border-glass-border bg-white/20 p-3">
+                  <span class="block text-sm font-medium text-text-main">{{ t('settings.editor.sprite.display') }}</span>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm text-text-main">{{ t('settings.editor.sprite.smoothing') }}</span>
+                    <select
+                      class="ds-control h-8 min-w-0 max-w-[60%] rounded-input px-2 text-xs text-text-main"
+                      :value="spriteRaw().smoothing ?? 'smooth'"
+                      @change="spriteRaw().smoothing = ($event.target as HTMLSelectElement).value === 'pixel' ? 'pixel' : 'smooth'"
+                    >
+                      <option value="smooth">{{ t('settings.editor.sprite.smooth') }}</option>
+                      <option value="pixel">{{ t('settings.editor.sprite.pixel') }}</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm text-text-main">{{ t('settings.editor.sprite.fit') }}</span>
+                    <select
+                      class="ds-control h-8 min-w-0 max-w-[60%] rounded-input px-2 text-xs text-text-main"
+                      :value="spriteRaw().fit ?? 'contain'"
+                      @change="spriteRaw().fit = ($event.target as HTMLSelectElement).value === 'integer' ? 'integer' : 'contain'"
+                    >
+                      <option value="contain">{{ t('settings.editor.sprite.contain') }}</option>
+                      <option value="integer">{{ t('settings.editor.sprite.integer') }}</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-sm text-text-main">{{ t('settings.editor.sprite.facing') }}</span>
+                    <select
+                      class="ds-control h-8 min-w-0 max-w-[60%] rounded-input px-2 text-xs text-text-main"
+                      :value="spriteRaw().facing ?? 'front'"
+                      @change="spriteRaw().facing = SPRITE_FACINGS.find((f) => f === ($event.target as HTMLSelectElement).value) ?? 'front'"
+                    >
+                      <option v-for="f in SPRITE_FACINGS" :key="f" :value="f">
+                        {{ t(`settings.editor.sprite.facings.${f}`) }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <span class="block text-sm text-text-main">{{ t('settings.editor.sprite.flipToCursor') }}</span>
+                      <span class="block text-xs text-text-sub">{{ t('settings.editor.sprite.flipHint') }}</span>
+                    </div>
+                    <Switch
+                      :model-value="spriteRaw().flipToCursor ?? false"
+                      @update:model-value="spriteRaw().flipToCursor = $event"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <span class="block text-sm text-text-main">{{ t('settings.editor.sprite.proceduralLife') }}</span>
+                      <span class="block text-xs text-text-sub">{{ t('settings.editor.sprite.proceduralLifeHint') }}</span>
+                    </div>
+                    <Switch
+                      :model-value="spriteRaw().proceduralLife ?? true"
+                      @update:model-value="spriteRaw().proceduralLife = $event"
+                    />
+                  </div>
+                </div>
+              </template>
+
+              <template v-else>
               <!-- 情绪映射表：VRM=权重组合 / Live2D=表情名；空=运行时内置默认表 -->
               <div>
                 <div class="mb-2 flex items-center justify-between">
@@ -649,6 +843,7 @@ const TABS = [
                   <button class="text-xs" style="color: var(--ds-danger)" @click="delete draft.live2dMotions![name]">{{ t('common.delete') }}</button>
                 </div>
               </div>
+              </template>
 
               <!-- 交互 cue 表（= 设计稿 Hooks；空 = 内置默认表） -->
               <div>

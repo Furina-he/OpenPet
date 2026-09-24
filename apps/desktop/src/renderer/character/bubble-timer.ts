@@ -9,3 +9,10 @@ export function durationMs(pref: Prefs['display.bubbleDuration']): number | null
 export function bubbleSide(p: { charTopY: number; bubbleH: number }): 'above' | 'below' {
   return p.charTopY >= p.bubbleH ? 'above' : 'below';
 }
+
+/** ⑳ 贴轮廓：气泡顶 = 轮廓顶上方 8px，最低不小于窗口顶 12px（放不下就压在头上，同 VRM）。 */
+export const BUBBLE_TOP_MIN = 12;
+export const BUBBLE_GAP = 8;
+export function bubbleTop(boxTop: number, bubbleH: number): number {
+  return Math.max(BUBBLE_TOP_MIN, boxTop - bubbleH - BUBBLE_GAP);
+}

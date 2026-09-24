@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CueSchema } from './interaction-cues.js';
 import { BeginDialogsSchema } from './persona-config.js';
 import { PackLorebookSchema } from './lorebook.js';
+import { SpriteResolveError, SpriteSheetSchema, resolveSprite, type SpriteSheet } from './sprite-body.js';
 
 /**
  * 角色包 manifest —— Main（校验/asset 协议）与 Character Renderer（运行时词表）
@@ -34,9 +35,14 @@ export const PackPersonaSchema = z.object({
 });
 export type PackPersona = z.infer<typeof PackPersonaSchema>;
 
-/** live2d 引擎的 model 必须指向 Cubism 设置文件（manifest 与 .dsbody 共用同一条约束）。 */
-function refineLive2dModel(
-  m: { engine: 'vrm' | 'live2d'; model: string },
+/**
+ * 引擎相关约束（manifest 与 .dsbody 共用同一条）：
+ * - live2d：model 必须指向 Cubism 设置文件；
+ * - sprite（⑳）：`sprite` 必填、model 是 .png / .webp 图集、`resolveSprite` 展开通过
+ *   （custom 缺格/状态/idle、映射指向不存在的状态 → 拒绝）。
+ */
+function refineEngineModel(
+  m: { engine: 'vrm' | 'live2d' | 'sprite'; model: string; sprite?: SpriteSheet | undefined },
   ctx: z.RefinementCtx,
 ): void {
   if (m.engine === 'live2d' && !m.model.endsWith('.model3.json')) {
@@ -45,6 +51,28 @@ function refineLive2dModel(
       path: ['model'],
       message: 'live2d 角色的 model 必须指向 .model3.json 设置文件',
     });
+  }
+  if (m.engine !== 'sprite') return;
+  if (!/\.(png|webp)$/i.test(m.model)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['model'],
+      message: 'sprite 角色的 model 必须指向 .png / .webp 图集',
+    });
+  }
+  if (!m.sprite) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['sprite'],
+      message: 'sprite 角色必须声明 sprite 图集描述',
+    });
+    return;
+  }
+  try {
+    resolveSprite(m.sprite);
+  } catch (e) {
+    if (!(e instanceof SpriteResolveError)) throw e;
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sprite', ...e.path], message: e.message });
   }
 }
 
@@ -57,9 +85,9 @@ export const CharacterManifestObjectSchema = z
     id: z.string().regex(CHARACTER_ID_RE),
     name: z.string().min(1),
     version: z.string().min(1),
-    /** 双引擎二选一（§7）：vrm(three) / live2d(pixi, Cubism 4/5 moc3)。 */
-    engine: z.enum(['vrm', 'live2d']),
-    /** 包内相对路径（asset://<id>/<model> 的 path 部分）。 */
+    /** 三引擎（§7）：vrm(three) / live2d(pixi, Cubism 4/5 moc3) / sprite(pixi, ⑳ 逐帧图集)。 */
+    engine: z.enum(['vrm', 'live2d', 'sprite']),
+    /** 包内相对路径（asset://<id>/<model> 的 path 部分）；sprite = 图集本身。 */
     model: z.string().refine(isSafeRelPath, { message: 'model must be a safe relative path' }),
     /** 情绪名 → VRM expression 权重组合；缺省用运行时内置表（live2d 忽略）。 */
     emotions: z
@@ -111,9 +139,11 @@ export const CharacterManifestObjectSchema = z
         z.object({ group: z.string().min(1), index: z.number().int().nonnegative().optional() }),
       )
       .optional(),
+    /** ⑳ 帧动画图集描述（engine=sprite 必填；此时 emotions/actions/actionClips/live2d* 被忽略）。 */
+    sprite: SpriteSheetSchema.optional(),
   });
 
-export const CharacterManifestSchema = CharacterManifestObjectSchema.superRefine(refineLive2dModel);
+export const CharacterManifestSchema = CharacterManifestObjectSchema.superRefine(refineEngineModel);
 
 export type CharacterManifest = z.infer<typeof CharacterManifestSchema>;
 
@@ -134,6 +164,7 @@ export const BODY_FIELDS = [
   'cues',
   'live2dEmotions',
   'live2dMotions',
+  'sprite',
   'preview',
 ] as const;
 /** 灵魂字段：随角色本体走（换形象时原地保留；`voice` 是第三层「声音」，不随肉体变）。 */
@@ -205,11 +236,12 @@ export const BodyPackSchema = CharacterManifestObjectSchema.pick({
   cues: true,
   live2dEmotions: true,
   live2dMotions: true,
+  sprite: true,
   preview: true,
   author: true,
   description: true,
   license: true,
   tags: true,
-}).superRefine(refineLive2dModel);
+}).superRefine(refineEngineModel);
 
 export type BodyPack = z.infer<typeof BodyPackSchema>;

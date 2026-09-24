@@ -26,7 +26,7 @@ declare global {
   interface Window {
     /** debug 表面（e2e / 手测用），不属于 openpet 协议。 */
     __charDebug?: {
-      mode: 'vrm' | 'live2d' | 'fallback';
+      mode: 'vrm' | 'live2d' | 'sprite' | 'fallback';
       fps: () => number;
       budget: () => unknown;
       lastLookAt: { x: number; y: number } | null;
@@ -67,7 +67,7 @@ function ensureCubismCore(): Promise<void> {
   return cubismCoreLoading;
 }
 
-let bootedEngine: 'vrm' | 'live2d' = 'vrm';
+let bootedEngine: 'vrm' | 'live2d' | 'sprite' = 'vrm';
 
 async function bootRuntime(stageEl: HTMLElement): Promise<CharacterRuntime> {
   const cur = await window.openpet.rpc('character.current', {});
@@ -77,6 +77,11 @@ async function bootRuntime(stageEl: HTMLElement): Promise<CharacterRuntime> {
     await ensureCubismCore();
     const { createLive2dRuntime } = await import('./live2d-runtime'); // 动态 import：VRM 用户不载 pixi
     return createLive2dRuntime(stageEl, modelUrl, cur.manifest);
+  }
+  if (cur.manifest.engine === 'sprite') {
+    bootedEngine = 'sprite';
+    const { createSpriteRuntime } = await import('./sprite-runtime'); // ⑳ 同样动态 import
+    return createSpriteRuntime(stageEl, modelUrl, cur.manifest);
   }
   bootedEngine = 'vrm';
   // ⑱ T9：assetBase 供 manifest.actionClips（.vrma）解析成 asset:// URL
@@ -111,12 +116,14 @@ async function boot(): Promise<void> {
 
   let runtime: CharacterRuntime | null = null;
   let face: FallbackFace | null = null;
+  // ⑳ 可见轮廓（sprite 实现；VRM / Live2D 无 → null = 整窗口口径）
+  const contentBox = (): { top: number; bottom: number } | null => runtime?.contentBox?.() ?? null;
   // ⑱ dev harness：`?harness=life`（Main 经 OPENPET_HARNESS=life 追加）。面板是 DOM，
   // alpha 穿透会把面板区域判成透明 → 跳过穿透只留拖拽。
   const harness = new URLSearchParams(location.search).get('harness');
   try {
     runtime = await bootRuntime(stageEl);
-    setupInteraction(harness ? null : runtime.hitSurface);
+    setupInteraction(harness ? null : runtime.hitSurface, contentBox);
     if (harness === 'life') {
       const rt = runtime;
       const { mountLifeHarness } = await import('../dev/life-harness');
@@ -133,6 +140,9 @@ async function boot(): Promise<void> {
         },
         loadClip: rt.loadActionClip
           ? (name, file) => rt.loadActionClip!(name, URL.createObjectURL(file))
+          : undefined,
+        loadSheet: rt.loadSheet
+          ? (file, sprite) => rt.loadSheet!(URL.createObjectURL(file), sprite)
           : undefined,
       });
     }
@@ -202,7 +212,7 @@ async function boot(): Promise<void> {
 
   // ---- A2 桌面气泡：流式文本逐字 + 按 pref 自动消失（character 仍只反映 chat，无业务）----
   // 线 B-1：只反映桌面会话（Main 已 tee 掉 im: 会话，此处双保险防未来新通道漏网）。
-  const bubble = mountBubble(document.getElementById('bubble')!);
+  const bubble = mountBubble(document.getElementById('bubble')!, contentBox);
   window.openpet.on('chat.stream', (p) => {
     if (!isDesktopSession(p.sessionId)) return;
     markActivity();

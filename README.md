@@ -48,7 +48,7 @@ OpenPet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI
 ## ✨ 特性
 
 - **桌面常驻角色**：透明桌面窗口、拖拽、触摸反馈、主动行为与桌面气泡。
-- **VRM / Live2D 双运行时**：支持 3D 角色与 Live2D 角色，统一接收表情、动作、嘴型和行为事件。
+- **VRM / Live2D / 帧动画三种形象**：3D 角色、Live2D 角色与 2D 逐帧图集（像素风、手绘风皆可，兼容 Codex 宠物图集）统一接收表情、动作、嘴型和行为事件；换形象可跨三类，记忆与人设原地保留。
 - **流式行为驱动**：LLM 输出中的 `<emo />`、`<act />`、`<wait />` 和 intent header 会被增量解析，让文字回复和角色表现同步发生。
 - **多模型 Provider**：支持多 Provider、多模型模板、降级链和动态配置表单。
 - **Persona 与角色包**：可编辑人设、角色绑定、`.dspack` 导入、角色热切换和包内行为 cue 覆盖。
@@ -107,7 +107,7 @@ flowchart TB
 
   subgraph R["Renderer（sandbox · contextIsolation）"]
     direction LR
-    RC["角色窗口<br/>透明置顶 · alpha 命中穿透<br/>VRM (three-vrm) / Live2D (pixi)<br/>表情 · 动作 · 视线 · 嘴型 · 拖拽"]:::win
+    RC["角色窗口<br/>透明置顶 · alpha 命中穿透<br/>VRM (three-vrm) / Live2D · 帧动画 (pixi)<br/>表情 · 动作 · 视线 · 嘴型 · 拖拽"]:::win
     RO["聊天浮层<br/>流式气泡 · 语音输入"]:::win
     RH["Hub 管理窗<br/>Vue 3 + Tailwind<br/>会话 · 角色库 / 编辑器 / 市场 · 模型 · 记忆<br/>知识库 · 工具 · 插件 · 连接 · 语音 · 设置"]:::win
   end
@@ -265,7 +265,7 @@ flowchart TB
     direction TB
     E1["角色包 .dspack<br/>导入 · 热切换"]:::done
     E2["Live2D 第二引擎"]:::done
-    E7["2D 帧动画第三引擎<br/>像素图集 · 图像生成即可量产"]:::plan
+    E7["2D 帧动画第三引擎<br/>像素图集 · 图像生成即可量产"]:::done
     E3["角色编辑器 · 音色工坊"]:::done
     E4["灵魂包 .dssoul<br/>角色市场"]:::done
     E5["形象包 .dsbody<br/>一键换形象"]:::done

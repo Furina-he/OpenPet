@@ -15,6 +15,7 @@ import {
   detectStroke,
   LONG_PRESS_MS as GESTURE_LONG_PRESS_MS,
   type HoverSample,
+  type ContentBox,
 } from './interaction-zones';
 import { dragState } from './drag-state';
 
@@ -27,12 +28,16 @@ const STROKE_SAMPLE_MS = 30;
 const STROKE_WINDOW_MS = 1400;
 const STROKE_THROTTLE_MS = 2000;
 
-export function setupInteraction(surface: HitSurface | null): void {
+/** ⑳ contentBox：可见轮廓 getter（sprite）；缺省 / 返回 null = 按整窗口分头身（行为不变）。 */
+export function setupInteraction(
+  surface: HitSurface | null,
+  contentBox: () => ContentBox | null = () => null,
+): void {
   const shared = { dragging: false };
   if (surface) setupClickThrough(surface, shared);
   setupDrag(surface?.canvas ?? document.body, shared);
-  setupClicks(surface?.canvas ?? document.body);
-  setupFileDrop();
+  setupClicks(surface?.canvas ?? document.body, contentBox);
+  setupFileDrop(contentBox);
 }
 
 function setupClickThrough(surface: HitSurface, shared: { dragging: boolean }): void {
@@ -132,7 +137,7 @@ function setupDrag(target: HTMLElement, shared: { dragging: boolean }): void {
  * A1/F-IT-01 点击与手势：tap（头/身）/ 长按 600ms / hover 抚摸 → character.gesture 统一上报，
  * 双击开聊天、右键弹菜单、hover>800ms 提示。
  */
-function setupClicks(target: HTMLElement): void {
+function setupClicks(target: HTMLElement, contentBox: () => ContentBox | null): void {
   let downT = 0;
   let downX = 0;
   let downY = 0;
@@ -160,7 +165,7 @@ function setupClicks(target: HTMLElement): void {
     pressed = true;
     longConsumed = false;
     strokeSamples = []; // 按压期间不算抚摸
-    const zone = tapZone(e.clientY, window.innerHeight);
+    const zone = tapZone(e.clientY, window.innerHeight, contentBox());
     cancelLongTimer();
     // 长按：≥600ms 未移动未抬起（移动/抬起取消）。与拖拽不冲突——拖拽=按住移动。
     longTimer = window.setTimeout(() => {
@@ -180,7 +185,7 @@ function setupClicks(target: HTMLElement): void {
     cancelLongTimer();
     if (longConsumed) return;
     if (classifyPress({ downT, upT: performance.now(), moved }, LONG_PRESS_MS) !== 'tap') return;
-    const zone = tapZone(e.clientY, window.innerHeight);
+    const zone = tapZone(e.clientY, window.innerHeight, contentBox());
     // 只上报 Main，由其经 InteractionService 查 cue 表广播（character 保持哑播放器）。
     void window.openpet.rpc('character.gesture', { zone, kind: 'tap' });
   });
@@ -204,7 +209,7 @@ function setupClicks(target: HTMLElement): void {
     strokeSamples.push({
       x: e.clientX,
       t: now,
-      head: tapZone(e.clientY, window.innerHeight) === 'head',
+      head: tapZone(e.clientY, window.innerHeight, contentBox()) === 'head',
     });
     while (strokeSamples.length > 0 && now - strokeSamples[0]!.t > STROKE_WINDOW_MS) {
       strokeSamples.shift();
@@ -226,12 +231,12 @@ function setupClicks(target: HTMLElement): void {
 }
 
 /** F-IT-06 文件拖到角色：阻止默认（不打开文件），上报 fileDrop（真处理留后续 Agent 能力）。 */
-function setupFileDrop(): void {
+function setupFileDrop(contentBox: () => ContentBox | null): void {
   window.addEventListener('dragover', (e: DragEvent) => e.preventDefault());
   window.addEventListener('drop', (e: DragEvent) => {
     e.preventDefault();
     void window.openpet.rpc('character.gesture', {
-      zone: tapZone(e.clientY, window.innerHeight),
+      zone: tapZone(e.clientY, window.innerHeight, contentBox()),
       kind: 'fileDrop',
     });
   });
