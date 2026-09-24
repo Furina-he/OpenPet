@@ -32,9 +32,6 @@ extraResources:
     to: native
     filter:
       - '*.node'
-  # Star Python shim（spawn 真实 .py 文件，不能进 asar；index.ts 打包分支指 resources/star-host）
-  - from: resources/star-host
-    to: star-host
 win:
   target:
     - nsis

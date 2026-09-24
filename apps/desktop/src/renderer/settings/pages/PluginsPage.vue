@@ -1,5 +1,5 @@
 <!-- settings/pages/PluginsPage.vue — Hub「插件」页（线 B-2，照 AstrBot ExtensionPage 信息结构）。
-     单一运行时：Desktop 插件列表 + 市场源（㉑ 起 AstrBot Star 兼容页签随宿主裁撤）。
+     单一运行时：Desktop 插件列表 + 市场源。
      安装两段式：pick/URL 下载 → InstallConfirmDialog 权限清单（硬要求）→ apply。
      市场：源 URL CRUD（prefs plugins.marketSources）+ 拉取浏览 + 从 URL 安装。 -->
 <script setup lang="ts">

@@ -1,5 +1,5 @@
 // 改名 openpet 的一次性数据迁移：userData 整目录搬家
-// （secrets.kc/characters/plugins/star-*/prefs.json/sessions.db 全在内，零逐项处理）。
+// （secrets.kc/characters/plugins/prefs.json/sessions.db 全在内，零逐项处理）。
 import * as nodeFs from 'node:fs';
 
 type FsLike = Pick<typeof nodeFs, 'existsSync' | 'readdirSync' | 'renameSync' | 'cpSync'>;
