@@ -4,7 +4,6 @@
  * 安装复刻 pack-import 模式：.dsplug(zip)/文件夹两段式（pick 摘要 → apply 落盘），
  * zip-slip 逐 entry 校验 + 解压总量 50MB 上限 + id 冲突拒绝。启停 = prefs
  * `plugins.disabled` + host 即时起停；配置存 `<dir>/config.json`，变更推 worker。
- * star / python 字段由 T7 注入（缺省空/未装）。
  */
 import AdmZip from 'adm-zip';
 import {
@@ -22,11 +21,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DesktopPluginManifestSchema, isSafeRelPath } from '@openpet/protocol';
-import type {
-  DesktopPluginManifest,
-  PluginRuntimeStatus,
-  StarPluginMeta,
-} from '@openpet/protocol';
+import type { DesktopPluginManifest, PluginRuntimeStatus } from '@openpet/protocol';
 
 const MAX_UNPACKED_BYTES = 50 * 1024 * 1024;
 
@@ -52,11 +47,6 @@ export interface PluginServiceDeps {
     text(): Promise<string>;
     arrayBuffer(): Promise<ArrayBuffer>;
   }>;
-  /** T7 注入：Star 插件列表 + Python 探测。 */
-  starList?: () => Array<{ meta: StarPluginMeta; enabled: boolean }>;
-  pythonInfo?: () => { found: boolean; version?: string };
-  /** T7 注入：Star 启停（写 star.disabled prefs + 宿主重启）。 */
-  onStarSetEnabled?: (dir: string, enabled: boolean) => Promise<void>;
   maxUnpackedBytes?: number;
   log?: (msg: string) => void;
 }
@@ -176,8 +166,6 @@ export function createPluginService(deps: PluginServiceDeps) {
             ...(s?.lastError !== undefined ? { lastError: s.lastError } : {}),
           };
         }),
-        star: deps.starList?.() ?? [],
-        python: deps.pythonInfo?.() ?? { found: false as const },
       };
     },
 
@@ -209,15 +197,7 @@ export function createPluginService(deps: PluginServiceDeps) {
       return { ok: true as const };
     },
 
-    'plugins.setEnabled': async (p: {
-      runtime: 'desktop' | 'star';
-      id: string;
-      enabled: boolean;
-    }) => {
-      if (p.runtime !== 'desktop') {
-        await deps.onStarSetEnabled?.(p.id, p.enabled);
-        return { ok: true as const };
-      }
+    'plugins.setEnabled': async (p: { id: string; enabled: boolean }) => {
       const rest = deps.getDisabled().filter((x) => x !== p.id);
       deps.setDisabled(p.enabled ? rest : [...rest, p.id]);
       if (p.enabled) {

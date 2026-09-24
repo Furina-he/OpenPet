@@ -12,11 +12,7 @@ import {
 import { ProviderTemplateSchema } from './provider-templates.js';
 import { McpServerSchema, McpToolSchema, McpServerStatusSchema } from './mcp-config.js';
 import { ImPlatformSchema, ImStatusSchema } from './im-config.js';
-import {
-  DesktopPluginManifestSchema,
-  StarPluginMetaSchema,
-  PluginRuntimeStatusSchema,
-} from './plugin-config.js';
+import { DesktopPluginManifestSchema, PluginRuntimeStatusSchema } from './plugin-config.js';
 import { KbSchema, KbDocSchema, KbHitSchema } from './kb-config.js';
 import { MemoryFactSchema } from './memory-config.js';
 import {
@@ -755,7 +751,7 @@ export const Methods = {
     result: z.null(),
   },
 
-  // --- request/response: Renderer → Main（线 B-2 插件双运行时管理面）---
+  // --- request/response: Renderer → Main（线 B-2 插件运行时管理面）---
   'plugins.list': {
     params: z.object({}),
     result: z.object({
@@ -767,8 +763,6 @@ export const Methods = {
           lastError: z.string().optional(),
         }),
       ),
-      star: z.array(z.object({ meta: StarPluginMetaSchema, enabled: z.boolean() })),
-      python: z.object({ found: z.boolean(), version: z.string().optional() }),
     }),
   },
   'plugins.installDesktop': {
@@ -799,11 +793,7 @@ export const Methods = {
     result: z.object({ ok: z.literal(true) }),
   },
   'plugins.setEnabled': {
-    params: z.object({
-      runtime: z.enum(['desktop', 'star']),
-      id: z.string().min(1),
-      enabled: z.boolean(),
-    }),
+    params: z.object({ id: z.string().min(1), enabled: z.boolean() }),
     result: z.object({ ok: z.literal(true) }),
   },
   'plugins.getConfig': {
@@ -816,18 +806,6 @@ export const Methods = {
   'plugins.setConfig': {
     // 值存 userData/plugins/<id>/config.json，变更推 worker onConfigChanged。
     params: z.object({ id: z.string().min(1), values: z.record(z.unknown()) }),
-    result: z.object({ ok: z.literal(true) }),
-  },
-  'plugins.installStar': {
-    // Star zip/文件夹导入（UI 侧先弹「本机运行」警示再调用）。
-    params: z.object({ kind: z.enum(['zip', 'folder']) }),
-    result: z.union([
-      z.object({ cancelled: z.literal(true) }),
-      z.object({ cancelled: z.literal(false), ok: z.literal(true), dir: z.string() }),
-    ]),
-  },
-  'plugins.uninstallStar': {
-    params: z.object({ dir: z.string().min(1) }),
     result: z.object({ ok: z.literal(true) }),
   },
   'plugins.marketFetch': {
@@ -844,7 +822,6 @@ export const Methods = {
   // notification: Main → renderers（插件运行状态变化 → 插件页状态 chip 实时刷新）
   'plugin.status': {
     params: z.object({
-      runtime: z.enum(['desktop', 'star']),
       id: z.string(),
       status: PluginRuntimeStatusSchema,
       lastError: z.string().optional(),

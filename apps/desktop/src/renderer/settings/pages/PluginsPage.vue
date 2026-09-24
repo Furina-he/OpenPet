@@ -66,7 +66,7 @@ async function confirmUninstall(): Promise<void> {
   await reload();
 }
 async function toggle(e: DesktopEntry, enabled: boolean): Promise<void> {
-  await window.openpet.rpc('plugins.setEnabled', { runtime: 'desktop', id: e.manifest.id, enabled });
+  await window.openpet.rpc('plugins.setEnabled', { id: e.manifest.id, enabled });
   await reload();
 }
 async function reloadPlugin(e: DesktopEntry): Promise<void> {

@@ -79,12 +79,6 @@ app.whenReady().then(async () => {
   // 线 B-2 Desktop 插件：worker entry 同 provider 手法（真实文件路径喂 new Worker）；安装根 userData/plugins。
   const pluginEntryPath = toUnpackedPath(require.resolve('@openpet/sidecar/dist/plugin-entry.js'));
   const pluginsRoot = path.join(app.getPath('userData'), 'plugins');
-  // 线 B-2 Star 宿主：shim 目录随包走（dev 在仓库 resources/，打包 extraResources）；插件/venv 在 userData。
-  const starHostDir = app.isPackaged
-    ? path.join(process.resourcesPath, 'star-host')
-    : path.join(__dirname, '../../resources/star-host');
-  const starPluginsDir = path.join(app.getPath('userData'), 'star-plugins');
-  const starVenvDir = path.join(app.getPath('userData'), 'star-host', 'venv');
 
   registerAssetProtocol([charactersRoot, importedCharactersRoot, bodiesRoot], {
     // Cubism Core 三级加载链后两级（⑪ 发布批次）：打包 resources/cubism → userData/cubism。
@@ -215,18 +209,8 @@ app.whenReady().then(async () => {
       });
       return r.canceled ? null : (r.filePaths[0] ?? null);
     },
-    starHostDir,
-    starPluginsDir,
-    starVenvDir,
     // ⑩.6 音色工坊：参考音频根（删除音色即清 <voiceId>/ 子目录）
     voicesDir: path.join(app.getPath('userData'), 'voices'),
-    pickStarPath: async (kind) => {
-      const r = await dialog.showOpenDialog({
-        properties: kind === 'folder' ? ['openDirectory'] : ['openFile'],
-        ...(kind === 'zip' ? { filters: [{ name: 'AstrBot 插件包', extensions: ['zip'] }] } : {}),
-      });
-      return r.canceled ? null : (r.filePaths[0] ?? null);
-    },
     pickKbFile: async () => {
       const r = await dialog.showOpenDialog({
         properties: ['openFile'],

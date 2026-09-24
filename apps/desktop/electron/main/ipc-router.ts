@@ -12,13 +12,11 @@
  */
 import { ipcMain, BrowserWindow, Menu, net, type WebContents } from 'electron';
 import { mkdirSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { spawn as cpSpawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import {
   DEFAULT_CUES,
   DEFAULT_STYLE_ANCHOR,
   mergeCues,
-  parseImOrigin,
   resolveChatTarget,
   resolveUtilityTarget,
   resolveEmbeddingTarget,
@@ -69,7 +67,6 @@ import { removeCharacter } from './character-ops.js';
 import { DesktopPluginHost } from './plugins/desktop-plugin-host.js';
 import { mergeToolPorts } from './plugins/tool-port-merge.js';
 import { createPluginService, readPluginConfig } from './plugins/plugin-service.js';
-import { createStarHostService, type ChildLike } from './plugins/star-host-service.js';
 import { createConversationStore } from './db/index.js';
 import { stageDsbakImport } from './db/import-data.js';
 import { createIdleResponder } from './idle-responder.js';
@@ -116,14 +113,6 @@ export interface IpcRouterDeps {
   pluginEntryPath?: string;
   /** 线 B-2 插件安装选择框；缺省 null=取消。 */
   pickPluginPath?: (kind: 'dsplug' | 'folder') => Promise<string | null>;
-  /** 线 B-2 Star：宿主目录（resources/star-host）。注入才启动 star 宿主（测试缺省不启）。 */
-  starHostDir?: string;
-  /** 线 B-2 Star：插件目录（生产 userData/star-plugins）。 */
-  starPluginsDir?: string;
-  /** 线 B-2 Star：venv 目录（生产 userData/star-host/venv）。 */
-  starVenvDir?: string;
-  /** 线 B-2 Star 安装选择框；缺省 null=取消。 */
-  pickStarPath?: (kind: 'zip' | 'folder') => Promise<string | null>;
   /** 批次⑥ KB 文件导入选择框（.txt/.md/.pdf）；index 注入；缺省 null=取消。 */
   pickKbFile?: () => Promise<string | null>;
   /** 批次⑥ D7：.dsbak 打开/保存对话框 + 打开数据目录 + 重启；index 注入。 */
@@ -323,24 +312,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
     getConfig: (id) => readPluginConfig(pluginsRoot, id),
   });
-  // 线 B-2 Star 宿主：注入 starHostDir（生产）才启动；缺省（测试）不 spawn、tryHandle 恒 null。
-  const starHost = createStarHostService({
-    hostDir: deps.starHostDir ?? '',
-    pluginsDir: deps.starPluginsDir ?? path.join(deps.charactersRoot, '_star-plugins'),
-    venvDir: deps.starVenvDir ?? path.join(deps.charactersRoot, '_star-venv'),
-    broadcast,
-    spawnImpl: (cmd, args) =>
-      cpSpawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }) as ChildLike,
-    execImpl: (cmd, args) =>
-      new Promise((resolve, reject) =>
-        execFile(cmd, args, { windowsHide: true }, (err, stdout) =>
-          err ? reject(err) : resolve({ stdout: String(stdout) }),
-        ),
-      ),
-    pipIndexUrl: () => prefsStore.getAll()['star.pipIndexUrl'],
-    disabledDirs: () => prefsStore.getAll()['star.disabled'],
-  });
-  if (deps.starHostDir) void starHost.start();
   const pluginService = createPluginService({
     pluginsRoot,
     host: pluginHost,
@@ -348,17 +319,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     setDisabled: (next) => prefsStore.set('plugins.disabled', next),
     ...(deps.pickPluginPath ? { pickPluginPath: deps.pickPluginPath } : {}),
     fetchImpl: (url) => pluginFetch(url),
-    starList: () =>
-      starHost.metas().map((meta) => ({
-        meta,
-        enabled: !prefsStore.getAll()['star.disabled'].includes(meta.dir),
-      })),
-    pythonInfo: () => starHost.pythonInfo(),
-    onStarSetEnabled: async (dir, enabled) => {
-      const rest = prefsStore.getAll()['star.disabled'].filter((x) => x !== dir);
-      prefsStore.set('star.disabled', enabled ? rest : [...rest, dir]);
-      await starHost.restart();
-    },
   });
   pluginService.startAll();
   const interactions = new InteractionService({
@@ -535,10 +495,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     mcpToolCount: async () => (await mcpService['mcp.getConfig']({})).tools.length,
     pluginCounts: async () => {
       const r = await pluginService['plugins.list']({});
-      return {
-        enabled: r.desktop.filter((x) => x.enabled).length + r.star.filter((x) => x.enabled).length,
-        total: r.desktop.length + r.star.length,
-      };
+      return { enabled: r.desktop.filter((x) => x.enabled).length, total: r.desktop.length };
     },
     appVersion: deps.appVersion ?? '0.0.0',
   });
@@ -548,21 +505,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     store,
     // 线 B-2：MCP 工具 + Desktop 插件工具合流（wire 名 p_<id>_<tool> 前缀路由回插件 worker）。
     mcp: mergeToolPorts(mcpManager, pluginHost),
-    // 线 B-2 T7：Star 命令短路——命中即答不进 LLM；未运行/未命中/超时 null 放行（绝不阻塞聊天）。
-    // 桌面会话视作 admin 私聊（本机主人）；IM 会话 sender 以 chatId 近似（Tier1 限制，RESULTS 记录）。
-    intercept: async (sessionId, text) => {
-      const im = parseImOrigin(sessionId);
-      const admins = prefsStore.getAll()['im.admins'];
-      const r = await starHost.tryHandle(
-        sessionId,
-        im?.kind ?? 'private',
-        im?.chatId ?? 'desktop',
-        im?.chatId ?? 'desktop',
-        text,
-        im ? admins.includes(im.chatId) : true,
-      );
-      return r && r.handled && r.replies.length > 0 ? r.replies.join('\n') : null;
-    },
     character: () => {
       const c = characters.current();
       return {
@@ -743,17 +685,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       overlayWindow: deps.overlayWindow ?? (() => null),
     }),
     'sys.ping': (p) => ({ pong: 'ok', echoNonce: p.nonce }),
-    // --- 线 B-2 T7：Star 插件安装/卸载（UI 先弹「本机运行」警示再调用）---
-    'plugins.installStar': async (p) => {
-      const picked = (await deps.pickStarPath?.(p.kind)) ?? null;
-      if (!picked) return { cancelled: true as const };
-      const r = await starHost.installStar(picked);
-      return { cancelled: false as const, ok: true as const, dir: r.dir };
-    },
-    'plugins.uninstallStar': async (p) => {
-      await starHost.uninstallStar(p.dir);
-      return { ok: true as const };
-    },
     'chat.send': (p) => chat.send(p.sessionId, p.text, p.providerId),
     'chat.cancel': (p) => chat.cancel(p.sessionId),
     'chat.retry': (p) => chat.retry(p.sessionId),
@@ -1230,7 +1161,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       interactions.dispose();
       await imService?.dispose();
       await pluginHost.stopAll();
-      await starHost.stop();
       await chat.dispose();
       await mcpManager.disconnectAll();
       await memoryFlush;

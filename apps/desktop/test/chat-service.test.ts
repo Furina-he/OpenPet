@@ -699,21 +699,6 @@ describe('ChatService · ⑬ 表情分类兜底钩子', () => {
     expect(sent.some((s) => s.channel === 'behavior.applyEmotion')).toBe(true);
     expect(calls).toEqual([]);
   });
-  it('Star 拦截轮（合成 delta+done）→ 钩子不触发', async () => {
-    const calls: Array<[string, string]> = [];
-    const sent: Sent[] = [];
-    svc = new ChatService({
-      providerEntryPath: PLAIN_ENTRY,
-      broadcast: (channel, params) => sent.push({ channel, params }),
-      host: { intervalMs: 0 },
-      queue: { flushIntervalMs: 5 },
-      intercept: async () => '/help 的命令输出，这是一段没有任何标签的长文本。',
-      emotionFallback: (sid, text) => calls.push([sid, text]),
-    });
-    await svc.send('s1', '/help');
-    await until(() => !!doneOf(sent, 's1'), 'chat.done');
-    expect(calls).toEqual([]);
-  });
   it('取消轮（done cancel）→ 钩子不触发', async () => {
     const calls: Array<[string, string]> = [];
     const sent: Sent[] = [];

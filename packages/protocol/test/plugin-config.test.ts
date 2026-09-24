@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  DesktopPluginManifestSchema,
-  StarPluginMetaSchema,
-  pluginToolWireName,
-} from '../src/plugin-config.js';
+import { DesktopPluginManifestSchema, pluginToolWireName } from '../src/plugin-config.js';
 
 describe('plugin-config', () => {
   it('manifest 解析 + 默认值', () => {
@@ -61,11 +57,5 @@ describe('plugin-config', () => {
     expect(pluginToolWireName('my-plug', '查天气!')).toMatch(/^p_my-plug_[A-Za-z0-9_-]*$/);
     expect(pluginToolWireName('x'.repeat(80), 'y').length).toBeLessThanOrEqual(64);
     expect(pluginToolWireName('demo', 'echo')).toBe('p_demo_echo');
-  });
-
-  it('star 元数据缺省字段兜底', () => {
-    const meta = StarPluginMetaSchema.parse({ dir: 'checkin' });
-    expect(meta.name).toBe('');
-    expect(meta.commands).toEqual([]);
   });
 });

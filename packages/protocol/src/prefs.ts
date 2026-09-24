@@ -105,9 +105,6 @@ export const PrefsSchema = z.object({
   'plugins.marketSources': z.array(z.string()).default([]),
   // market（⑯ 角色市场：静态索引多源；直连 GitHub 不通是硬约束 → 预置 CDN + raw 两条）
   'market.sources': z.array(z.string()).default(() => [...DEFAULT_MARKET_SOURCES]),
-  // star（线 B-2 AstrBot Star 兼容宿主）
-  'star.disabled': z.array(z.string()).default([]),
-  'star.pipIndexUrl': z.string().default('https://pypi.tuna.tsinghua.edu.cn/simple'),
   // pet（F-IT 桌宠交互）
   'pet.mood': z
     .object({ value: z.number().min(-1).max(1), updatedAt: z.number() })

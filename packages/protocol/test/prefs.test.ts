@@ -43,6 +43,18 @@ describe('PrefsSchema D-series expansion', () => {
     expect('model.openaiBaseUrl' in PrefsSchema.shape).toBe(false);
     expect('model.ollamaBaseUrl' in PrefsSchema.shape).toBe(false);
   });
+  it('㉑ Star 兼容宿主裁撤：star.* 已出 schema，旧文件里的残留键读盘即剥离（不致整份回落默认）', () => {
+    expect('star.disabled' in PrefsSchema.shape).toBe(false);
+    expect('star.pipIndexUrl' in PrefsSchema.shape).toBe(false);
+    const r = PrefsSchema.safeParse({
+      'star.disabled': ['checkin'],
+      'star.pipIndexUrl': 'https://pypi.tuna.tsinghua.edu.cn/simple',
+      'display.theme': 'dark',
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && 'star.disabled' in r.data).toBe(false);
+    expect(r.success && r.data['display.theme']).toBe('dark');
+  });
 });
 
 describe('⑱ 生命感 v2 prefs', () => {
