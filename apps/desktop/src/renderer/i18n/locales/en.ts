@@ -1009,7 +1009,6 @@ export const en: LocaleMessages = {
     },
     plugins: {
       securityNote: 'Plugin code runs on this machine — only install from sources you trust.',
-      tab: { desktop: 'Desktop plugins', star: 'AstrBot plugins' },
       installedTitle: 'Installed',
       installFolder: 'Install from folder',
       installDsplug: '＋ Install .dsplug',
@@ -1043,14 +1042,6 @@ export const en: LocaleMessages = {
         'No market sources yet. Add an index URL to browse and install; if the network is unreliable, download a zip and install locally.',
       marketBrowse: 'Browse',
       marketInstall: 'Install',
-      starNeedsPythonTitle: 'Python 3.10+ required',
-      starNeedsPythonDetail:
-        'AstrBot plugins run in a local Python. No usable Python was detected — install Python 3.10 or newer and restart the app to enable this section. Desktop plugins are unaffected.',
-      starEmpty: 'No AstrBot plugins yet.',
-      starInstallZip: '＋ Install .zip',
-      starInstallConfirmTitle: 'Install AstrBot plugin?',
-      starInstallConfirmDetail:
-        'The plugin runs Python code on this machine and is not restricted by the openpet permission gate — only install from trusted sources.',
       configTitle: '{name} settings',
       configEmpty: 'This plugin has no configurable options.',
     },

@@ -73,7 +73,7 @@ export function createMockBridge(): MockBridge {
         case 'kb.list':
           return { kbs: [] };
         case 'plugins.list':
-          return { desktop: [], star: [], python: { found: false } };
+          return { desktop: [] };
         case 'persona.getAll':
           return { personas: [], defaultId: '', bindings: {} };
         case 'memory.list':

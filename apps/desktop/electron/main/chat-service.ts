@@ -119,13 +119,7 @@ export interface ChatServiceOptions {
   /** §7：诊断时间线采集器；缺省不埋点。ipc-router 注入。 */
   trace?: import('./trace-collector.js').TraceCollector;
   /**
-   * 线 B-2 T7：send 前置拦截（AstrBot Star 命令短路 LLM）。返回文本 = 本轮回复直接
-   * 走正常通知面（气泡/IM 回发/入历史全复用，不碰 provider）；null = 放行走 LLM。
-   * ipc-router 注入 starHost.tryHandle 闭包；实现方须自行兜底超时（绝不阻塞聊天）。
-   */
-  intercept?: (sessionId: string, text: string) => Promise<string | null>;
-  /**
-   * ⑬ 表情分类兜底钩子：整轮（stop 收尾）零 behavior.applyEmotion 且非拦截轮时，
+   * ⑬ 表情分类兜底钩子：整轮（stop 收尾）零 behavior.applyEmotion 时，
    * 以本轮干净文本调用（fire-and-forget，实现方自行静默失败）。ipc-router 注入
    * emotion-fallback 模块（含 im: 会话门与 pref 门）。
    */
@@ -167,9 +161,6 @@ export class ChatService {
   private readonly providerChain: string[];
   /** 无显式 providerId 时，从 prefs 取当前 chat 目标（ipc-router 注入两层 resolveChatTarget）。 */
   private readonly resolveModel: (() => ChatTarget | null) | undefined;
-  private readonly intercept:
-    | ((sessionId: string, text: string) => Promise<string | null>)
-    | undefined;
   /** send 前置上下文管道（§5 RAG + §4 tools + ContextAssembler）。 */
   private readonly pipeline: ContextPipeline;
   /** 在途轮编排（降级链 / 工具回灌）。 */
@@ -187,11 +178,8 @@ export class ChatService {
    * persona 静默丢基调。故由 onNotification(chat.done) 负责删（见下）。
    */
   private readonly lastIntent = new Map<string, { mood: string; energy: string }>();
-  /** ⑬ 本轮兜底追踪：saw=模型吐过 emo；text=干净文本累积（capped）；intercepted=Star 命令轮。 */
-  private readonly fallbackTurn = new Map<
-    string,
-    { saw: boolean; text: string; intercepted: boolean }
-  >();
+  /** ⑬ 本轮兜底追踪：saw=模型吐过 emo；text=干净文本累积（capped）。 */
+  private readonly fallbackTurn = new Map<string, { saw: boolean; text: string }>();
   private readonly emotionFallback: ((sessionId: string, cleanText: string) => void) | undefined;
   /** §7 Trace：collector + 本轮 span（生命周期同 lastIntent——绑通知流，chat.done 时封口删除）。 */
   private readonly traceC: import('./trace-collector.js').TraceCollector | undefined;
@@ -205,7 +193,6 @@ export class ChatService {
     this.providerChain =
       opts.providerChain ?? (opts.defaultProviderId ? [opts.defaultProviderId] : []);
     this.resolveModel = opts.resolveModel;
-    this.intercept = opts.intercept;
     this.traceC = opts.trace;
     this.conv = opts.store ?? new MemoryStore();
     this.getCharacter = opts.character ?? (() => DEFAULT_CHARACTER);
@@ -352,17 +339,6 @@ export class ChatService {
       ...(model ? { model } : {}),
       ...(adapter ? { adapter } : {}),
     });
-    // 线 B-2 T7：Star 命令短路——命中即以拦截文本收轮（正常通知面：stream/done/历史/IM 回发全复用）。
-    const intercepted = (await this.intercept?.(sessionId, text)) ?? null;
-    if (intercepted !== null) {
-      span?.record('turn.intercepted', { by: 'star' });
-      this.trackTurn(sessionId).intercepted = true; // ⑬ 命令输出不做表情分类
-      if (persistUser) this.session.appendUser(sessionId, text);
-      this.session.beginAssistant(sessionId);
-      this.core.handleEvent(sessionId, { type: 'delta', text: intercepted });
-      this.core.handleEvent(sessionId, { type: 'done', finishReason: 'stop' });
-      return { ok: true };
-    }
     const request = await this.pipeline.build({
       sessionId,
       userText: text,
@@ -451,10 +427,10 @@ export class ChatService {
   }
 
   /** 每通道记账副作用（seq 注入 / intent 记录 / 轮封口），返回最终下发 params。 */
-  private trackTurn(sessionId: string): { saw: boolean; text: string; intercepted: boolean } {
+  private trackTurn(sessionId: string): { saw: boolean; text: string } {
     let t = this.fallbackTurn.get(sessionId);
     if (!t) {
-      t = { saw: false, text: '', intercepted: false };
+      t = { saw: false, text: '' };
       this.fallbackTurn.set(sessionId, t);
     }
     return t;
@@ -484,13 +460,7 @@ export class ChatService {
           this.interactions.trigger('chat.done'); // mood 累积（无 cue 表项，不发表现）
           this.onTurnEnd?.(n.sessionId); // 批次⑥：轮末记忆提炼（fire-and-forget，不 await）
           const fb = this.fallbackTurn.get(n.sessionId);
-          if (
-            fb &&
-            !fb.saw &&
-            !fb.intercepted &&
-            fb.text.trim().length > 0 &&
-            this.emotionFallback
-          ) {
+          if (fb && !fb.saw && fb.text.trim().length > 0 && this.emotionFallback) {
             this.traceSpans
               .get(n.sessionId)
               ?.record('turn.emotionFallback', { textLen: fb.text.length });

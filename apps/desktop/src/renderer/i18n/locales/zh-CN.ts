@@ -960,7 +960,6 @@ export const zhCN = {
     },
     plugins: {
       securityNote: '插件代码将在本机运行——仅安装可信来源的插件。',
-      tab: { desktop: 'Desktop 插件', star: 'AstrBot 插件' },
       installedTitle: '已安装',
       installFolder: '从文件夹安装',
       installDsplug: '＋ 安装 .dsplug',
@@ -993,14 +992,6 @@ export const zhCN = {
         '暂无市场源。添加一个索引 URL 即可浏览与安装；网络不畅时可下载 zip 后从本地安装。',
       marketBrowse: '浏览',
       marketInstall: '安装',
-      starNeedsPythonTitle: '需要 Python 3.10+',
-      starNeedsPythonDetail:
-        'AstrBot 插件运行在本机 Python 中。未检测到可用的 Python——安装 Python 3.10 或更高版本后重启应用即可启用本区，Desktop 插件不受影响。',
-      starEmpty: '还没有 AstrBot 插件。',
-      starInstallZip: '＋ 安装 .zip',
-      starInstallConfirmTitle: '安装 AstrBot 插件？',
-      starInstallConfirmDetail:
-        '插件的 Python 代码将在本机运行，且能力不受 openpet 权限门限制——仅安装可信来源。',
       configTitle: '{name} 配置',
       configEmpty: '该插件没有可配置项。',
     },

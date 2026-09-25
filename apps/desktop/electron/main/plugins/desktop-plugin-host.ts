@@ -107,11 +107,7 @@ export class DesktopPluginHost {
           if (parsed.success) cues.push(parsed.data);
         }
         r.cues = cues;
-        this.deps.broadcast('plugin.status', {
-          runtime: 'desktop',
-          id: manifest.id,
-          status: 'running',
-        });
+        this.deps.broadcast('plugin.status', { id: manifest.id, status: 'running' });
       } else if (f.t === 'say') {
         this.deps.say(String(f.text));
       } else if (f.t === 'log') {
@@ -142,7 +138,6 @@ export class DesktopPluginHost {
         r.status = 'error';
         r.lastError = `worker exited (code ${code}), restarts exhausted`;
         this.deps.broadcast('plugin.status', {
-          runtime: 'desktop',
           id: manifest.id,
           status: 'error',
           lastError: r.lastError,
@@ -150,11 +145,7 @@ export class DesktopPluginHost {
         return;
       }
       r.status = 'restarting';
-      this.deps.broadcast('plugin.status', {
-        runtime: 'desktop',
-        id: manifest.id,
-        status: 'restarting',
-      });
+      this.deps.broadcast('plugin.status', { id: manifest.id, status: 'restarting' });
       void this.delay(delays[nextAttempt - 1] ?? 0).then(() => {
         if (this.running.get(manifest.id) !== r) return; // 等待期间被 stop
         this.spawn(manifest, dir, entryFile, nextAttempt);

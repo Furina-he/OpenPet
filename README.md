@@ -55,7 +55,7 @@ OpenPet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI
 - **知识库与工具**：内置 SQLite 知识库、RAG 检索、MCP 工具授权、安全门和工具结果回灌。
 - **语音交互**：支持自动朗读、语音输入和 RMS 嘴型驱动。
 - **IM 通道**：QQ（OneBot v11 / NapCat）与 Telegram 桥接——同一个角色灵魂，桌面与 IM 多个入口。
-- **插件系统**：Desktop 插件运行时（worker 沙箱 + 权限确认）+ AstrBot 插件兼容宿主。
+- **插件系统**：Desktop 插件运行时（worker 沙箱 + 权限确认）。
 - **本地优先**：配置、对话、记忆、角色与知识库数据优先保存在本地。
 
 ## 🚀 快速开始
@@ -140,7 +140,7 @@ flowchart TB
       CHAR["角色 / 形象 / 市场<br/>.dspack .dssoul .dsbody"]:::main
       INT["交互引擎<br/>cue 注册表 · 心情 · 主动策略"]:::main
       IM["IM 服务<br/>唤醒 · 白名单 · 串行化"]:::main
-      PLUG["插件宿主<br/>Desktop 插件 · AstrBot Star"]:::main
+      PLUG["插件宿主<br/>Desktop 插件"]:::main
     end
     subgraph M4["数据"]
       direction LR
@@ -157,7 +157,6 @@ flowchart TB
     direction LR
     PW["Provider Worker<br/>worker_threads · 流式适配器<br/>openai / anthropic / gemini / ollama"]:::worker
     DPW["插件 Worker<br/>每插件一线程 · 权限确认"]:::worker
-    STAR["Star 兼容宿主<br/>Python 子进程"]:::worker
     MCPP["MCP Server<br/>stdio / SSE 子进程"]:::worker
   end
 
@@ -184,7 +183,6 @@ flowchart TB
 
   PROV -- "MessagePort" --> PW
   PLUG -- "MessagePort" --> DPW
-  PLUG -- "stdout JSON" --> STAR
   MCP --> MCPP
   PW --> LLM
   KB --> LLM
@@ -203,7 +201,7 @@ flowchart TB
 **几条设计约束**：
 
 - **Renderer 全部沙箱**：`sandbox` + `contextIsolation`，唯一 Node 能力是 Preload 暴露的 `window.openpet.rpc / on`；角色窗口是"哑播放器"，不含业务逻辑。
-- **Main 是业务大脑但保持薄**：只做协议路由、Worker 调度、SQLite 单连接；Provider / 插件 / MCP / Python 宿主全部隔离执行，崩溃由监督者指数退避重启，密钥永不进 Worker。
+- **Main 是业务大脑但保持薄**：只做协议路由、Worker 调度、SQLite 单连接；Provider / 插件 / MCP 全部隔离执行，崩溃由监督者指数退避重启，密钥永不进 Worker。
 - **三套协议互不混淆**：本地 IPC 用 JSON-RPC 2.0；LLM 输出用行为标签协议；插件用 `@openpet/plugin-sdk`。三者的 schema 都在 `packages/protocol` 以 Zod 定义，Main / Renderer / Worker 共享同一份类型。
 - **一个角色 = 灵魂 + 肉体 + 声音**：切分线是 protocol 里的字段常量，灵魂包 `.dssoul`、形象包 `.dsbody` 与一键换形象读同一张表，换形象不换 characterId，记忆与会话原地保留。
 
@@ -278,7 +276,7 @@ flowchart TB
   subgraph LINK["连接线 · 入口与扩展"]
     direction TB
     L1["IM 通道<br/>QQ · Telegram"]:::done
-    L2["插件双运行时<br/>沙箱 · AstrBot 兼容"]:::done
+    L2["插件系统<br/>worker 沙箱 · 权限确认"]:::done
     L3["会话管理 · 总览仪表盘"]:::done
     L1 --> L2 --> L3
   end

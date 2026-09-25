@@ -1,4 +1,4 @@
-// 线 B-2 · 插件双运行时协议（Desktop plugin manifest + AstrBot Star 元数据 + 运行状态）。
+// 线 B-2 · 插件协议（Desktop plugin manifest + 运行状态；㉑ 起单一运行时）。
 // spec: internal/superpowers/specs/2026-07-08-plugin-runtimes-design.md §2/§3（收官已删，internal 私仓 git 历史可查）
 import { z } from 'zod';
 
@@ -23,18 +23,6 @@ export const DesktopPluginManifestSchema = z.object({
   configSchema: z.record(z.unknown()).optional(),
 });
 export type DesktopPluginManifest = z.infer<typeof DesktopPluginManifestSchema>;
-
-/** AstrBot Star 元数据（metadata.yaml 子集，star-host 上报用）。 */
-export const StarPluginMetaSchema = z.object({
-  dir: z.string(),
-  name: z.string().default(''),
-  author: z.string().default(''),
-  desc: z.string().default(''),
-  version: z.string().default(''),
-  repo: z.string().default(''),
-  commands: z.array(z.string()).default([]),
-});
-export type StarPluginMeta = z.infer<typeof StarPluginMetaSchema>;
 
 export const PluginRuntimeStatusSchema = z.enum(['running', 'restarting', 'disabled', 'error']);
 export type PluginRuntimeStatus = z.infer<typeof PluginRuntimeStatusSchema>;

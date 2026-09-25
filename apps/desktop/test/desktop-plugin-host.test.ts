@@ -20,7 +20,7 @@ const demoManifest = DesktopPluginManifestSchema.parse({
   permissions: ['tools', 'cues', 'say', 'fetch'],
 });
 
-type Status = { runtime: string; id: string; status: string; lastError?: string };
+type Status = { id: string; status: string; lastError?: string };
 
 function until<T>(probe: () => T | undefined, timeoutMs = 5000): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -81,7 +81,7 @@ describe('DesktopPluginHost', () => {
     expect(names).toContain('p_demo_fetchit');
     expect(h.host.activeCues()).toEqual([{ on: 'chat.done', say: ['plugin cue hi'] }]);
     await until(() => (h.says.includes('hi from plugin') ? true : undefined));
-    expect(h.statuses.at(-1)).toMatchObject({ runtime: 'desktop', id: 'demo', status: 'running' });
+    expect(h.statuses.at(-1)).toMatchObject({ id: 'demo', status: 'running' });
   });
 
   it('callTool wire 名 → worker local 名执行 → JSON 回包；未知工具 reject', async () => {

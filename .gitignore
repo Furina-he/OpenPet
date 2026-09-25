@@ -32,7 +32,6 @@ apps/desktop/artifacts/
 
 # AstrBot 上游克隆（研究参考用，AGPL，体量大，勿入库）；研究笔记在 internal/research/（私仓）
 /research/
-__pycache__/
 
 # 头脑风暴视觉伴侣产物（brainstorming mockups，过程产物不入库）
 .superpowers/

@@ -122,8 +122,6 @@ describe('plugin-service', () => {
     const list = await service['plugins.list']({});
     expect(list.desktop).toHaveLength(1);
     expect(list.desktop[0]).toMatchObject({ enabled: false, status: 'disabled' });
-    expect(list.star).toEqual([]);
-    expect(list.python).toEqual({ found: false });
   });
 
   it('installDesktop pick 取消 → cancelled；选中 → 返回 manifest 摘要（不安装）', async () => {
@@ -201,10 +199,10 @@ describe('plugin-service', () => {
     writePlugin(root, 'demo');
     const { host, service, getDisabled } = makeService({ root });
     service.startAll();
-    await service['plugins.setEnabled']({ runtime: 'desktop', id: 'demo', enabled: false });
+    await service['plugins.setEnabled']({ id: 'demo', enabled: false });
     expect(host.calls).toContain('stop:demo');
     expect(getDisabled()).toEqual(['demo']);
-    await service['plugins.setEnabled']({ runtime: 'desktop', id: 'demo', enabled: true });
+    await service['plugins.setEnabled']({ id: 'demo', enabled: true });
     expect(host.calls.filter((c) => c === 'start:demo')).toHaveLength(2);
     expect(getDisabled()).toEqual([]);
   });

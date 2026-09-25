@@ -1,6 +1,5 @@
 <!-- components/plugins/PluginCard.vue — 插件卡片（照 AstrBot ExtensionPage 信息结构 + glass token）。
-     Desktop/Star 两运行时共用：logo 占位/名/版本/作者/描述/状态 chip/enable Switch/
-     配置(hasConfig 才亮)/重载(reloadable)/卸载；Star 的命令列表经 commands 展示为 chip（T7）。 -->
+     logo 占位/名/版本/作者/描述/状态 chip/enable Switch/配置(hasConfig 才亮)/重载(reloadable)/卸载。 -->
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -17,7 +16,6 @@ const props = defineProps<{
   lastError?: string;
   hasConfig?: boolean;
   reloadable?: boolean;
-  commands?: string[];
 }>();
 const emit = defineEmits<{
   toggle: [boolean];
@@ -61,16 +59,6 @@ const statusLabel = computed(() => t(`settings.plugins.status.${props.status}`))
     </div>
 
     <p class="mt-2 line-clamp-2 min-h-10 text-sm text-text-sub">{{ description || '—' }}</p>
-
-    <div v-if="commands?.length" class="mt-1 flex flex-wrap gap-1">
-      <span
-        v-for="c in commands"
-        :key="c"
-        class="rounded-full border border-glass-border px-2 py-0.5 text-xs text-text-sub"
-      >
-        /{{ c }}
-      </span>
-    </div>
 
     <div class="mt-3 flex items-center gap-2">
       <span
