@@ -3,6 +3,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { trayIconKey, type TrayIconKey } from './tray-icon.js';
 import type { MenuLabels } from './menu-labels.js';
+import { buildScaleMenuItem, type MenuItemTpl, type ScaleMenu } from './character-menu.js';
+
+export type { MenuItemTpl } from './character-menu.js';
 
 export interface TrayActions {
   chat: () => void;
@@ -12,17 +15,12 @@ export interface TrayActions {
   openHub: () => void;
   quit: () => void;
 }
-export interface MenuItemTpl {
-  label?: string;
-  type?: 'separator';
-  enabled?: boolean;
-  click?: () => void;
-}
 
 export function buildTrayMenuTemplate(
   a: TrayActions,
   info: { version: string; connected: boolean },
   labels: MenuLabels,
+  scale?: ScaleMenu,
 ): MenuItemTpl[] {
   return [
     {
@@ -34,6 +32,8 @@ export function buildTrayMenuTemplate(
     { label: labels.toggleVisible, click: a.toggleVisible },
     { label: labels.clickThrough, click: a.toggleClickThrough },
     { label: labels.dnd, click: a.toggleDnd },
+    // ㉓ 穿透开着时角色身上点不到：托盘是改大小的入口
+    ...(scale ? [buildScaleMenuItem(scale, labels, 'characterSize')] : []),
     { type: 'separator' },
     { label: labels.openHub, click: a.openHub },
     { label: labels.settings, click: a.openHub },
@@ -44,7 +44,7 @@ export function buildTrayMenuTemplate(
 
 export interface TrayHandle {
   setState(s: { error: boolean; thinking: boolean }): void;
-  /** 语言切换时重建菜单（labels 每次经 deps.labels() 现取）。 */
+  /** 语言切换 / ㉓ 角色大小变化时重建菜单（labels / scale 每次经 deps 现取）。 */
   refreshMenu(): void;
   destroy(): void;
 }
@@ -55,6 +55,8 @@ export function createTray(deps: {
   version: string;
   connected: () => boolean;
   labels: () => MenuLabels;
+  /** ㉓「角色大小 ▸」数据源（缺省不出子菜单）。 */
+  scale?: () => ScaleMenu;
 }): TrayHandle {
   // 懒加载 electron：保持模块顶层无运行时 electron 依赖（buildTrayMenuTemplate 可纯测）。
   const require = createRequire(import.meta.url);
@@ -69,6 +71,7 @@ export function createTray(deps: {
           deps.actions,
           { version: deps.version, connected: deps.connected() },
           deps.labels(),
+          deps.scale?.(),
         ) as Electron.MenuItemConstructorOptions[],
       ),
     );

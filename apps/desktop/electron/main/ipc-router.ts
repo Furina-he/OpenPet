@@ -47,7 +47,7 @@ import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
 import { createRouter, RpcError } from './router.js';
-import { buildCharacterMenuTemplate } from './character-menu.js';
+import { buildCharacterMenuTemplate, scaleMenuFromLayout } from './character-menu.js';
 import { menuLabels } from './menu-labels.js';
 import * as appActions from './app-actions.js';
 import { assembleDiag } from './crash-payload.js';
@@ -1137,6 +1137,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
             openHub: () => appActions.openHub(settingsWindow),
           },
           menuLabels(String(prefsStore.getAll()['general.language'] ?? 'zh-CN')),
+          // ㉓「大小 ▸」：选档即按当前角色持久化
+          scaleMenuFromLayout(stage.layout(), (s) => {
+            stage.setScale(s, { persist: true });
+          }),
         ),
       );
       const c = deps.characterWindow();
