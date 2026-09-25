@@ -1,15 +1,36 @@
-<!-- settings/pages/MemoryPage.vue — Hub「记忆」页（F3，⑲ 记忆 v2 wiki 浏览器，spec §5）。
-     左栏树（用户档案 / 人物 / 话题 / 本角色·关系 / 本角色·时间线 + 搜索）；右栏 textarea 编辑 ⇄
-     marked 只读预览 + 节锁定 toggle + 页删除（②级）；工具条：立即整理 / 打开文件夹 / 清空全部（③级 DELETE）。
-     树构建/搜索高亮/节锁定/脏判定下沉 memory-view.ts（纯 TS 可测）；memory.changed 通知刷新树。 -->
+<!-- settings/pages/MemoryPage.vue — Hub「记忆」页（F3）。㉒ 起双视图：
+     【图谱】（默认）Obsidian 式关系图谱：工具条（搜索 / 范围 / 未建页面·提及·孤立页面开关 / 试一句）+
+     canvas（MemoryGraph）+ 浮动阅读栏（MemoryReadingPane）+ 试一句结果侧栏 + 图例带计数；
+     【列表】⑲ wiki 浏览器：左栏树 + 右栏 textarea 编辑 ⇄ 安全预览（双链可点 / 反向链接）+ 节锁定 + 页删除（②级）。
+     工具条：立即整理 / 打开文件夹 / 清空全部（③级 DELETE）。视图与开关存 localStorage（纯 UI 状态不进 prefs）；
+     纯逻辑在 memory-view / memory-graph-model / graph-* 模块；memory.changed 通知刷新树与图谱。 -->
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { MemoryGraph, MemoryStatus, MemoryTree } from '@openpet/protocol';
+import type {
+  MemoryGraph,
+  MemoryProbeResult,
+  MemoryStatus,
+  MemoryTree,
+} from '@openpet/protocol';
 import { formatIdleDuration } from '@openpet/protocol';
 import Button from '../../components/Button.vue';
 import Input from '../../components/Input.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
+import Select from '../../components/Select.vue';
+import Switch from '../../components/Switch.vue';
+import MemoryGraphCanvas from '../../components/memory/MemoryGraph.vue';
+import MemoryReadingPane from '../../components/memory/MemoryReadingPane.vue';
+import MemoryProbe from '../../components/memory/MemoryProbe.vue';
+import MemoryProbeResultPanel from '../../components/memory/MemoryProbeResult.vue';
+import {
+  buildGraphView,
+  DEFAULT_FILTERS,
+  legendCounts,
+  probeRings,
+  searchHits,
+  type GraphFilters,
+} from '../memory-graph-model.js';
 import {
   backlinksOf,
   buildGroups,
@@ -32,6 +53,90 @@ const tree = ref<MemoryTree | null>(null);
 const graph = ref<MemoryGraph | null>(null);
 /** ㉒ 点了未建页面的双链：待建页名。 */
 const ghost = ref<string | null>(null);
+
+// ---------- ㉒ 图谱视图状态（localStorage，键前缀 openpet.memory.）----------
+const LS = 'openpet.memory.';
+function lsGet<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(LS + key);
+    return raw === null ? fallback : ({ ...(fallback as object), ...JSON.parse(raw) } as T);
+  } catch {
+    return fallback;
+  }
+}
+function lsSet(key: string, v: unknown): void {
+  try {
+    window.localStorage.setItem(LS + key, JSON.stringify(v));
+  } catch {
+    /* 配额满：不记 */
+  }
+}
+const ui = ref(lsGet('ui', { view: 'graph' as 'graph' | 'list', scope: 'current' as 'current' | 'all' }));
+const filters = ref<GraphFilters>(lsGet('filters', DEFAULT_FILTERS));
+watch(ui, (v) => lsSet('ui', v), { deep: true });
+watch(filters, (v) => lsSet('filters', v), { deep: true });
+const graphQuery = ref('');
+const graphSelected = ref<string | null>(null);
+const probeOpen = ref(false);
+const probeResult = ref<MemoryProbeResult | null>(null);
+const graphCanvas = ref<InstanceType<typeof MemoryGraphCanvas> | null>(null);
+const PANE_W = 420;
+
+const graphView = computed(() =>
+  graph.value
+    ? buildGraphView(graph.value, filters.value)
+    : { nodes: [], edges: [] },
+);
+const hits = computed(() => searchHits(graphView.value.nodes, graphQuery.value));
+const rings = computed(() =>
+  probeResult.value && graph.value
+    ? probeRings(graph.value.nodes, probeResult.value)
+    : new Map<string, never>(),
+);
+const legend = computed(() => legendCounts(graphView.value.nodes));
+const graphNode = computed(
+  () => graph.value?.nodes.find((n) => n.id === graphSelected.value) ?? null,
+);
+/** 布局记忆键：本角色 id（关系页节点的 characterId）。 */
+const currentCid = computed(
+  () =>
+    graph.value?.nodes.find((n) => n.kind === 'relationship' && !n.readonly)?.characterId ??
+    'default',
+);
+const graphEmpty = computed(
+  () => !!graph.value && !graph.value.nodes.some((n) => n.kind === 'people' || n.kind === 'topics'),
+);
+const scopeOptions = computed(() => [
+  { value: 'current', label: t('settings.memory.graph.scopeCurrent') },
+  { value: 'all', label: t('settings.memory.graph.scopeAll') },
+]);
+const ariaLabel = computed(() =>
+  t('settings.memory.graph.aria', {
+    pages: graph.value?.stats.pages ?? 0,
+    links: graph.value?.stats.links ?? 0,
+  }),
+);
+function selectGraph(id: string | null): void {
+  graphSelected.value = id;
+}
+function searchEnter(): void {
+  const first = graphView.value.nodes.find((n) => hits.value.has(n.id));
+  if (first) graphSelected.value = first.id;
+}
+/** [编辑]：切到列表视图并打开该页（复用 ⑲ 编辑器）。 */
+async function editInList(path: string): Promise<void> {
+  ui.value.view = 'list';
+  await open(path);
+  mode.value = 'edit';
+}
+async function onPaneChanged(path: string): Promise<void> {
+  await loadTree();
+  graphSelected.value = path;
+}
+watch(
+  () => ui.value.scope,
+  () => void loadTree(),
+);
 const status = ref<MemoryStatus | null>(null);
 const query = ref('');
 const selected = ref<string | null>(null);
@@ -86,7 +191,7 @@ async function loadTree(): Promise<void> {
     const [tr, st, gr] = await Promise.all([
       window.openpet.rpc('memory.tree', {}),
       window.openpet.rpc('memory.status', {}),
-      window.openpet.rpc('memory.graph', { scope: 'current' }),
+      window.openpet.rpc('memory.graph', { scope: ui.value.scope }),
     ]);
     tree.value = tr;
     status.value = st;
@@ -162,6 +267,7 @@ async function clearAll(): Promise<void> {
   confirmClear.value = false;
   await window.openpet.rpc('memory.clear', {});
   selected.value = null;
+  graphSelected.value = null;
   original.value = draft.value = '';
   await loadTree();
 }
@@ -201,6 +307,13 @@ onUnmounted(() => {
   if (noticeTimer) clearTimeout(noticeTimer);
 });
 watch(selected, () => (mode.value = 'preview'));
+// 列表视图选中的页，切回图谱时同步选中
+watch(
+  () => ui.value.view,
+  (v) => {
+    if (v === 'graph' && selected.value) graphSelected.value = selected.value;
+  },
+);
 </script>
 
 <template>
@@ -210,7 +323,20 @@ watch(selected, () => (mode.value = 'preview'));
         <h2 class="text-md font-semibold text-text-main">{{ t('settings.memory.title') }}</h2>
         <p class="mt-1 text-sm text-text-sub">{{ t('settings.memory.desc') }}</p>
       </div>
-      <div class="flex shrink-0 gap-2">
+      <div class="flex shrink-0 items-center gap-2">
+        <div class="ds-glass flex rounded-btn p-0.5 text-sm" role="tablist">
+          <button
+            v-for="v in ['graph', 'list'] as const"
+            :key="v"
+            role="tab"
+            :aria-selected="ui.view === v"
+            class="ds-focus rounded-btn px-3 py-1.5 transition ease-ds"
+            :class="ui.view === v ? 'bg-glass-border font-medium text-text-main' : 'text-text-sub'"
+            @click="ui.view = v"
+          >
+            {{ v === 'graph' ? t('settings.memory.graph.viewGraph') : t('settings.memory.graph.viewList') }}
+          </button>
+        </div>
         <Button variant="secondary" :disabled="busy || !status?.enabled" @click="compileNow">
           {{ busy ? t('settings.memory.compiling') : t('settings.memory.compileNow') }}
         </Button>
@@ -259,7 +385,167 @@ watch(selected, () => (mode.value = 'preview'));
       {{ t('settings.memory.legacyPending', { n: status.legacyFacts }) }}
     </div>
 
-    <div class="grid grid-cols-[260px_minmax(0,1fr)] gap-4">
+    <!-- ㉒ 图谱视图 -->
+    <template v-if="ui.view === 'graph'">
+      <div
+        class="ds-glass flex flex-col rounded-panel"
+        style="height: max(480px, calc(100vh - 340px))"
+      >
+        <div class="flex flex-wrap items-center gap-3 border-b border-glass-border px-3 py-2">
+          <div class="w-56">
+            <Input
+              v-model="graphQuery"
+              :placeholder="t('settings.memory.graph.search')"
+              @keydown.enter="searchEnter"
+            />
+          </div>
+          <div class="w-36">
+            <Select v-model="ui.scope" :options="scopeOptions" />
+          </div>
+          <label class="flex items-center gap-1.5 text-sm text-text-sub">
+            <Switch v-model="filters.ghosts" />{{ t('settings.memory.graph.ghosts') }}
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-text-sub">
+            <Switch v-model="filters.mentions" />{{ t('settings.memory.graph.mentions') }}
+          </label>
+          <label class="flex items-center gap-1.5 text-sm text-text-sub">
+            <Switch v-model="filters.orphans" />{{ t('settings.memory.graph.orphans') }}
+          </label>
+          <Button
+            class="ml-auto"
+            :variant="probeOpen ? 'primary' : 'secondary'"
+            @click="probeOpen = !probeOpen"
+            >💭 {{ t('settings.memory.graph.probe') }}</Button
+          >
+        </div>
+        <div v-if="probeOpen" class="border-b border-glass-border px-3 py-2">
+          <MemoryProbe
+            :enabled="!!status?.enabled"
+            @result="probeResult = $event"
+            @close="probeOpen = false"
+          />
+        </div>
+
+        <div class="relative min-h-0 flex-1">
+          <MemoryGraphCanvas
+            v-if="graph"
+            ref="graphCanvas"
+            :view="graphView"
+            :cid="currentCid"
+            :selected="graphSelected"
+            :hits="hits"
+            :rings="rings"
+            :right-inset="graphNode ? PANE_W + 16 : 0"
+            :left-inset="probeResult ? 316 : 0"
+            :label="ariaLabel"
+            @select="selectGraph"
+          />
+          <!-- 空态 -->
+          <div
+            v-if="graphEmpty"
+            class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-text-sub"
+          >
+            <span>{{ t('settings.memory.graph.empty') }}</span>
+            <Button
+              class="pointer-events-auto"
+              variant="secondary"
+              :disabled="busy || !status?.enabled"
+              @click="compileNow"
+              >{{ t('settings.memory.compileNow') }}</Button
+            >
+          </div>
+          <!-- 试一句结果（左上浮层） -->
+          <div
+            v-if="probeResult"
+            class="absolute left-3 top-3 flex max-h-[calc(100%-72px)] w-[300px] flex-col"
+          >
+            <MemoryProbeResultPanel :result="probeResult" @select="selectGraph" />
+          </div>
+          <!-- 阅读栏（右侧浮层，不挤压画布） -->
+          <div
+            v-if="graphNode"
+            class="absolute bottom-3 right-3 top-3 max-w-[60%]"
+            :style="{ width: `${PANE_W}px` }"
+          >
+            <MemoryReadingPane
+              :node="graphNode"
+              :graph="graph"
+              @navigate="selectGraph"
+              @edit="editInList"
+              @close="selectGraph(null)"
+              @changed="onPaneChanged"
+            />
+          </div>
+          <!-- 图例 + 缩放 -->
+          <div
+            class="pointer-events-none absolute bottom-3 left-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-sub"
+          >
+            <span class="flex items-center gap-1"
+              ><i
+                class="inline-block h-2.5 w-2.5 rounded-full"
+                style="background: linear-gradient(135deg, var(--ds-brand-from), var(--ds-brand-to))"
+              />{{ t('settings.memory.graph.legendSelf') }}</span
+            >
+            <span class="flex items-center gap-1"
+              ><i class="inline-block h-2.5 w-2.5 rounded-full" style="background: var(--ds-graph-people)" />{{
+                t('settings.memory.graph.legendPeople')
+              }}
+              {{ legend.people }}</span
+            >
+            <span class="flex items-center gap-1"
+              ><i class="inline-block h-2.5 w-2.5 rounded-full" style="background: var(--ds-graph-topics)" />{{
+                t('settings.memory.graph.legendTopics')
+              }}
+              {{ legend.topics }}</span
+            >
+            <span class="flex items-center gap-1"
+              ><i
+                class="inline-block h-2.5 w-2.5 rounded-full"
+                style="background: var(--ds-graph-character)"
+              />{{ t('settings.memory.graph.legendCharacter') }}</span
+            >
+            <span v-if="filters.ghosts" class="flex items-center gap-1"
+              ><i
+                class="inline-block h-2.5 w-2.5 rounded-full border"
+                style="border-color: var(--ds-text-sub)"
+              />{{ t('settings.memory.graph.legendGhost') }} {{ legend.ghost }}</span
+            >
+            <span class="flex items-center gap-1" style="color: var(--ds-brand-to)"
+              >✦ <span class="text-text-sub">{{ t('settings.memory.graph.legendRecall') }}</span></span
+            >
+            <span class="pointer-events-auto ml-2 flex gap-1">
+              <button
+                class="ds-glass ds-focus h-7 w-7 rounded-btn text-text-main"
+                :title="t('settings.memory.graph.zoomIn')"
+                :aria-label="t('settings.memory.graph.zoomIn')"
+                @click="graphCanvas?.zoomBy(1.25)"
+              >
+                ＋
+              </button>
+              <button
+                class="ds-glass ds-focus h-7 w-7 rounded-btn text-text-main"
+                :title="t('settings.memory.graph.zoomOut')"
+                :aria-label="t('settings.memory.graph.zoomOut')"
+                @click="graphCanvas?.zoomBy(0.8)"
+              >
+                －
+              </button>
+              <button
+                class="ds-glass ds-focus h-7 w-7 rounded-btn text-text-main"
+                :title="t('settings.memory.graph.fit')"
+                :aria-label="t('settings.memory.graph.fit')"
+                @click="graphCanvas?.fitAll()"
+              >
+                ⤢
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-text-sub">{{ t('settings.memory.graph.obsidianHint') }}</p>
+    </template>
+
+    <div v-else class="grid grid-cols-[260px_minmax(0,1fr)] gap-4">
       <!-- 左栏树 -->
       <div class="ds-glass flex max-h-[640px] flex-col rounded-panel p-3">
         <Input v-model="query" :placeholder="t('settings.memory.searchPlaceholder')" />

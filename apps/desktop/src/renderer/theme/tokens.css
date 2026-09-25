@@ -19,6 +19,10 @@
   --ds-success: #7fe3a1;
   --ds-warning: #ffb454;
   --ds-danger: #ff6b7a;
+  /* ㉒ 记忆图谱节点色（浅 / 深同值；边与文字随 --ds-text-* 自动变） */
+  --ds-graph-people: #ffb4a2;
+  --ds-graph-topics: #7fb7ff;
+  --ds-graph-character: #c6a8ff;
   --ds-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
