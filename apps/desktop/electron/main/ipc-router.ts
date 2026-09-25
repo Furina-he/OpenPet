@@ -403,6 +403,16 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       ),
     );
   };
+  // ㉒ §5.4 页向量模型指纹：当前默认嵌入目标 `sourceId|model`（未配置 = ''）。
+  const memoryEmbedKey = (): string => {
+    const p = prefsStore.getAll();
+    const t = resolveEmbeddingTarget(
+      p['model.providerSources'],
+      p['model.models'],
+      p['model.defaultEmbeddingModelId'],
+    );
+    return t ? `${t.sourceId}|${t.model}` : '';
+  };
   // ⑲ 记忆 wiki：markdown 真源（userData/memory）；service 三路注入 + F3 RPC。
   const memoryWiki = new MemoryWiki(memoryRoot);
   const memoryService = createMemoryService({
@@ -414,6 +424,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     characterName: (cid) =>
       characters.list().find((c) => c.characterId === cid)?.manifest.name ?? cid,
     onChanged: (pages) => broadcast('memory.changed', { pages }),
+    embedModelKey: memoryEmbedKey,
   });
   // 默认 chat 目标 + source key（memory-extractor 与 ⑩.7 testGreeting 共用的单发通道形态）。
   const chatTargetWithKey = () => {
@@ -451,6 +462,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     getPrefs: () => prefsStore.getAll(),
     resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
+    embedModelKey: memoryEmbedKey,
     reindex: (paths) => memoryService.reindexVectors(paths),
     onChanged: (pages) => broadcast('memory.changed', { pages }),
   });

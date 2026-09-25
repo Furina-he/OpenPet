@@ -203,21 +203,62 @@ export class MemoryStore implements ConversationStore {
     return this.memoryRows.filter((r) => r.characterId === characterId).length;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（内存等价表）---
-  private readonly pageIndex = new Map<string, { hash: string; vector: number[] }>();
+  // --- ⑲ 记忆 v2：wiki 页级向量索引（内存等价表；㉒ 带模型指纹）---
+  private readonly pageIndex = new Map<string, { hash: string; vector: number[]; model: string }>();
 
-  pageIndexUpsert(path: string, hash: string, vector: number[], _updatedAt: number): void {
-    this.pageIndex.set(path, { hash, vector: [...vector] });
+  pageIndexUpsert(
+    path: string,
+    hash: string,
+    vector: number[],
+    _updatedAt: number,
+    model: string,
+  ): void {
+    this.pageIndex.set(path, { hash, vector: [...vector], model });
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }> {
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
     return [...this.pageIndex.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([path, v]) => ({ path, hash: v.hash, vector: [...v.vector] }));
+      .map(([path, v]) => ({ path, hash: v.hash, vector: [...v.vector], model: v.model }));
   }
 
   pageIndexDelete(path: string): void {
     this.pageIndex.delete(path);
+  }
+
+  // --- ㉒ 被想起的痕迹（内存等价表）---
+  private readonly pageStats = new Map<string, { count: number; lastAt: number | null }>();
+
+  pageStatsBump(paths: readonly string[], now: number): void {
+    for (const p of paths) {
+      const cur = this.pageStats.get(p);
+      this.pageStats.set(p, { count: (cur?.count ?? 0) + 1, lastAt: now });
+    }
+  }
+
+  pageStatsList(): Array<{ path: string; count: number; lastAt: number | null }> {
+    return [...this.pageStats.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([path, v]) => ({ path, ...v }));
+  }
+
+  pageStatsRename(from: string, to: string): void {
+    const src = this.pageStats.get(from);
+    if (!src || from === to) return;
+    const dst = this.pageStats.get(to);
+    this.pageStats.set(to, {
+      count: src.count + (dst?.count ?? 0),
+      lastAt: Math.max(src.lastAt ?? 0, dst?.lastAt ?? 0) || null,
+    });
+    this.pageStats.delete(from);
+  }
+
+  pageStatsDelete(path: string): void {
+    this.pageStats.delete(path);
+  }
+
+  pageStatsClear(): void {
+    this.pageStats.clear();
   }
 
   storageUsage(): StorageUsage {

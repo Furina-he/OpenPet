@@ -25,6 +25,8 @@ export interface MemoryCompilerDeps {
   getPrefs: () => Prefs;
   resolveTarget: () => { apiBase: string; model: string; key: string; adapter: string } | null;
   character: () => { id: string };
+  /** ㉒ §5.4 当前嵌入目标指纹；相关页向量只用指纹一致的行。缺省 ''。 */
+  embedModelKey?: () => string;
   /** 变更页向量重算（memory-service.reindexVectors）；缺省不算。 */
   reindex?: ((paths: readonly string[]) => Promise<void>) | undefined;
   /** 变更通知（broadcast 'memory.changed'）。 */
@@ -103,7 +105,10 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
       book.entries.filter((e) => hitContents.includes(e.content)).map((e) => e.name ?? ''),
     );
     try {
-      const index = deps.store.pageIndexList().filter((r) => r.vector.length > 0);
+      const key = deps.embedModelKey?.() ?? '';
+      const index = deps.store
+        .pageIndexList()
+        .filter((r) => r.vector.length > 0 && r.model === key);
       if (index.length > 0) {
         const qv = (await deps.embed([probe.slice(0, 4000)]))[0];
         if (qv && qv.length > 0)

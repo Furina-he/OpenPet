@@ -945,7 +945,8 @@ export const Methods = {
   'memory.readPage': {
     params: z.object({ path: z.string().refine(isMemoryPagePath, '非法页面路径') }),
     // raw = 文件全文（frontmatter + 正文，编辑器编辑对象）；page = 解析后结构。
-    result: z.object({ raw: z.string(), page: MemoryPageSchema }),
+    // page = null：frontmatter 损坏（㉒ 编辑器仍可拿 raw 修复）。
+    result: z.object({ raw: z.string(), page: MemoryPageSchema.nullable() }),
   },
   'memory.writePage': {
     // content = 文件全文；Main 解析 frontmatter → MemoryPageSchema 校验 → source:user → 原子写 + 重索引。
