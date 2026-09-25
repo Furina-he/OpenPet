@@ -411,6 +411,9 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     embed: memoryEmbed,
     getPrefs: () => prefsStore.getAll(),
     character: () => ({ id: characters.current().characterId }),
+    characterName: (cid) =>
+      characters.list().find((c) => c.characterId === cid)?.manifest.name ?? cid,
+    onChanged: (pages) => broadcast('memory.changed', { pages }),
   });
   // 默认 chat 目标 + source key（memory-extractor 与 ⑩.7 testGreeting 共用的单发通道形态）。
   const chatTargetWithKey = () => {

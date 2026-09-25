@@ -266,4 +266,40 @@ describe('⑲ memory-service 三路注入', () => {
     expect(all).toContain('朋友王小明');
     expect(all).toContain('聊到小王的猫');
   });
+
+  it('㉒ memory.graph / memory.renamePage：图含可读名；重命名删旧向量行、重算新路径、通知变更', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ds-msvc-'));
+    cleanups.push(dir);
+    const store = new MemoryStore();
+    const wiki = new MemoryWiki(dir, { now: () => Date.UTC(2026, 8, 22, 12) });
+    wiki.ensureLayout('default');
+    const changed: string[][] = [];
+    const svc = createMemoryService({
+      store,
+      wiki,
+      embed,
+      getPrefs: () => ({ 'privacy.longTermMemory': true }) as unknown as Prefs,
+      character: () => ({ id: 'default' }),
+      characterName: () => '阿芙',
+      onChanged: (p) => changed.push(p),
+    });
+    wiki.applyOps(
+      [
+        { op: 'create_page', kind: 'people', title: '王小明', aliases: [], tags: [], content: '猫奴' },
+        { op: 'create_page', kind: 'topics', title: '爬山', aliases: [], tags: [], content: '和王小明' },
+      ],
+      'default',
+    );
+    await svc.reindexVectors();
+    const g = await svc['memory.graph']({ scope: 'current' });
+    expect(g.nodes.find((n) => n.kind === 'relationship')!.title).toBe('阿芙 · 关系');
+    expect(g.edges.some((e) => e.target === 'user/people/王小明.md' && e.kind === 'link')).toBe(true);
+    const r = await svc['memory.renamePage']({ path: 'user/people/王小明.md', title: '王大明' });
+    expect(r).toEqual({ ok: true, path: 'user/people/王大明.md' });
+    expect(changed).toEqual([['user/people/王大明.md', 'user/topics/爬山.md']]);
+    await new Promise((res) => setTimeout(res, 0));
+    const paths = store.pageIndexList().map((x) => x.path);
+    expect(paths).not.toContain('user/people/王小明.md');
+    expect(paths).toContain('user/people/王大明.md');
+  });
 });

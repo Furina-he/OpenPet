@@ -11,6 +11,7 @@ import type { Prefs } from '@openpet/protocol';
 import { activateLorebook, MEMORY_QUOTAS, toPlainText } from '@openpet/protocol';
 import type { ConversationStore } from './db/index.js';
 import { cosineTopK } from './kb-search.js';
+import { buildMemoryGraph } from './memory-graph.js';
 import {
   joinSections,
   MemoryOpError,
@@ -25,6 +26,10 @@ export interface MemoryServiceDeps {
   embed: (inputs: string[]) => Promise<number[][]>;
   getPrefs: () => Prefs;
   character: () => { id: string };
+  /** ㉒ 图谱可读名：cid → 角色名（查不到回 cid）。 */
+  characterName?: (cid: string) => string;
+  /** ㉒ 重命名等多页变更后的通知（broadcast 'memory.changed'）。 */
+  onChanged?: (pages: string[]) => void;
   now?: () => number;
 }
 
@@ -146,6 +151,25 @@ export function createMemoryService(deps: MemoryServiceDeps) {
     },
 
     'memory.search': async (p: { q: string }) => ({ hits: deps.wiki.search(p.q, cid()) }),
+
+    /** ㉒ §3 图谱：全库链接的实时投影（current = 共享 user/ + 本角色；all 另含他角色只读页）。 */
+    'memory.graph': async (p: { scope: 'current' | 'all' }) => {
+      deps.wiki.ensureLayout(cid());
+      return buildMemoryGraph(deps.wiki.listAllPages(), {
+        scope: p.scope,
+        currentCid: cid(),
+        characterName: deps.characterName ?? ((c) => c),
+      });
+    },
+
+    /** ㉒ §4.4 重命名：全库链接跟着改；旧路径向量行删、新路径与被改写页重算。 */
+    'memory.renamePage': async (p: { path: string; title: string }) => {
+      const r = deps.wiki.renamePage(p.path, p.title);
+      if (r.path !== p.path) deps.store.pageIndexDelete(p.path);
+      void reindexVectors([r.path, ...r.changed]);
+      deps.onChanged?.([r.path, ...r.changed]);
+      return { ok: true as const, path: r.path };
+    },
 
     /** 编译器 / 迁移 / 用户保存后的向量重算入口（ipc-router 接线）。 */
     reindexVectors,

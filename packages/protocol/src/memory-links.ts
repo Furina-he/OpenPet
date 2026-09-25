@@ -463,18 +463,21 @@ export function linkifyMentions(
 /**
  * 重命名改写（spec §4.4）：指向 `fromPath` 的双链与 md 链接改指 `toPath`，保留 `#节` / `|显示` /
  * `!` 与写法（文件名形式仍写文件名，路径形式写新路径）。`pointsToFrom` 缺省 = 目标名与旧文件名 /
- * 旧路径相等（调用方可传 resolveLink 闭包做精确判定）。
+ * 旧路径相等（调用方可传 resolveLink 闭包做精确判定）；`toName` = 文件名形式链接写入的目标名
+ * （缺省新文件名；新文件名与他页同名时调用方传路径形式）。
  */
 export function rewriteLinkTarget(
   md: string,
   fromPath: string,
   toPath: string,
   pointsToFrom?: (link: WikiLink) => boolean,
+  toName?: string,
 ): string {
   const fromStem = lower(memoryPageStem(fromPath));
   const fromBare = lower(fromPath.replace(/\.md$/, ''));
   const toStem = memoryPageStem(toPath);
   const toBare = toPath.replace(/\.md$/, '');
+  const bareName = toName ?? toStem;
   const hit =
     pointsToFrom ??
     ((l: WikiLink): boolean => {
@@ -496,12 +499,14 @@ export function rewriteLinkTarget(
       });
       continue;
     }
+    const name = l.target.includes('/') ? toBare : bareName;
     edits.push({
       start: l.start,
       end: l.end,
-      text: formatLink(l.target.includes('/') ? toBare : toStem, {
+      // 文件名写法被迫改成路径形式时补显示名，读起来仍是页名
+      text: formatLink(name, {
         heading: l.heading,
-        display: l.display,
+        display: l.display ?? (name.includes('/') && !l.target.includes('/') ? toStem : undefined),
         embed: l.embed,
       }),
     });

@@ -31,6 +31,9 @@ import {
   memoryPageKind,
   memoryPageStem,
   normalizeLinks,
+  parseWikilinks,
+  resolveLink,
+  rewriteLinkTarget,
   toPlainText,
   MEMORY_LOCKED_MARK,
   MEMORY_PROFILE_SECTIONS,
@@ -680,6 +683,79 @@ export class MemoryWiki {
     const dir = rel.slice(0, rel.lastIndexOf('/'));
     const want = rel.toLowerCase();
     return this.listDir(dir).some((p) => p.toLowerCase() === want);
+  }
+
+  /**
+   * ㉒ §4.4 重命名（仅人物 / 话题）：新文件名 = memoryFileStem(title)（同目录冲突拒）；title 更新、
+   * 旧标题并入 aliases（保住关键词召回）；全库改写指向旧页的链接（保留 `#节` / `|显示`），并把
+   * 「因新文件名撞名而会改指」的他页链接改成路径形式。先在内存算好全部变更再统一落盘；
+   * 旧版本留作新路径的 `.prev`。返回新路径与其他被改写的页。
+   */
+  renamePage(rel: string, title: string): { path: string; changed: string[] } {
+    const kind = memoryPageKind(rel);
+    if (kind !== 'people' && kind !== 'topics') throw new MemoryOpError('固定页不可重命名');
+    const page = this.readPage(rel);
+    if (!page) throw new MemoryOpError(`页面不存在或损坏：${rel}`);
+    const newTitle = title.trim();
+    if (!newTitle) throw new MemoryOpError('标题不能为空');
+    const newRel = `user/${kind}/${memoryFileStem(newTitle)}.md`;
+    if (newRel.toLowerCase() !== rel.toLowerCase() && this.existsCaseInsensitive(newRel))
+      throw new MemoryOpError(`页面已存在：${newRel}`);
+
+    const oldTitle = page.frontmatter.title;
+    const all = this.listAllPages();
+    const renamed: MemoryPage = {
+      ...page,
+      path: newRel,
+      frontmatter: {
+        ...page.frontmatter,
+        title: newTitle,
+        aliases: uniqNames([...page.frontmatter.aliases, oldTitle], newTitle).slice(0, 20),
+        updated: this.today(),
+      },
+    };
+    const before = all;
+    const after = all.map((p) => (p.path === rel ? renamed : p));
+    const newName = memoryLinkName(newRel, after);
+    const work = new Map<string, MemoryPage>();
+    for (const q of after) {
+      const from = q.path === newRel ? rel : q.path; // 自链按旧路径解析
+      let body = rewriteLinkTarget(
+        q.body,
+        rel,
+        newRel,
+        (l) => resolveLink(l.target, from, before, { markdown: l.markdown }) === rel,
+        newName,
+      );
+      // 新文件名与他页同名 → 原本指向那一页的文件名链接会改指：改写成路径形式钉住
+      for (const l of parseWikilinks(body)) {
+        if (l.markdown || l.target.includes('/')) continue;
+        const was = resolveLink(l.target, from, before);
+        const now = resolveLink(l.target, q.path, after);
+        if (was && was !== rel && now !== was) {
+          body = rewriteLinkTarget(
+            body,
+            was,
+            was,
+            (x) => !x.markdown && resolveLink(x.target, from, before) === was,
+            was.replace(/\.md$/, ''),
+          );
+          break; // 每页一次改写已覆盖同目标的全部链接；其余目标下一轮不会再命中
+        }
+      }
+      if (q.path === newRel) work.set(newRel, { ...q, body });
+      else if (body !== q.body) work.set(q.path, { ...q, body });
+    }
+    // 落盘：旧文件改名到新路径（旧 .prev 随迁）→ 写新内容（改名前版本成为 .prev）→ 其余页
+    const oldAbs = this.abs(rel);
+    const newAbs = this.abs(newRel);
+    if (rel !== newRel) {
+      renameSync(oldAbs, newAbs);
+      if (existsSync(`${oldAbs}.prev`)) renameSync(`${oldAbs}.prev`, `${newAbs}.prev`);
+    }
+    for (const p of work.values()) this.writePageRaw(p, false);
+    this.rebuildIndex();
+    return { path: newRel, changed: [...work.keys()].filter((p) => p !== newRel) };
   }
 
   // ---------- 索引 / 树 / 搜索 ----------
