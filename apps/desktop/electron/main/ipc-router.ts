@@ -838,6 +838,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
               ok: last.ok,
               ops: last.ops,
               ...(last.error ? { error: last.error } : {}),
+              ...(last.merged ? { merged: last.merged } : {}),
             }
           : null,
         migration: memoryMigrator.status(cid),

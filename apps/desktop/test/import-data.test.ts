@@ -72,16 +72,16 @@ describe('⑲ .dsbak 纳入 memory/ 目录', () => {
     const wiki = new MemoryWiki(memoryRoot, { now: () => Date.UTC(2026, 8, 22, 12) });
     wiki.ensureLayout('default');
     wiki.applyOps(
-      [{ op: 'create_page', kind: 'people', slug: 'a', title: 'A', keys: ['a'], content: '甲' }],
+      [{ op: 'create_page', kind: 'people', title: 'A', aliases: ['a'], tags: [], content: '甲' }],
       'default',
     );
     writeFileSync(path.join(memoryRoot, 'user', 'junk.md.tmp'), 'x');
     const out = path.join(dir, 'out.dsbak');
     await exportDsbak(new MemoryStore(), out, { memoryRoot });
     const names = new AdmZip(out).getEntries().map((e) => e.entryName);
-    expect(names).toContain('memory/index.md');
+    expect(names).toContain('memory/.openpet/index.md');
     expect(names).toContain('memory/user/profile.md');
-    expect(names).toContain('memory/user/people/a.md');
+    expect(names).toContain('memory/user/people/A.md');
     expect(names).toContain('memory/characters/default/timeline.md');
     expect(names.some((n) => n.endsWith('.tmp'))).toBe(false);
 
@@ -95,7 +95,7 @@ describe('⑲ .dsbak 纳入 memory/ 目录', () => {
     const out2 = path.join(dir, 'out2.dsbak');
     zip.writeZip(out2);
     stageDsbakImport(out2, sqlitePath, root2);
-    expect(existsSync(path.join(`${root2}.import`, 'user', 'people', 'a.md'))).toBe(true);
+    expect(existsSync(path.join(`${root2}.import`, 'user', 'people', 'A.md'))).toBe(true);
     writeFileSync(path.join(dir2, 'old.txt'), 'x');
     const wiki2 = new MemoryWiki(root2);
     wiki2.ensureLayout('other'); // 现有目录 → 应转 .bak

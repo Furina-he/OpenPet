@@ -80,10 +80,10 @@ describe('⑲ memory-compiler v3', () => {
     await compiler.onTurnEnd('s1');
     expect(compiler.status()).toBeNull(); // 第 1 轮不触发
     await compiler.onTurnEnd('s1');
-    expect(read('user/people/nian-gao.md')).toContain('用户的猫');
+    expect(read('user/people/年糕.md')).toContain('用户的猫');
     expect(read('user/profile.md')).toContain('养猫的人');
-    expect(read('index.md')).toContain('user/people/nian-gao.md');
-    expect(reindexed.sort()).toEqual(['user/people/nian-gao.md', 'user/profile.md']);
+    expect(read('.openpet/index.md')).toContain('[[年糕]]');
+    expect(reindexed.sort()).toEqual(['user/people/年糕.md', 'user/profile.md']);
     expect(changed).toHaveLength(2);
     expect(compiler.status()).toMatchObject({ ok: true, ops: 2 });
   });
@@ -156,9 +156,9 @@ describe('⑲ memory-compiler v3', () => {
           {
             op: 'create_page',
             kind: 'topics',
-            slug: `t${i}`,
             title: `话题${i}`,
-            keys: [`猫${i}`],
+            aliases: [`猫${i}`],
+            tags: [],
             content: `内容${i}`,
           },
         ],

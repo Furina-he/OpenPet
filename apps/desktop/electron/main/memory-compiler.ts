@@ -40,6 +40,15 @@ export interface CompileResult {
   changed: string[];
 }
 
+/** status 记录：㉒ merged = 撞名并入 [新标题, 并入页]（F3 状态行「合并了 N 个重复人物」）。 */
+export interface CompileStatus {
+  at: number;
+  ok: boolean;
+  ops: number;
+  error?: string;
+  merged?: Array<[string, string]>;
+}
+
 const RECENT_MESSAGES = 16;
 const FLUSH_DEBOUNCE_MS = 60_000;
 const VECTOR_TOP = 3;
@@ -82,7 +91,7 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
   const counters = new Map<string, number>();
   const lastSession = new Map<string, string>();
   let lastFlushAt = -Infinity;
-  let last: { at: number; ok: boolean; ops: number; error?: string } | null = null;
+  let last: CompileStatus | null = null;
 
   async function relatedPages(cid: string, probe: string): Promise<string> {
     const wiki = deps.wiki;
@@ -169,8 +178,8 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
         last = { at: now(), ok: true, ops: 0 };
         return { ok: true, ops: 0, changed: [] };
       }
-      const { changed } = deps.wiki.applyOps(ops, cid);
-      last = { at: now(), ok: true, ops: ops.length };
+      const { changed, merged } = deps.wiki.applyOps(ops, cid);
+      last = { at: now(), ok: true, ops: ops.length, ...(merged.length ? { merged } : {}) };
       if (changed.length > 0) {
         void deps.reindex?.(changed);
         deps.onChanged?.(changed);
@@ -261,7 +270,7 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
       ].join('\n\n');
       return run(cid, 'migrate', user);
     },
-    status(): { at: number; ok: boolean; ops: number; error?: string } | null {
+    status(): CompileStatus | null {
       return last;
     },
   };

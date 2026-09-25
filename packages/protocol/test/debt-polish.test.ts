@@ -51,8 +51,6 @@ describe('批次⑥ protocol', () => {
     for (const m of [
       'memory.list',
       'memory.add',
-      'memory.delete',
-      'memory.setPinned',
       'memory.clear',
       'kb.importFile',
       'app.importData',

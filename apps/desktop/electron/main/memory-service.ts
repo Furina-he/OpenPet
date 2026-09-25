@@ -8,7 +8,7 @@
  * `privacy.longTermMemory=false` → 三路全停（文件不删）。
  */
 import type { Prefs } from '@openpet/protocol';
-import { activateLorebook, MEMORY_QUOTAS } from '@openpet/protocol';
+import { activateLorebook, MEMORY_QUOTAS, toPlainText } from '@openpet/protocol';
 import type { ConversationStore } from './db/index.js';
 import { cosineTopK } from './kb-search.js';
 import {
@@ -112,11 +112,6 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       return { ok: true as const, id: parsed.sections.indexOf(misc) + 1 };
     },
 
-    /** @deprecated wiki 无 id 行；保留 RPC 面为 no-op（下批删）。 */
-    'memory.delete': async () => ({ ok: true as const }),
-    /** @deprecated 由节级 `<!-- locked -->` 取代；no-op（下批删）。 */
-    'memory.setPinned': async () => ({ ok: true as const }),
-
     /** ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 页向量索引。 */
     'memory.clear': async () => {
       deps.wiki.clear(cid());
@@ -195,7 +190,11 @@ export function createMemoryService(deps: MemoryServiceDeps) {
               // 固定页（profile/relationship/timeline）已在常驻路，向量兜底只补 people/topics。
               if (!t.meta.startsWith('user/people/') && !t.meta.startsWith('user/topics/'))
                 continue;
-              pages.push({ title: page.frontmatter.title, body: page.body, via: 'vector' });
+              pages.push({
+                title: page.frontmatter.title,
+                body: toPlainText(page.body),
+                via: 'vector',
+              });
               vectorN++;
             }
           }

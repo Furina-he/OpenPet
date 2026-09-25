@@ -17,6 +17,8 @@ const node = (path: string, title: string, summary = '') => ({
   summary,
   updated: '2026-09-22',
   source: 'llm' as const,
+  aliases: [],
+  tags: [],
 });
 const tree: MemoryTree = {
   profile: node('user/profile.md', '用户档案'),

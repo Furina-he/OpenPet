@@ -84,9 +84,9 @@ describe('⑲ memory-service 三路注入', () => {
         {
           op: 'create_page',
           kind: 'people',
-          slug: 'xiao-ming',
           title: '小明',
-          keys: ['明哥'],
+          aliases: ['明哥'],
+          tags: [],
           content: '用户的同事',
         },
       ],
@@ -108,25 +108,25 @@ describe('⑲ memory-service 三路注入', () => {
         {
           op: 'create_page',
           kind: 'people',
-          slug: 'nian-gao',
           title: '年糕',
-          keys: [],
+          aliases: [],
+          tags: [],
           content: '橘猫，爱睡觉',
         },
         {
           op: 'create_page',
           kind: 'topics',
-          slug: 'cat-food',
           title: '猫粮',
-          keys: ['猫粮'],
+          aliases: ['猫粮'],
+          tags: [],
           content: '猫吃的',
         },
         {
           op: 'create_page',
           kind: 'topics',
-          slug: 'work',
           title: '工作',
-          keys: ['上班'],
+          aliases: ['上班'],
+          tags: [],
           content: '写代码',
         },
       ],
@@ -145,7 +145,7 @@ describe('⑲ memory-service 三路注入', () => {
 
     const noEmb = make({ embed: throwEmbed });
     noEmb.wiki.applyOps(
-      [{ op: 'create_page', kind: 'topics', slug: 'a', title: 'A', keys: [], content: '猫' }],
+      [{ op: 'create_page', kind: 'topics', title: 'A', aliases: [], tags: [], content: '猫' }],
       noEmb.cid,
     );
     await noEmb.svc.reindexVectors();
@@ -171,17 +171,17 @@ describe('⑲ memory-service 三路注入', () => {
         {
           op: 'create_page',
           kind: 'topics',
-          slug: 'p1',
           title: '甲',
-          keys: ['甲'],
+          aliases: ['甲'],
+          tags: [],
           content: 'C'.repeat(1900),
         },
         {
           op: 'create_page',
           kind: 'topics',
-          slug: 'p2',
           title: '乙',
-          keys: ['乙'],
+          aliases: ['乙'],
+          tags: [],
           content: 'D'.repeat(1900),
         },
       ],
@@ -227,5 +227,43 @@ describe('⑲ memory-service 三路注入', () => {
     expect(store.memoryCount(cid)).toBe(0);
     expect((await svc['memory.list']()).facts).toEqual([]);
     expect(wiki.readPage('user/profile.md')).not.toBeNull(); // 骨架重建
+  });
+
+  it('㉒ 注入产物无 [[：常驻 / 关键词 / 向量三路都是纯文本投影', async () => {
+    const { wiki, svc, cid } = make();
+    wiki.applyOps(
+      [
+        {
+          op: 'create_page',
+          kind: 'people',
+          title: '王小明',
+          aliases: ['小王'],
+          tags: [],
+          content: '大学室友，养猫',
+        },
+        { op: 'create_page', kind: 'topics', title: '爬山', aliases: [], tags: [], content: '和小王去' },
+      ],
+      cid,
+    );
+    wiki.applyOps(
+      [
+        {
+          op: 'upsert_section',
+          page: 'user/profile.md',
+          section: '一句话档案',
+          content: '朋友王小明，爱爬山',
+        },
+        { op: 'append_timeline', date: '2026-09-20', text: '聊到[[小王]]的猫' },
+      ],
+      cid,
+    );
+    expect(wiki.readRaw('user/profile.md')).toContain('[[王小明]]');
+    await svc.reindexVectors();
+    const r = await svc.retrieveForChat('小王和爬山，还有猫');
+    expect(r.pages.length).toBeGreaterThan(0);
+    const all = [...r.resident, ...r.pages.map((p) => `${p.title}\n${p.body}`)].join('\n');
+    expect(all).not.toContain('[[');
+    expect(all).toContain('朋友王小明');
+    expect(all).toContain('聊到小王的猫');
   });
 });
