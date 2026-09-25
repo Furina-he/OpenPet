@@ -41,7 +41,7 @@ import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
 import { upgradeMemoryFormat } from './memory-format.js';
 import { MemoryWiki } from './memory-wiki.js';
-import { createMemoryCompiler } from './memory-compiler.js';
+import { createMemoryCompiler, PERSONA_EXCERPT_CHARS } from './memory-compiler.js';
 import { createMemoryMigrator } from './memory-migrate.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
@@ -466,7 +466,19 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
     resolveTarget: utilityTargetWithKey,
-    character: () => ({ id: characters.current().characterId }),
+    // ㉒ 口吻输入：角色名 + 生效人设前 600 字 + 用户称呼（经历用角色第一人称）
+    character: () => {
+      const cur = characters.current();
+      return {
+        id: cur.characterId,
+        name: cur.manifest.name,
+        persona: (
+          personaService.resolveFor(cur.characterId, cur.manifest.persona ?? null)?.systemPrompt ??
+          ''
+        ).slice(0, PERSONA_EXCERPT_CHARS),
+        userName: prefsStore.getAll()['chat.userName'] ?? '',
+      };
+    },
     embedModelKey: memoryEmbedKey,
     reindex: (paths) => memoryService.reindexVectors(paths),
     onChanged: (pages) => broadcast('memory.changed', { pages }),

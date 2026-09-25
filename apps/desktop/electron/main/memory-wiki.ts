@@ -911,7 +911,9 @@ export class MemoryWiki {
     const tl = this.readPage(pp.timeline);
     if (tl) {
       const recent = parseTimeline(tl.body).slice(0, MEMORY_QUOTAS.residentTimelineEntries);
-      if (recent.length) out.push(`### 最近经历\n${toPlainText(serializeTimeline(recent))}`);
+      // 条目是角色第一人称（㉒ 口吻规则）：标题点明「我」是模型自己
+      if (recent.length)
+        out.push(`### 最近经历（我记下的）\n${toPlainText(serializeTimeline(recent))}`);
     }
     return out;
   }

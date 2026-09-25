@@ -9,6 +9,10 @@
  *
  * §4 迁移模式 compileFacts(facts)：输入是旧 memory_fact 事实列表而非对话（prompt 变体），
  * 由 memory-migrate 分批调用。
+ *
+ * ㉒ v3.1（spec 2026-09-24-memory-graph-design §2.1）：页面文件名 = 标题（不再发明 slug）；链接规则
+ * （写 [[页面名]]，落盘前另有确定性规范化兜底）；时间规则（相对时间换算成具体日期）；口吻规则
+ * （经历与「亲密度叙事」用角色第一人称，user/ 页保持中性）；set_props 示例。
  */
 import type { Prefs, MemoryOp } from '@openpet/protocol';
 import { activateLorebook, MEMORY_QUOTAS, MemoryOpsSchema } from '@openpet/protocol';
@@ -24,7 +28,10 @@ export interface MemoryCompilerDeps {
   fetchImpl: FetchLike;
   getPrefs: () => Prefs;
   resolveTarget: () => { apiBase: string; model: string; key: string; adapter: string } | null;
-  character: () => { id: string };
+  /**
+   * 当前角色；㉒ name / persona（生效人设前 600 字）/ userName 只用于定经历口吻，缺省只给 id。
+   */
+  character: () => CompilerCharacter;
   /** ㉒ §5.4 当前嵌入目标指纹；相关页向量只用指纹一致的行。缺省 ''。 */
   embedModelKey?: () => string;
   /** 变更页向量重算（memory-service.reindexVectors）；缺省不算。 */
@@ -34,6 +41,19 @@ export interface MemoryCompilerDeps {
   turnsPerCompile?: number;
   now?: () => number;
 }
+
+export interface CompilerCharacter {
+  id: string;
+  /** manifest.name；缺省用 id。 */
+  name?: string;
+  /** 生效人设 systemPrompt（调用方已截 600 字）；空 = prompt 只给名字。 */
+  persona?: string;
+  /** chat.userName；空 = 回落「ta」。 */
+  userName?: string;
+}
+
+/** 人设摘要上限（只定口吻，不进记忆）。 */
+export const PERSONA_EXCERPT_CHARS = 600;
 
 export interface CompileResult {
   ok: boolean;
@@ -55,14 +75,20 @@ const RECENT_MESSAGES = 16;
 const FLUSH_DEBOUNCE_MS = 60_000;
 const VECTOR_TOP = 3;
 
-function rules(cid: string): string {
-  const pp = pagePaths(cid);
+function rules(who: CompilerCharacter): string {
+  const pp = pagePaths(who.id);
+  const name = who.name || who.id;
+  const call = who.userName ? `「${who.userName}」` : '';
   return [
     '规则：',
-    `- 页面：用户档案 user/profile.md（固定节：一句话档案/身份/工作学习/习惯作息/喜好厌恶/近况/杂项）；人物 user/people/<slug>.md；话题 user/topics/<slug>.md；关系 ${pp.relationship}（固定节：称呼/约定/禁忌/亲密度叙事）；经历 ${pp.timeline}。`,
+    `- 页面：用户档案 user/profile.md（固定节：一句话档案/身份/工作学习/习惯作息/喜好厌恶/近况/杂项）；人物 user/people/<标题>.md；话题 user/topics/<标题>.md（文件名就是标题）；关系 ${pp.relationship}（固定节：称呼/约定/禁忌/亲密度叙事）；经历 ${pp.timeline}。`,
     '- upsert_section 是整节替换：先看清该节现有内容，把新旧信息合并、矛盾以最新对话为准后写出完整新节；不要丢失仍然成立的旧事实。',
     '- 节首行含 <!-- locked --> 的节是用户锁定的，不得操作。',
-    '- create_page 只能建 people/topics；slug 用小写英文或拼音加连字符（如 xiao-ming），title 存原名，keys 给 1-5 个触发词（人名/昵称/别称）。已有页面不要重建，改用 upsert_section（无标题页的节名是「正文」）。',
+    '- create_page 只能建 people/topics：title 用人名或话题的原名，aliases 给 1-5 个别称（昵称/简称），tags 给 0-3 个语义标签（如 家人、同事、爱好；不要写「人物」「话题」这类类别）。「记忆索引」里已有的人物/话题（名字或别名相同也算）不要重建，改用 upsert_section（无标题页的节名是「正文」）或 set_props。',
+    '- set_props 整组替换某页的 aliases / tags / summary：先看「相关页面」里的现值，合并后写出完整列表。',
+    '- 链接：提到「记忆索引」里已有或本批新建的人物/话题时写 [[页面名]]（页面名 = 索引里 [[ ]] 内的文字）；用别名称呼时写 [[页面名|别名]]；经历条目里的人物/话题同样加链接；不要链接索引里没有、本批也不建的东西——值得记就建页。',
+    '- 时间：对话里的相对时间（今天/明天/下周/上个月……）一律按「今天是 X」换算成具体日期再写（如今天是 2026-09-24，「下周三面试」写成「2026-09-30 面试」）；「近况」里已经过去的计划改写成结果，值得留的移入经历，其余删掉。',
+    `- 口吻：经历条目（append_timeline / merge_timeline）和关系页「亲密度叙事」节用你（${name}）本人的第一人称写，「我」就是${name}，语气贴合你的人设；提到用户不写「用户」，写称呼（关系页「称呼」节里的叫法${call ? ` > ${call}` : ''} > 「ta」）。user/ 下的档案/人物/话题页所有角色共用，保持中性客观，不带任何角色口吻；关系页其余节（称呼/约定/禁忌）是条目式事实，也保持中性。`,
     `- 配额：档案总量 ≤ ${MEMORY_QUOTAS.profileChars} 字，单页 ≤ ${MEMORY_QUOTAS.pageChars} 字，经历 ≤ ${MEMORY_QUOTAS.timelineEntries} 条（超出先 merge_timeline 合并旧条目）。`,
     '- 「一句话档案」节是每轮常驻注入的精简视图（≤600 字），只写最核心的身份/职业/关系/近况。',
     '- 只记稳定、长期有用、关于用户与我们关系的事；一次性闲聊、寒暄、已记录且未变化的内容不产生操作。',
@@ -71,20 +97,30 @@ function rules(cid: string): string {
   ].join('\n');
 }
 
-function systemPrompt(cid: string, mode: 'chat' | 'migrate'): string {
+/** 口吻输入：角色名 + 人设摘要（只定口吻；无生效人设只给名字）。 */
+function voice(who: CompilerCharacter): string {
+  const name = who.name || who.id;
+  const persona = (who.persona ?? '').trim().slice(0, PERSONA_EXCERPT_CHARS);
+  return persona
+    ? `你是 ${name}，下面是你的人设摘要（只用来定经历的口吻，不要把人设内容写进记忆）：\n${persona}`
+    : `你是 ${name}。`;
+}
+
+export function systemPrompt(who: CompilerCharacter, mode: 'chat' | 'migrate'): string {
   const head =
     mode === 'chat'
       ? '你是角色的记忆编译器。阅读「最近对话」「会话摘要」「记忆索引」与「相关页面」，输出 0-5 个维护 markdown 记忆库的操作（JSON 数组）。'
       : '你是角色的记忆编译器。这是一次初始化整理：把「旧记忆事实列表」整理进 markdown 记忆库（若页面已有内容则合并而非覆盖），输出 0-5 个操作（JSON 数组）。';
   const ops = [
     '操作格式：',
-    '{"op":"upsert_section","page":"user/profile.md","section":"工作学习","content":"完整新节内容"}',
-    '{"op":"append_timeline","date":"YYYY-MM-DD","text":"一条共同经历（≤200 字）"}',
-    '{"op":"create_page","kind":"people"|"topics","slug":"xiao-ming","title":"小明","keys":["小明","明哥"],"content":"页面正文"}',
+    '{"op":"upsert_section","page":"user/profile.md","section":"工作学习","content":"完整新节内容，提到人物写 [[王小明]]"}',
+    '{"op":"append_timeline","date":"YYYY-MM-DD","text":"一条共同经历（≤200 字，第一人称）"}',
+    '{"op":"create_page","kind":"people"|"topics","title":"王小明","aliases":["小王"],"tags":["同事"],"content":"页面正文"}',
+    '{"op":"set_props","page":"user/people/王小明.md","aliases":["小王","王工"],"tags":["同事"],"summary":"一句话简介"}',
     '{"op":"remove_line","page":"...","section":"...","match":"要删除的行包含的文字"}',
-    '{"op":"merge_timeline","before":"YYYY-MM-DD","text":"该日期前经历的合并摘要"}',
+    '{"op":"merge_timeline","before":"YYYY-MM-DD","text":"该日期前经历的合并摘要（第一人称）"}',
   ].join('\n');
-  return `${head}\n${ops}\n${rules(cid)}`;
+  return `${head}\n${voice(who)}\n${ops}\n${rules(who)}`;
 }
 
 export function createMemoryCompiler(deps: MemoryCompilerDeps) {
@@ -142,7 +178,11 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
     return blocks.join('\n\n');
   }
 
-  async function callLlm(cid: string, mode: 'chat' | 'migrate', user: string): Promise<MemoryOp[]> {
+  async function callLlm(
+    who: CompilerCharacter,
+    mode: 'chat' | 'migrate',
+    user: string,
+  ): Promise<MemoryOp[]> {
     const target = deps.resolveTarget();
     if (!target || target.adapter !== 'openai')
       throw new MemoryOpError('杂务模型不可用（需 openai 兼容）');
@@ -156,7 +196,7 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
         model: target.model,
         stream: false,
         messages: [
-          { role: 'system', content: systemPrompt(cid, mode) },
+          { role: 'system', content: systemPrompt(who, mode) },
           { role: 'user', content: user },
         ],
       }),
@@ -178,7 +218,8 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
   async function run(cid: string, mode: 'chat' | 'migrate', user: string): Promise<CompileResult> {
     try {
       deps.wiki.ensureLayout(cid);
-      const ops = await callLlm(cid, mode, user);
+      const cur = deps.character();
+      const ops = await callLlm(cur.id === cid ? cur : { id: cid }, mode, user);
       if (ops.length === 0) {
         last = { at: now(), ok: true, ops: 0 };
         return { ok: true, ops: 0, changed: [] };
