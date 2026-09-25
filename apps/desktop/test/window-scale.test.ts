@@ -21,7 +21,6 @@ import {
   pickPlacement,
   resolutionKey,
   scalePresets,
-  scaledBounds,
   snapScale,
   stageLayout,
   toRelative,
@@ -56,37 +55,16 @@ const codex = {
   sprite: { layout: 'codex' },
 } as Pick<CharacterManifest, 'engine' | 'sprite'>;
 
-describe('scaledBounds', () => {
+describe('legacyScaledBounds（㉓ 前的参照实现，自检）', () => {
   const cur = { x: 100, y: 200, width: 320, height: 480 }; // scale=1 站位
 
   it('base size matches the character window default', () => {
     expect(CHARACTER_BASE_SIZE).toEqual({ width: 320, height: 480 });
   });
 
-  it('keeps bottom-center anchored at 50%', () => {
-    const b = scaledBounds(cur, 0.5);
-    expect(b).toEqual({ x: 180, y: 440, width: 160, height: 240 });
-    // 底边中点不变：x+w/2 = 260, y+h = 680
-    expect(b.x + b.width / 2).toBe(cur.x + cur.width / 2);
-    expect(b.y + b.height).toBe(cur.y + cur.height);
-  });
-
-  it('keeps bottom-center anchored at 200%', () => {
-    const b = scaledBounds(cur, 2);
-    expect(b).toEqual({ x: -60, y: -280, width: 640, height: 960 });
-  });
-
-  it('is idempotent for repeated same-scale calls (anchored on current bounds)', () => {
-    const once = scaledBounds(cur, 1.5);
-    const twice = scaledBounds(once, 1.5);
-    expect(twice).toEqual(once);
-  });
-
-  it('rounds to integers', () => {
-    const b = scaledBounds(cur, 0.77);
-    expect(Number.isInteger(b.x) && Number.isInteger(b.y)).toBe(true);
-    expect(b.width).toBe(Math.round(320 * 0.77));
-    expect(b.height).toBe(Math.round(480 * 0.77));
+  it('keeps bottom-center anchored at 50% / 200%', () => {
+    expect(legacyScaledBounds(cur, 0.5)).toEqual({ x: 180, y: 440, width: 160, height: 240 });
+    expect(legacyScaledBounds(cur, 2)).toEqual({ x: -60, y: -280, width: 640, height: 960 });
   });
 });
 
@@ -302,12 +280,31 @@ describe('㉓ 吸附（snapScale / scalePresets）', () => {
     expect(snapScale(1.25, px(1.25))).toBe(1.6);
     expect(snapScale(1.3, px(1.5))).toBe(1.3333);
     expect(snapScale(1.9, px(1, 1.5))).toBe(1); // 2× 超出 maxFit
+    expect(snapScale(1, px(1.5))).toBe(1.3333); // 0.667 与 1.333 等距：取大
   });
 
   it('像素吸附：区间内无档（仅极小工作区）→ 最小清晰档（dpr ≤ 2 即 1 / dpr）', () => {
     expect(snapScale(0.5, { pixelArt: true, dpr: 1.5, maxFit: 0.55 })).toBe(0.6667);
     expect(snapScale(0.7, { pixelArt: true, dpr: 1, maxFit: 0.9 })).toBe(1);
     expect(snapScale(0.5, { pixelArt: true, dpr: 3, maxFit: 0.55 })).toBe(0.6667); // 1/3 < 0.5 不取
+  });
+
+  it('幂等：吸附结果再吸一次不变（含不在网格上的 maxFit）', () => {
+    const cases: Array<{ pixelArt: boolean; dpr: number; maxFit: number }> = [
+      { pixelArt: false, dpr: 1, maxFit: 2 },
+      { pixelArt: false, dpr: 1, maxFit: 728 / 480 },
+      { pixelArt: false, dpr: 1.5, maxFit: 0.52 },
+      { pixelArt: true, dpr: 1, maxFit: 2 },
+      { pixelArt: true, dpr: 1.25, maxFit: 1.7 },
+      { pixelArt: true, dpr: 1.5, maxFit: 0.55 },
+      { pixelArt: true, dpr: 1.75, maxFit: 2 },
+    ];
+    for (const o of cases) {
+      for (let s = 0.3; s <= 2.4; s += 0.037) {
+        const once = snapScale(s, o);
+        expect(snapScale(once, o), `${JSON.stringify(o)} s=${s}`).toBe(once);
+      }
+    }
   });
 });
 

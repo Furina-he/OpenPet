@@ -60,18 +60,6 @@ export function hubWindowSize(
   };
 }
 
-export function scaledBounds(
-  current: Bounds,
-  scale: number,
-  base: { width: number; height: number } = CHARACTER_BASE_SIZE,
-): Bounds {
-  const width = Math.round(base.width * scale);
-  const height = Math.round(base.height * scale);
-  const centerX = current.x + current.width / 2;
-  const bottom = current.y + current.height;
-  return { x: Math.round(centerX - width / 2), y: Math.round(bottom - height), width, height };
-}
-
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 /** 去浮点毛刺（1.1500000000000001 → 1.15），落盘的 JSON 干净。 */
 const roundTo = (v: number, digits: number): number => {
@@ -192,17 +180,18 @@ export interface SnapOptions {
 }
 
 /**
- * 吸附：常规 = 5% 网格并夹 [0.5, maxFit]；像素 = [0.5, maxFit] 内最近的清晰档 k / dpr，
- * 区间内无档（仅极小工作区）时取最小清晰档。
+ * 吸附（幂等：结果再吸一次不变）：常规 = 5% 网格并夹 [0.5, maxFit]，≥ maxFit 直接取 maxFit（它可以不在
+ * 网格上）；像素 = [0.5, maxFit] 内最近的清晰档 k / dpr（等距取大），区间内无档（仅极小工作区）时取最小清晰档。
  */
 export function snapScale(s: number, o: SnapOptions): number {
   if (!o.pixelArt) {
+    if (s >= o.maxFit - EPS) return o.maxFit;
     return clamp(roundTo(Math.round(s / SCALE_STEP) * SCALE_STEP, 4), SCALE_MIN, o.maxFit);
   }
   const stops = pixelStops(o.dpr, SCALE_MIN, o.maxFit);
   if (stops.length === 0) return smallestPixelStop(o.dpr);
   let best = stops[0]!;
-  for (const v of stops) if (Math.abs(v - s) < Math.abs(best - s)) best = v;
+  for (const v of stops) if (Math.abs(v - s) <= Math.abs(best - s) + 1e-9) best = v;
   return best;
 }
 

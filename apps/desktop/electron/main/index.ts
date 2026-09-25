@@ -1,4 +1,13 @@
-import { app, Menu, screen, protocol, shell, globalShortcut, dialog } from 'electron';
+import {
+  app,
+  Menu,
+  screen,
+  protocol,
+  shell,
+  globalShortcut,
+  dialog,
+  powerMonitor,
+} from 'electron';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +61,8 @@ let updateSvc: ReturnType<typeof createUpdateService> | null = null;
 let trayThinking = false;
 let trayError = false;
 let isQuitting = false;
+/** ㉓ 显示器 / 休眠事件解绑（before-quit）。 */
+let unwatchStage: (() => void) | null = null;
 // 性能埋点：进程顶部 mark，character 窗首次加载完成 = 冷启动终点（PRD §7 预算 <3s）。
 const perf = new PerfMarks();
 perf.mark('boot');
@@ -171,6 +182,7 @@ app.whenReady().then(async () => {
   router = registerIpcRouter({
     targets,
     characterWindow,
+    screen,
     settingsWindow,
     onboardingWindow,
     overlayWindow,
@@ -291,6 +303,25 @@ app.whenReady().then(async () => {
     },
   });
 
+  // ㉓ 位置记忆（F-DT-02）：显示器拔插 / 分辨率 / DPI 变化 → 按记录重算并夹屏（所在屏消失记它 10s）；
+  // 系统休眠立即存、唤醒按记录重放（防睡眠 / KVM / 驱动重连把位置冲掉）。
+  const stage = router.stage;
+  const onDisplaysChanged = (): void => stage.apply('display');
+  const onSuspend = (): void => stage.suspend();
+  const onResume = (): void => stage.apply('resume');
+  screen.on('display-added', onDisplaysChanged);
+  screen.on('display-removed', onDisplaysChanged);
+  screen.on('display-metrics-changed', onDisplaysChanged);
+  powerMonitor.on('suspend', onSuspend);
+  powerMonitor.on('resume', onResume);
+  unwatchStage = () => {
+    screen.off('display-added', onDisplaysChanged);
+    screen.off('display-removed', onDisplaysChanged);
+    screen.off('display-metrics-changed', onDisplaysChanged);
+    powerMonitor.off('suspend', onSuspend);
+    powerMonitor.off('resume', onResume);
+  };
+
   // M7b-2 首启：未完成引导 → 收起 overlay、弹引导窗（character 照常显示，"先看到角色"）。
   if (decideStartup(prefsStore.getAll()).showOnboarding) {
     wins.overlay.hide();
@@ -401,6 +432,8 @@ app.on('before-quit', () => {
   fsWatch = null;
   tray?.destroy();
   tray = null;
+  unwatchStage?.();
+  unwatchStage = null;
   void router?.dispose();
   router = null;
 });
