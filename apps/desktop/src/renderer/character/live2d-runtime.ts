@@ -30,6 +30,7 @@ import { LifeLayer, asEnergy, nightEnergy, addOffsets, type Energy } from './lif
 import { PostureLayer } from './posture';
 import { GazeMachine } from './gaze';
 import { damp, type Normalized } from './lookat';
+import { modelScreenRect } from './model-rect';
 
 // pixi-live2d-display 经 window.PIXI.Ticker 驱动模型 autoUpdate。
 (window as unknown as { PIXI: typeof PIXI }).PIXI = PIXI;
@@ -70,7 +71,10 @@ export async function createLive2dRuntime(
     model.y = 0;
   };
   fit();
-  const resizeObserver = new ResizeObserver(fit);
+  const resizeObserver = new ResizeObserver(() => {
+    fit();
+    app.render(); // ㉓ resize 清空了画布：立即补画，连续缩放不闪空白帧
+  });
   resizeObserver.observe(container);
 
   const core = model.internalModel.coreModel as {
@@ -103,12 +107,7 @@ export async function createLive2dRuntime(
     if (now - hourCache.at > 1000) hourCache = { at: now, hour: new Date().getHours() };
     return hourCache.hour;
   };
-  const windowRect = () => ({
-    x: window.screenX,
-    y: window.screenY,
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+  const windowRect = () => modelScreenRect(container); // ㉓ 模型框，不含透明舞台边
   const motionManager = model.internalModel.motionManager as unknown as {
     definitions: Partial<Record<string, unknown[]>>;
     groups: { idle: string };
@@ -261,8 +260,9 @@ export async function createLive2dRuntime(
     },
     setLookAt(x, y) {
       // ⑱ 总闸开：视线状态机驱动（track/wander/…）；关：库原生 focus 直追鼠标（本批前表现）。
-      gaze.cursor(x, y, performance.now(), windowRect());
-      if (!lifeLayers) model.focus(x - window.screenX, y - window.screenY);
+      const r = windowRect();
+      gaze.cursor(x, y, performance.now(), r);
+      if (!lifeLayers) model.focus(x - r.x, y - r.y); // 画布坐标 = 屏幕 − 模型框原点
     },
     setMouth(v) {
       mouth = clamp01(v);

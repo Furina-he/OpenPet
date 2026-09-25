@@ -55,6 +55,7 @@ import {
   type IdleVariant,
 } from './idle-pool';
 import { SpriteDirector } from './sprite-player';
+import { modelScreenRect } from './model-rect';
 import {
   FacingTracker,
   IDENTITY_2D,
@@ -202,7 +203,15 @@ export async function createSpriteRuntime(
   setupMode();
 
   // ---- 适配 + 轮廓 ----
-  let fit: SpriteFit = fitSprite(width, height, built.cell.width, built.cell.height, built.resolved.fit);
+  // ㉓ integer 适配按设备像素整数倍（renderer.resolution = 画布像素 / CSS 像素）
+  let fit: SpriteFit = fitSprite(
+    width,
+    height,
+    built.cell.width,
+    built.cell.height,
+    built.resolved.fit,
+    renderer.resolution,
+  );
   let box: { top: number; bottom: number } | null = null;
   /** 帧精灵底部中心锚点（swing 局部坐标 = 所在空间坐标）。 */
   const base = { x: 0, y: 0 };
@@ -210,7 +219,7 @@ export async function createSpriteRuntime(
     const w = container.clientWidth || width;
     const h = container.clientHeight || height;
     renderer.resize(w, h);
-    fit = fitSprite(w, h, built.cell.width, built.cell.height, built.resolved.fit);
+    fit = fitSprite(w, h, built.cell.width, built.cell.height, built.resolved.fit, renderer.resolution);
     box = built.bbox ? contentBoxInView(built.bbox, fit) : null;
     if (rt && rtSprite) {
       // 原生分辨率空间：RT 底边中心 = 格底边中心；枢轴 = 格顶部中心
@@ -227,7 +236,10 @@ export async function createSpriteRuntime(
     swing.position.copyFrom(swing.pivot);
   };
   layout();
-  const resizeObserver = new ResizeObserver(layout);
+  const resizeObserver = new ResizeObserver(() => {
+    layout();
+    app.render(); // ㉓ resize 清空了画布：立即补画，连续缩放不闪空白帧
+  });
   resizeObserver.observe(container);
 
   // ---- ⑱ 程序化通道（与 VRM / Live2D 同一套纯逻辑）----
@@ -247,12 +259,7 @@ export async function createSpriteRuntime(
     if (now - hourCache.at > 1000) hourCache = { at: now, hour: new Date().getHours() };
     return hourCache.hour;
   };
-  const windowRect = () => ({
-    x: window.screenX,
-    y: window.screenY,
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+  const windowRect = () => modelScreenRect(container); // ㉓ 模型框，不含透明舞台边
 
   // 情绪保持：非说话期触发的情绪（如轮末表情兜底）没有后续 chat.done 来复位 → 定时退基线（同 VRM）
   const EMOTION_HOLD_MS = 4000;
@@ -432,7 +439,8 @@ export async function createSpriteRuntime(
     if (SPRITE_FLAGS.procedural && !b.resolved.slots.talk) t.sy += mouthCurrent * SPRITE_2D_GAIN.mouth; // 无 talk 行：说话轻微起伏
     let flip = 1;
     if (facing && b.resolved.flipToCursor && lookAtEnabled && cursorX !== null) {
-      flip = facing.update(cursorX - (window.screenX + window.innerWidth / 2), now);
+      const r = windowRect();
+      flip = facing.update(cursorX - (r.x + r.width / 2), now);
     }
     updateSwing(dtMs);
 

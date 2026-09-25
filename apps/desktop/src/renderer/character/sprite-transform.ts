@@ -99,17 +99,26 @@ export interface SpriteFit {
   h: number;
 }
 
+/**
+ * integer = 设备像素整数倍 k / dpr（k ≥ 1；不足 1 设备倍退回 contain，免得算出 0）。
+ * 0.02 容差吸收模型框取整误差（如 1.333 档的框 320×308 反算 contain = 1.3327，不加会掉回 1 设备倍）；
+ * 多出的 <1% 落在 10% 内缩区里，无害。
+ */
+const INTEGER_FIT_TOLERANCE = 0.02;
+
 export function fitSprite(
   viewW: number,
   viewH: number,
   cellW: number,
   cellH: number,
   mode: 'contain' | 'integer',
+  dpr = 1,
 ): SpriteFit {
   const innerW = viewW * (1 - 2 * SPRITE_FIT_INSET.side);
   const innerH = viewH * (1 - SPRITE_FIT_INSET.top);
   const contain = cellW > 0 && cellH > 0 ? Math.min(innerW / cellW, innerH / cellH) : 1;
-  const scale = mode === 'integer' && contain >= 1 ? Math.floor(contain) : contain;
+  const k = mode === 'integer' ? Math.floor(contain * dpr + INTEGER_FIT_TOLERANCE) : 0;
+  const scale = k >= 1 ? k / dpr : contain;
   const w = cellW * scale;
   const h = cellH * scale;
   return { scale, x: (viewW - w) / 2, y: viewH - h, w, h };

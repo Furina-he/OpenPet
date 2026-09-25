@@ -87,7 +87,7 @@ describe('fitSprite', () => {
     expect(f.x).toBeCloseTo((320 - f.w) / 2, 5);
   });
 
-  it('integer：不超过 contain 的最大整数倍', () => {
+  it('integer：不超过 contain 的最大整数倍（dpr 1 = CSS 整数倍）', () => {
     const f = fitSprite(800, 900, 64, 64, 'integer'); // contain = 640/64 = 10
     expect(f.scale).toBe(10);
     expect(fitSprite(700, 900, 64, 64, 'integer').scale).toBe(8); // 560/64 = 8.75
@@ -96,6 +96,25 @@ describe('fitSprite', () => {
   it('integer：小窗 contain < 1 时退回 contain', () => {
     const f = fitSprite(100, 100, 192, 208, 'integer');
     expect(f.scale).toBeCloseTo(80 / 192, 5);
+  });
+
+  it('㉓ integer：设备像素整数倍 k / dpr（非 100% DPI 下才真锐利）', () => {
+    // 0.8 档 @ dpr 1.25：模型框 192×185 → contain 0.8 → 1 设备倍
+    expect(fitSprite(192, 185, 192, 208, 'integer', 1.25).scale).toBeCloseTo(0.8, 9);
+    // 2 档 @ dpr 1.5：模型框 480×462 → contain 2 → 3 设备倍
+    expect(fitSprite(480, 462, 192, 208, 'integer', 1.5).scale).toBeCloseTo(2, 9);
+  });
+
+  it('㉓ integer：模型框取整误差由 0.02 容差吸收（1.333 档 320×308 @ dpr 1.5 仍得 2 设备倍）', () => {
+    // contain = min(256/192, 277.2/208) = 1.33269 → ×1.5 = 1.99904：不加容差会掉回 1 设备倍
+    expect(fitSprite(320, 308, 192, 208, 'integer', 1.5).scale).toBeCloseTo(2 / 1.5, 9);
+    // 100% codex 底座 240×231 @ dpr 1：contain 0.99952 → 仍是原生 1×
+    expect(fitSprite(240, 231, 192, 208, 'integer', 1).scale).toBe(1);
+  });
+
+  it('㉓ integer：不足 1 设备倍退回 contain（不算出 0）', () => {
+    const f = fitSprite(100, 100, 192, 208, 'integer', 1.25);
+    expect(f.scale).toBeCloseTo(80 / 192, 9);
   });
 
   it('pixelRtSize：格宽 ×1.5、格高 ×1.35 向上取整', () => {

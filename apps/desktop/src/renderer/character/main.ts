@@ -3,12 +3,20 @@
 // VRM 不可用（manifest 失败/模型缺失/加载失败）→ DOM 情绪脸，行为契约不变。
 import { createVrmRuntime, type CharacterRuntime } from './runtime';
 import { mountFallbackFace, type FallbackFace } from './fallback-face';
-import { setupInteraction } from './interaction';
-import { mountBubble } from './bubble';
+import { setupInteraction, type InteractionHandle } from './interaction';
+import { windowContour, type ContentBox } from './interaction-zones';
+import { mountBubble, type Bubble } from './bubble';
 import { resolveMode } from './desktop-state';
 import { IdleWatch, IDLE_TIMEOUT_MS } from './idle-watch';
 import { mouthValue, playbackRateOf } from './mouth-drive';
-import { moodCurrent, type Prefs } from '@openpet/protocol';
+import {
+  HUD_HOLD_MS,
+  WHEEL_SETTLE_MS,
+  WheelScaler,
+  scaleLabel,
+  stepScale,
+} from './scale-wheel';
+import { moodCurrent, type CharacterLayout, type Prefs } from '@openpet/protocol';
 import '../theme/tokens.css';
 import { subscribeTheme } from '../theme/subscribe';
 import { charStrings } from './strings';
@@ -113,17 +121,70 @@ function showClickThroughFx(ignore: boolean): void {
 async function boot(): Promise<void> {
   const stageEl = document.getElementById('stage')!;
   const fallbackEl = document.getElementById('fallback')!;
+  const modelBoxEl = document.getElementById('model-box')!;
 
   let runtime: CharacterRuntime | null = null;
   let face: FallbackFace | null = null;
-  // ⑳ 可见轮廓（sprite 实现；VRM / Live2D 无 → null = 整窗口口径）
-  const contentBox = (): { top: number; bottom: number } | null => runtime?.contentBox?.() ?? null;
+  let interaction: InteractionHandle | null = null;
+  let bubble: Bubble | null = null;
+
+  // ---- ㉓ 几何：模型框 + 舞台边（Main character-stage 真源）----
+  let layout: CharacterLayout | null = null;
+  let pendingLayout: CharacterLayout | null = null;
+  let pendingTimer = 0;
+  const commitLayout = (l: CharacterLayout): void => {
+    pendingLayout = null;
+    clearTimeout(pendingTimer);
+    layout = l;
+    Object.assign(modelBoxEl.style, {
+      left: `${l.model.x}px`,
+      top: `${l.model.y}px`,
+      width: `${l.model.width}px`,
+      height: `${l.model.height}px`,
+    });
+    bubble?.relayout();
+    interaction?.recheck(); // §R：几何变了立即重判穿透（窗口原点动了、光标没动就没有 mousemove）
+  };
+  const viewportMatches = (l: CharacterLayout): boolean =>
+    Math.abs(window.innerWidth - l.window.width) <= 1 &&
+    Math.abs(window.innerHeight - l.window.height) <= 1;
+  let layoutFromEvent = false;
+  window.openpet.on('character.layoutChanged', (l) => {
+    layoutFromEvent = true;
+    // 窗口尺寸也变了：等视口真变过来再摆模型框（否则模型框先缩、窗口后动，中间闪一帧错位）；150ms 兜底
+    if (viewportMatches(l)) {
+      commitLayout(l);
+      return;
+    }
+    pendingLayout = l;
+    clearTimeout(pendingTimer);
+    pendingTimer = window.setTimeout(() => {
+      if (pendingLayout) commitLayout(pendingLayout);
+    }, 150);
+  });
+  window.addEventListener('resize', () => {
+    if (pendingLayout && viewportMatches(pendingLayout)) commitLayout(pendingLayout);
+  });
+  // 先摆好模型框、再建 runtime：runtime 构造时读容器尺寸，顺序反了会先按整窗兜底再跳一下
+  try {
+    const initial = await window.openpet.rpc('character.layout', {});
+    if (!layoutFromEvent) commitLayout(initial);
+  } catch (e) {
+    console.warn('[character] layout unavailable, model box = whole window:', e);
+  }
+
+  // 轮廓（窗口坐标）：精灵可见轮廓 + 模型框偏移 ?? 模型框——分区与气泡共用
+  const contour = (): ContentBox =>
+    windowContour(
+      layout?.model ?? { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
+      runtime?.contentBox?.() ?? null,
+    );
   // ⑱ dev harness：`?harness=life`（Main 经 OPENPET_HARNESS=life 追加）。面板是 DOM，
   // alpha 穿透会把面板区域判成透明 → 跳过穿透只留拖拽。
   const harness = new URLSearchParams(location.search).get('harness');
   try {
     runtime = await bootRuntime(stageEl);
-    setupInteraction(harness ? null : runtime.hitSurface, contentBox);
+    interaction = setupInteraction(harness ? null : runtime.hitSurface, contour);
     if (harness === 'life') {
       const rt = runtime;
       const { mountLifeHarness } = await import('../dev/life-harness');
@@ -150,7 +211,7 @@ async function boot(): Promise<void> {
     console.warn('[character] runtime unavailable, using fallback face:', e);
     fallbackEl.style.display = 'flex';
     face = mountFallbackFace(fallbackEl);
-    setupInteraction(null); // DOM 无 alpha buffer：只拖拽，不穿透
+    interaction = setupInteraction(null, contour); // DOM 无 alpha buffer：只拖拽，不穿透
   }
 
   const debug: NonNullable<Window['__charDebug']> = {
@@ -207,30 +268,105 @@ async function boot(): Promise<void> {
 
   window.openpet.on('behavior.lookAt', ({ x, y }) => {
     debug.lastLookAt = { x, y };
+    interaction?.noteCursor(x, y); // ㉓ 命中重判用最新光标（光标静止时没有 mousemove）
     runtime?.setLookAt(x, y); // 不算 activity：光标常动，算了 90s 永不触发
   });
 
   // ---- A2 桌面气泡：流式文本逐字 + 按 pref 自动消失（character 仍只反映 chat，无业务）----
   // 线 B-1：只反映桌面会话（Main 已 tee 掉 im: 会话，此处双保险防未来新通道漏网）。
-  const bubble = mountBubble(document.getElementById('bubble')!, contentBox);
+  const bubbleView = mountBubble(
+    document.getElementById('bubble')!,
+    contour,
+    () => layout?.screen.workArea ?? null,
+  );
+  bubble = bubbleView;
   window.openpet.on('chat.stream', (p) => {
     if (!isDesktopSession(p.sessionId)) return;
     markActivity();
     runtime?.setStreaming(true); // ⑱ 说话中：呼吸收窄 + 视线看用户（chat.done 复位）
-    bubble.appendStream(p.text);
+    bubbleView.appendStream(p.text);
   });
 
   // ---- 线 B-1 IM 到桌轻提示（F-IM-04：只报「谁在找」，正文/TTS 不进桌面）----
   window.openpet.on('im.activity', (p) => {
     markActivity();
-    bubble.say(`💬 ${p.senderName}: ${p.text}`);
+    bubbleView.say(`💬 ${p.senderName}: ${p.text}`);
   });
 
   // ---- F-IT 主动台词（pet.say → 桌面气泡，不入会话流）----
   window.openpet.on('pet.say', ({ text }) => {
     markActivity();
-    bubble.say(text);
+    bubbleView.say(text);
   });
+
+  // ---- ㉓ Ctrl+滚轮缩放（光标在角色不透明处；透明处的滚轮本就随穿透落到下层窗口）----
+  // 精密触控板双指捏合同样产生 ctrl+wheel。手势期间冻结穿透（缩小后光标可能落到透明像素上，
+  // 切成穿透会让后续滚轮漏给下层窗口），停手 500ms 持久化并解冻重判。
+  const scaleHud = document.getElementById('scale-hud')!;
+  let hudTimer = 0;
+  const showScaleHud = (s: number): void => {
+    scaleHud.textContent = scaleLabel(s, layout?.pixelSnap ?? false, layout?.dpr ?? 1);
+    scaleHud.classList.add('scale-hud-show');
+    clearTimeout(hudTimer);
+    hudTimer = window.setTimeout(() => scaleHud.classList.remove('scale-hud-show'), HUD_HOLD_MS);
+  };
+  const wheelScaler = new WheelScaler();
+  let gesture: { start: number; target: number } | null = null;
+  let gestureTimer = 0;
+  // 预览合批：上一次 setScale 未返回时只记最新目标（不排队）
+  let previewInFlight = false;
+  let previewQueued: number | null = null;
+  const previewScale = (s: number): void => {
+    if (previewInFlight) {
+      previewQueued = s;
+      return;
+    }
+    previewInFlight = true;
+    window.openpet
+      .rpc('character.setScale', { scale: s })
+      .catch(() => {})
+      .finally(() => {
+        previewInFlight = false;
+        const next = previewQueued;
+        previewQueued = null;
+        if (next !== null) previewScale(next);
+      });
+  };
+  const endScaleGesture = (): void => {
+    const g = gesture;
+    gesture = null;
+    wheelScaler.reset();
+    if (g && g.target !== g.start) {
+      previewQueued = null; // 持久化调用本身带着最终目标
+      void window.openpet.rpc('character.setScale', { scale: g.target, persist: true });
+    }
+    interaction?.freezeWheel(false);
+  };
+  window.addEventListener(
+    'wheel',
+    (e: WheelEvent) => {
+      if (!e.ctrlKey) return; // 普通滚轮不缩放（防误触）
+      e.preventDefault(); // 独占（Electron 默认只发 zoom-changed，不改页面缩放）
+      if (!layout || interaction?.dragging()) return; // 拖拽中忽略
+      interaction?.noteCursor(e.screenX, e.screenY);
+      if (!gesture) {
+        gesture = { start: layout.scale, target: layout.scale };
+        interaction?.freezeWheel(true);
+      }
+      const steps = wheelScaler.feed(e.deltaY, e.deltaMode);
+      if (steps !== 0) {
+        const next = stepScale(gesture.target, steps, layout);
+        if (next !== gesture.target) {
+          gesture.target = next;
+          previewScale(next);
+        }
+        showScaleHud(gesture.target); // 到头了也给反馈
+      }
+      clearTimeout(gestureTimer);
+      gestureTimer = window.setTimeout(endScaleGesture, WHEEL_SETTLE_MS);
+    },
+    { passive: false },
+  );
 
   // ---- F-VC 语音：TTS 音频播放 + RMS 包络驱动嘴型（声画同源，桌宠自己开口）----
   let audioCtx: AudioContext | null = null;
@@ -338,9 +474,10 @@ async function boot(): Promise<void> {
     } else if (c.key === 'general.language') {
       if (typeof c.value === 'string') locale = c.value;
     } else if (c.key === 'display.bubbleDuration') {
-      bubble.setDuration(c.value as Prefs['display.bubbleDuration']);
+      bubbleView.setDuration(c.value as Prefs['display.bubbleDuration']);
     } else if (c.key === 'display.clickThrough') {
       showClickThroughFx(c.value === true); // A3：穿透切换涟漪 + toast
+      interaction?.setLocked(c.value === true); // ㉓ 整窗穿透期间逐像素逻辑不改窗口；关掉后重判
     } else if (c.key === 'display.dndManual') {
       dnd = c.value === true;
       applyMode();
@@ -360,7 +497,8 @@ async function boot(): Promise<void> {
     .rpc('app.prefs.getAll', {})
     .then((prefs) => {
       const pf = prefs as Prefs;
-      bubble.setDuration(pf['display.bubbleDuration']);
+      bubbleView.setDuration(pf['display.bubbleDuration']);
+      interaction?.setLocked(pf['display.clickThrough']);
       locale = String(pf['general.language'] ?? 'zh-CN');
       dnd = pf['display.dndManual'];
       focus = pf['display.focusMode'];
@@ -382,7 +520,7 @@ async function boot(): Promise<void> {
   window.openpet.on('chat.done', (p) => {
     if (!isDesktopSession(p.sessionId)) return;
     markActivity();
-    bubble.endStream();
+    bubbleView.endStream();
     runtime?.setStreaming(false);
     setTimeout(() => {
       if (runtime) runtime.releaseEmotion();
