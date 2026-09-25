@@ -568,7 +568,14 @@ function zoomBy(f: number): void {
 function fitAll(): void {
   animateCamera(fitCamera(currentTargets()));
 }
-defineExpose({ zoomBy, fitAll });
+/** 平滑居中到某节点（搜索回车用；缩放不变，避开右侧阅读栏）。 */
+function focusNode(id: string): void {
+  const p = pos.get(id);
+  if (!p) return;
+  const base = camTween?.to ?? cam;
+  animateCamera(centerOn(base, p.x, p.y, { w: size.w - props.rightInset, h: size.h }));
+}
+defineExpose({ zoomBy, fitAll, focusNode });
 
 // 选中节点平移到阅读栏左侧的可见区
 watch(

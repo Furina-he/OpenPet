@@ -72,7 +72,7 @@ function lsSet(key: string, v: unknown): void {
   }
 }
 const ui = ref(lsGet('ui', { view: 'graph' as 'graph' | 'list', scope: 'current' as 'current' | 'all' }));
-const filters = ref<GraphFilters>(lsGet('filters', DEFAULT_FILTERS));
+const filters = ref<GraphFilters>(lsGet('filters', { ...DEFAULT_FILTERS }));
 watch(ui, (v) => lsSet('ui', v), { deep: true });
 watch(filters, (v) => lsSet('filters', v), { deep: true });
 const graphQuery = ref('');
@@ -121,7 +121,7 @@ function selectGraph(id: string | null): void {
 }
 function searchEnter(): void {
   const first = graphView.value.nodes.find((n) => hits.value.has(n.id));
-  if (first) graphSelected.value = first.id;
+  if (first) graphCanvas.value?.focusNode(first.id);
 }
 /** [编辑]：切到列表视图并打开该页（复用 ⑲ 编辑器）。 */
 async function editInList(path: string): Promise<void> {
@@ -284,6 +284,12 @@ function onPreviewClick(e: MouseEvent): void {
 async function createGhost(kind: 'people' | 'topics'): Promise<void> {
   if (!ghost.value) return;
   const { path, content } = ghostPageSkeleton(ghost.value, kind);
+  // 安全化后的文件名已存在（如 [[a:b]] → a-b.md）→ 直接打开，绝不覆盖
+  if (graph.value?.nodes.some((n) => n.id === path)) {
+    ghost.value = null;
+    await open(path);
+    return;
+  }
   try {
     await window.openpet.rpc('memory.writePage', { path, content });
     ghost.value = null;

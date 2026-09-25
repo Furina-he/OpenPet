@@ -63,11 +63,17 @@ function unlinkedText(md: string): string {
 
 const ASCII_RE = /^[\x20-\x7e]+$/;
 
-function mentions(text: string, name: string): number {
+/** ASCII 名需词边界（防「Al」命中「Also」）；正则按名缓存，页多时不反复编译。 */
+function mentions(text: string, name: string, cache: Map<string, RegExp>): number {
   const n = name.trim();
   if ([...n].length < 2) return -1;
   if (!ASCII_RE.test(n)) return text.indexOf(n);
-  const re = new RegExp(`(?<![A-Za-z0-9_])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_])`, 'i');
+  let re = cache.get(n);
+  if (!re) {
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    re = new RegExp(`(?<![A-Za-z0-9_])${esc}(?![A-Za-z0-9_])`, 'i');
+    cache.set(n, re);
+  }
   const m = re.exec(text);
   return m ? m.index : -1;
 }
@@ -158,13 +164,14 @@ export function buildMemoryGraph(allPages: readonly MemoryPage[], opts: BuildGra
     const k = memoryPageKind(q.path);
     return k === 'people' || k === 'topics';
   });
+  const reCache = new Map<string, RegExp>();
   for (const p of pages) {
     const text = unlinkedText(p.body);
     for (const q of targets) {
       if (q.path === p.path || linked.has(`${p.path}|${q.path}`)) continue;
       let at = -1;
       for (const n of [q.frontmatter.title, ...q.frontmatter.aliases]) {
-        at = mentions(text, n);
+        at = mentions(text, n, reCache);
         if (at >= 0) break;
       }
       if (at >= 0) addEdge(p.path, q.path, 'mention', lineContext(text, at));

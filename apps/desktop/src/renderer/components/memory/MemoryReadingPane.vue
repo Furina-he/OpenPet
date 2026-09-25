@@ -55,11 +55,11 @@ const recallText = computed(() => {
 
 async function load(): Promise<void> {
   const n = guard.next();
-  body.value = '';
   error.value = '';
-  ghostName.value = null;
-  renaming.value = false;
-  if (isGhost.value) return;
+  if (isGhost.value) {
+    body.value = '';
+    return;
+  }
   try {
     const r = await window.openpet.rpc('memory.readPage', { path: props.node.id });
     if (!guard.isCurrent(n)) return; // 旧响应丢弃
@@ -71,7 +71,18 @@ async function load(): Promise<void> {
     });
   }
 }
-watch(() => props.node.id, load, { immediate: true });
+watch(
+  () => props.node.id,
+  () => {
+    body.value = '';
+    ghostName.value = null;
+    renaming.value = false;
+  },
+);
+// 同一页内容变了（编译器整理 / 用户保存 → updated / chars 变）也重读
+watch(() => [props.node.id, props.node.updated, props.node.chars] as const, load, {
+  immediate: true,
+});
 
 function onBodyClick(e: MouseEvent): void {
   const a = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a.ds-wikilink');
@@ -85,6 +96,12 @@ async function create(kind: 'people' | 'topics'): Promise<void> {
   const name = isGhost.value ? props.node.title : ghostName.value;
   if (!name) return;
   const { path, content } = ghostPageSkeleton(name, kind);
+  // 安全化后的文件名已存在 → 直接跳过去，绝不覆盖
+  if (props.graph?.nodes.some((n) => n.id === path)) {
+    ghostName.value = null;
+    emit('navigate', path);
+    return;
+  }
   busy.value = true;
   try {
     await window.openpet.rpc('memory.writePage', { path, content });
