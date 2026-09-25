@@ -532,7 +532,7 @@ export const zhCN = {
       confirmClearTitle: '清空全部记忆？',
       confirmClearDetail:
         '将删除用户档案、人物、话题（所有角色共享）与当前角色的关系/经历页，以及旧版记忆条目，不可恢复。',
-      searchPlaceholder: '搜索标题 / 触发词 / 正文…',
+      searchPlaceholder: '搜索标题 / 别名 / 正文…',
       groupProfile: '用户档案',
       groupPeople: '人物',
       groupTopics: '话题',
@@ -573,6 +573,13 @@ export const zhCN = {
       sourceUser: '用户编辑',
       sourceLlm: '自动整理',
       updated: '更新于 {date}',
+      backlinks: '反向链接（{n}）',
+      noBacklinks: '还没有页面链到这里',
+      ghostHint: '「{name}」这个页面还不存在',
+      createPeople: '建为人物页',
+      createTopic: '建为话题页',
+      brokenPage: '无法解析，可在编辑器里修复',
+      mergedNote: '合并了 {n} 个重复条目',
     },
     characters: {
       switched: '已切换角色',

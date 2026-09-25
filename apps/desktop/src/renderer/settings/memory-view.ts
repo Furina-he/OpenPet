@@ -2,7 +2,14 @@
  * F3 记忆页（⑲ wiki 浏览器）纯逻辑：树构建 / 搜索高亮 / 节锁定 toggle / 脏判定 / 相对时间。
  * SFC 薄渲染；此处可测。节锁定标记与 Main 侧 memory-wiki.ts 同源（MEMORY_LOCKED_MARK）。
  */
-import { MEMORY_LOCKED_MARK, type MemoryTree, type MemoryTreeNode } from '@openpet/protocol';
+import {
+  MEMORY_LOCKED_MARK,
+  memoryFileStem,
+  resolveLink,
+  type MemoryGraph,
+  type MemoryTree,
+  type MemoryTreeNode,
+} from '@openpet/protocol';
 
 export interface TreeGroup {
   /** i18n key 片段：profile | people | topics | relationship | timeline */
@@ -117,4 +124,42 @@ export function kindOfPath(p: string): TreeGroup['kind'] {
 export function isDeletable(p: string): boolean {
   const k = kindOfPath(p);
   return k === 'people' || k === 'topics';
+}
+
+/** ㉒ 反向链接：链到 path 的页（link 边），附首次出现所在行；按标题排序。 */
+export function backlinksOf(
+  graph: MemoryGraph | null,
+  path: string,
+): Array<{ path: string; title: string; context: string; count: number }> {
+  if (!graph) return [];
+  const title = new Map(graph.nodes.map((n) => [n.id, n.title]));
+  return graph.edges
+    .filter((e) => e.kind === 'link' && e.target === path && e.source !== path)
+    .map((e) => ({
+      path: e.source,
+      title: title.get(e.source) ?? e.source,
+      context: e.context ?? '',
+      count: e.count,
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'zh'));
+}
+
+/** ㉒ 未建页面一键建页：骨架 frontmatter（source 由 Main 写 user）；title 用 JSON 串 = 合法 YAML。 */
+export function ghostPageSkeleton(
+  name: string,
+  kind: 'people' | 'topics',
+): { path: string; content: string } {
+  return {
+    path: `user/${kind}/${memoryFileStem(name)}.md`,
+    content: `---\ntitle: ${JSON.stringify(name.trim())}\n---\n\n`,
+  };
+}
+
+/** ㉒ 预览用解析器：图谱里的页（非 ghost）为链接目录，相对当前页解析。 */
+export function linkResolverFor(
+  graph: MemoryGraph | null,
+  from: string,
+): (target: string, markdown: boolean) => string | null {
+  const pages = (graph?.nodes ?? []).filter((n) => n.kind !== 'ghost').map((n) => ({ path: n.id }));
+  return (target, markdown) => resolveLink(target, from, pages, { markdown });
 }

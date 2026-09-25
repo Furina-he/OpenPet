@@ -555,7 +555,7 @@ export const en: LocaleMessages = {
       confirmClearTitle: 'Clear all memory?',
       confirmClearDetail:
         "Deletes the user profile, people and topics (shared by all characters), this character's relationship/timeline pages, and legacy memory rows. Cannot be undone.",
-      searchPlaceholder: 'Search title / keys / body…',
+      searchPlaceholder: 'Search title / aliases / body…',
       groupProfile: 'User profile',
       groupPeople: 'People',
       groupTopics: 'Topics',
@@ -597,6 +597,13 @@ export const en: LocaleMessages = {
       sourceUser: 'edited by you',
       sourceLlm: 'auto-compiled',
       updated: 'updated {date}',
+      backlinks: 'Backlinks ({n})',
+      noBacklinks: 'No page links here yet',
+      ghostHint: '"{name}" does not exist yet',
+      createPeople: 'Create as person',
+      createTopic: 'Create as topic',
+      brokenPage: 'Cannot parse — fix it in the editor',
+      mergedNote: 'Merged {n} duplicate(s)',
     },
     characters: {
       switched: 'Character switched',
