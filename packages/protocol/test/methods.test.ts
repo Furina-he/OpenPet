@@ -174,6 +174,36 @@ describe('character.* + behavior.lookAt (M4)', () => {
     expect(Methods['character.setScale'].params.safeParse({ scale: 2.1 }).success).toBe(false);
   });
 
+  it('㉓ character.setScale：persist 可选（缺省 = 预览），结果带实际生效的 scale', () => {
+    const m = Methods['character.setScale'];
+    expect(m.params.safeParse({ scale: 1.2, persist: true }).success).toBe(true);
+    expect(m.params.safeParse({ scale: 1.2, persist: 'yes' }).success).toBe(false);
+    expect(m.result.safeParse({ ok: true, scale: 1.2 }).success).toBe(true);
+    expect(m.result.safeParse({ ok: true }).success).toBe(false);
+  });
+
+  it('㉓ character.layout / character.layoutChanged 共用 CharacterLayoutSchema', () => {
+    const layout = {
+      scale: 0.5,
+      maxScale: 2,
+      pixelSnap: false,
+      dpr: 1.25,
+      presets: [0.5, 0.75, 1, 1.25, 1.5, 2],
+      window: { width: 300, height: 360 },
+      model: { x: 70, y: 120, width: 160, height: 240 },
+      screen: {
+        workArea: { x: 0, y: 0, width: 1920, height: 1040 },
+        windowBounds: { x: 1500, y: 656, width: 300, height: 360 },
+      },
+    };
+    expect(Methods['character.layout'].params.safeParse({}).success).toBe(true);
+    expect(Methods['character.layout'].result.safeParse(layout).success).toBe(true);
+    expect(Methods['character.layoutChanged'].params.safeParse(layout).success).toBe(true);
+    expect(Methods['character.layoutChanged'].result.safeParse(null).success).toBe(true);
+    const { model: _model, ...noModel } = layout;
+    expect(Methods['character.layout'].result.safeParse(noModel).success).toBe(false);
+  });
+
   it('character.idleTimeout requires positive integer idleMs', () => {
     expect(Methods['character.idleTimeout'].params.safeParse({ idleMs: 90000 }).success).toBe(true);
     expect(Methods['character.idleTimeout'].params.safeParse({ idleMs: 0 }).success).toBe(false);

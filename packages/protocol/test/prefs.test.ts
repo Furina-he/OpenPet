@@ -66,6 +66,45 @@ describe('⑱ 生命感 v2 prefs', () => {
   });
 });
 
+describe('㉓ 角色缩放 v2 + 位置记忆 prefs', () => {
+  it('characterScales 默认空表；值夹 [0.5, 2]', () => {
+    expect(DEFAULT_PREFS['display.characterScales']).toEqual({});
+    const s = PrefsSchema.shape['display.characterScales'];
+    expect(s.safeParse({ default: 1.25, miko: 0.5 }).success).toBe(true);
+    expect(s.safeParse({ default: 2.5 }).success).toBe(false);
+    expect(s.safeParse({ default: 0.4 }).success).toBe(false);
+  });
+
+  it('characterPlacement 默认空记录；rx / ry 限 0–1', () => {
+    expect(DEFAULT_PREFS['display.characterPlacement']).toEqual({
+      lastDisplayId: '',
+      byDisplay: {},
+      byResolution: {},
+    });
+    const p = PrefsSchema.shape['display.characterPlacement'];
+    const ok = {
+      lastDisplayId: '2528732444',
+      byDisplay: { '2528732444': { rx: 0.9, ry: 1 } },
+      byResolution: { '1920x1040': { rx: 0.9, ry: 1 } },
+    };
+    expect(p.safeParse(ok).success).toBe(true);
+    expect(
+      p.safeParse({ ...ok, byDisplay: { '2528732444': { rx: 1.2, ry: 1 } } }).success,
+    ).toBe(false);
+  });
+
+  it('默认值每次解析都是新对象（写入方不会串改 DEFAULT_PREFS）', () => {
+    const a = PrefsSchema.parse({});
+    const b = PrefsSchema.parse({});
+    expect(a['display.characterScales']).not.toBe(b['display.characterScales']);
+    expect(a['display.characterPlacement']).not.toBe(b['display.characterPlacement']);
+  });
+
+  it('display.characterScale 保留（没单独设过大小的角色的初值）', () => {
+    expect(DEFAULT_PREFS['display.characterScale']).toBe(1);
+  });
+});
+
 describe('PrefsSchema onboarding flag (M7b-2)', () => {
   it('defaults onboarding.completed to false', () => {
     expect(DEFAULT_PREFS['onboarding.completed']).toBe(false);

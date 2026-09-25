@@ -7,6 +7,7 @@ import { ImPlatformSchema } from './im-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
 import { RegexRuleSchema, REGEX_PRESETS } from './humanize.js';
 import { DEFAULT_MARKET_SOURCES } from './market.js';
+import { CharacterPlacementSchema, emptyPlacement } from './character-layout.js';
 
 /** 界面主题（walking skeleton 用）；'system' 未指明时降级浅色（ui-design §2.2）。 */
 export const ThemeSchema = z.enum(['system', 'light', 'dark']);
@@ -26,7 +27,12 @@ export const PrefsSchema = z.object({
   'display.clickThrough': z.boolean().default(false),
   'display.lookAt': z.boolean().default(true),
   'display.footGlow': z.boolean().default(false),
+  // ㉓ 起语义 = 初值：还没单独设过大小的角色从它起步（老用户的全局值自动成为每个角色的起点）
   'display.characterScale': z.number().min(0.5).max(2).default(1),
+  // ㉓ 每角色大小（characterId → 0.5–2）；缺省回落 display.characterScale
+  'display.characterScales': z.record(z.number().min(0.5).max(2)).default(() => ({})),
+  // ㉓ 位置记忆（F-DT-02）：脚底锚点相对工作区的比例，按显示器 id / 分辨率双键
+  'display.characterPlacement': CharacterPlacementSchema.default(emptyPlacement),
   'display.bubbleDuration': z.enum(['3', '5', '8', 'always']).default('5'),
   'display.dndManual': z.boolean().default(false),
   'display.focusMode': z.boolean().default(false),
