@@ -17,6 +17,7 @@ export * from './im-config.js';
 export * from './kb-config.js';
 export * from './memory-config.js';
 export * from './memory-wiki.js';
+export * from './memory-links.js';
 export * from './persona-config.js';
 export * from './trace-config.js';
 export * from './prefs.js';

@@ -163,3 +163,75 @@ export const MemoryStatusSchema = z.object({
   legacyFacts: z.number().int().nonnegative(),
 });
 export type MemoryStatus = z.infer<typeof MemoryStatusSchema>;
+
+// ---------- ㉒ 记忆图谱（spec 2026-09-24-memory-graph-design §3 / §4.6 / §6）----------
+
+export const MemoryGraphNodeKindSchema = z.enum([
+  'profile',
+  'people',
+  'topics',
+  'relationship',
+  'timeline',
+  'ghost',
+]);
+export type MemoryGraphNodeKind = z.infer<typeof MemoryGraphNodeKindSchema>;
+
+export const MemoryGraphNodeSchema = z.object({
+  /** 页路径；未建页面 = `ghost:<规范化名>`。 */
+  id: z.string(),
+  /** 可读名：profile =「我」；relationship / timeline =「角色名 · 关系 / 经历」；其余 = title。 */
+  title: z.string(),
+  kind: MemoryGraphNodeKindSchema,
+  characterId: z.string().optional(),
+  tags: z.array(z.string()),
+  aliases: z.array(z.string()),
+  updated: z.string().optional(),
+  chars: z.number().int().nonnegative(),
+  /** 他角色页（scope=all 时出现）。 */
+  readonly: z.boolean(),
+  /** §3.1 被想起的痕迹；只有人物 / 话题有。 */
+  recall: z.object({ count: z.number().int().nonnegative(), lastAt: z.number() }).optional(),
+});
+export type MemoryGraphNode = z.infer<typeof MemoryGraphNodeSchema>;
+
+export const MemoryGraphEdgeSchema = z.object({
+  source: z.string(),
+  target: z.string(),
+  /** link = 显式双链；mention = 未链接提及（默认隐藏）。 */
+  kind: z.enum(['link', 'mention']),
+  count: z.number().int().positive(),
+  /** 首次出现所在行的纯文本（≤80 字，悬停边时显示）。 */
+  context: z.string().optional(),
+});
+export type MemoryGraphEdge = z.infer<typeof MemoryGraphEdgeSchema>;
+
+export const MemoryGraphSchema = z.object({
+  nodes: z.array(MemoryGraphNodeSchema),
+  edges: z.array(MemoryGraphEdgeSchema),
+  stats: z.object({
+    pages: z.number().int().nonnegative(),
+    links: z.number().int().nonnegative(),
+    ghosts: z.number().int().nonnegative(),
+    orphans: z.number().int().nonnegative(),
+  }),
+});
+export type MemoryGraph = z.infer<typeof MemoryGraphSchema>;
+
+/** §4.6「试一句」：与聊天同一个 retrieveForChat 的命中结构 + 注入原文（不记统计）。 */
+export const MemoryProbeResultSchema = z.object({
+  resident: z.array(z.object({ title: z.string(), chars: z.number().int().nonnegative() })),
+  pages: z.array(
+    z.object({
+      path: z.string(),
+      title: z.string(),
+      via: z.enum(['keyword', 'vector']),
+      score: z.number().optional(),
+      chars: z.number().int().nonnegative(),
+    }),
+  ),
+  injectedChars: z.number().int().nonnegative(),
+  budget: z.number().int().nonnegative(),
+  /** 所见即所注入：与组装链同一个 formatMemoryBlock 渲染；无命中 = ''。 */
+  preview: z.string(),
+});
+export type MemoryProbeResult = z.infer<typeof MemoryProbeResultSchema>;

@@ -16,11 +16,14 @@ import { DesktopPluginManifestSchema, PluginRuntimeStatusSchema } from './plugin
 import { KbSchema, KbDocSchema, KbHitSchema } from './kb-config.js';
 import { MemoryFactSchema } from './memory-config.js';
 import {
+  MemoryGraphSchema,
   MemoryPageSchema,
+  MemoryProbeResultSchema,
   MemoryStatusSchema,
   MemoryTreeSchema,
   MEMORY_PAGE_PATH_RE,
 } from './memory-wiki.js';
+import { isMemoryPagePath } from './memory-links.js';
 import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
@@ -984,6 +987,25 @@ export const Methods = {
     }),
   },
   'memory.status': { params: z.object({}), result: MemoryStatusSchema },
+  // --- ㉒ 记忆图谱（spec 2026-09-24-memory-graph-design §6）---
+  'memory.graph': {
+    // current = 共享 user/ + 本角色两页；all = 另含其他角色的关系 / 经历（只读）。
+    params: z.object({ scope: z.enum(['current', 'all']) }),
+    result: MemoryGraphSchema,
+  },
+  'memory.renamePage': {
+    // 仅人物 / 话题：文件名 = memoryFileStem(title)，全库链接跟着改；旧标题并入 aliases。
+    params: z.object({
+      path: z.string().refine(isMemoryPagePath, '非法页面路径'),
+      title: z.string().trim().min(1).max(100),
+    }),
+    result: z.object({ ok: z.literal(true), path: z.string() }),
+  },
+  'memory.probe': {
+    // 「试一句」：与聊天同一检索链，不记被想起统计。
+    params: z.object({ text: z.string().trim().min(1).max(500) }),
+    result: MemoryProbeResultSchema,
+  },
   // --- notification: Main → Hub（⑲ wiki 页变更：编译器落盘 / 用户保存 / 迁移完成）---
   'memory.changed': { params: z.object({ pages: z.array(z.string()) }), result: z.null() },
 
