@@ -276,24 +276,32 @@ export class SqliteStore implements ConversationStore {
     return r.n;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引 ---
-  pageIndexUpsert(path: string, hash: string, vector: number[], updatedAt: number): void {
+  // --- ⑲ 记忆 v2：wiki 页级向量索引（㉒ 带模型指纹）---
+  pageIndexUpsert(
+    path: string,
+    hash: string,
+    vector: number[],
+    updatedAt: number,
+    model: string,
+  ): void {
     const buf = vector.length > 0 ? Buffer.from(new Float32Array(vector).buffer) : null;
     this.db
       .prepare(
-        `INSERT INTO memory_page_index(path, hash, vector, updated_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, vector = excluded.vector, updated_at = excluded.updated_at`,
+        `INSERT INTO memory_page_index(path, hash, vector, updated_at, model) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, vector = excluded.vector,
+           updated_at = excluded.updated_at, model = excluded.model`,
       )
-      .run(path, hash, buf, updatedAt);
+      .run(path, hash, buf, updatedAt, model);
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }> {
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
     const rows = this.db
-      .prepare('SELECT path, hash, vector FROM memory_page_index ORDER BY path ASC')
-      .all() as Array<{ path: string; hash: string; vector: Buffer | null }>;
+      .prepare('SELECT path, hash, vector, model FROM memory_page_index ORDER BY path ASC')
+      .all() as Array<{ path: string; hash: string; vector: Buffer | null; model: string }>;
     return rows.map((r) => ({
       path: r.path,
       hash: r.hash,
+      model: r.model,
       vector: r.vector
         ? Array.from(
             new Float32Array(r.vector.buffer, r.vector.byteOffset, r.vector.byteLength / 4),
@@ -304,6 +312,49 @@ export class SqliteStore implements ConversationStore {
 
   pageIndexDelete(path: string): void {
     this.db.prepare('DELETE FROM memory_page_index WHERE path = ?').run(path);
+  }
+
+  // --- ㉒ 被想起的痕迹 ---
+  pageStatsBump(paths: readonly string[], now: number): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO memory_page_stats(path, recall_count, last_recalled_at) VALUES (?, 1, ?)
+       ON CONFLICT(path) DO UPDATE SET recall_count = recall_count + 1,
+         last_recalled_at = excluded.last_recalled_at`,
+    );
+    this.db.transaction((ps: readonly string[]) => {
+      for (const p of ps) stmt.run(p, now);
+    })(paths);
+  }
+
+  pageStatsList(): Array<{ path: string; count: number; lastAt: number | null }> {
+    return this.db
+      .prepare(
+        'SELECT path, recall_count AS count, last_recalled_at AS lastAt FROM memory_page_stats ORDER BY path ASC',
+      )
+      .all() as Array<{ path: string; count: number; lastAt: number | null }>;
+  }
+
+  pageStatsRename(from: string, to: string): void {
+    if (from === to) return;
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO memory_page_stats(path, recall_count, last_recalled_at)
+           SELECT ?, recall_count, last_recalled_at FROM memory_page_stats WHERE path = ?
+           ON CONFLICT(path) DO UPDATE SET recall_count = recall_count + excluded.recall_count,
+             last_recalled_at = MAX(COALESCE(last_recalled_at, 0), COALESCE(excluded.last_recalled_at, 0))`,
+        )
+        .run(to, from);
+      this.db.prepare('DELETE FROM memory_page_stats WHERE path = ?').run(from);
+    })();
+  }
+
+  pageStatsDelete(path: string): void {
+    this.db.prepare('DELETE FROM memory_page_stats WHERE path = ?').run(path);
+  }
+
+  pageStatsClear(): void {
+    this.db.prepare('DELETE FROM memory_page_stats').run();
   }
 
   storageUsage(): StorageUsage {

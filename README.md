@@ -52,6 +52,7 @@ OpenPet 是一个面向桌面的 AI 角色伙伴项目。它融合了桌宠、AI
 - **流式行为驱动**：LLM 输出中的 `<emo />`、`<act />`、`<wait />` 和 intent header 会被增量解析，让文字回复和角色表现同步发生。
 - **多模型 Provider**：支持多 Provider、多模型模板、降级链和动态配置表单。
 - **Persona 与角色包**：可编辑人设、角色绑定、`.dspack` 导入、角色热切换和包内行为 cue 覆盖。
+- **长期记忆 wiki**：可读可编辑的 markdown 记忆库（用户档案跨角色共享、关系与经历按角色隔离），关系图谱浏览、「试一句」看角色会想起什么，文件夹本身就是 Obsidian 仓库，可直接用 Obsidian 打开。
 - **知识库与工具**：内置 SQLite 知识库、RAG 检索、MCP 工具授权、安全门和工具结果回灌。
 - **语音交互**：支持自动朗读、语音输入和 RMS 嘴型驱动。
 - **IM 通道**：QQ（OneBot v11 / NapCat）与 Telegram 桥接——同一个角色灵魂，桌面与 IM 多个入口。
@@ -135,7 +136,7 @@ flowchart TB
       PROV["Provider 路由<br/>多源多模型 · 降级链 · 预算"]:::main
       MCP["MCP Manager<br/>工具发现 · 授权门"]:::main
       KB["知识库<br/>分块 · 向量 · rerank"]:::main
-      MEM["记忆<br/>事实提炼 · 会话摘要"]:::main
+      MEM["记忆 wiki<br/>编译器 · 双链图谱 · 会话摘要"]:::main
       VOICE["语音<br/>TTS / ASR · 音色库"]:::main
       CHAR["角色 / 形象 / 市场<br/>.dspack .dssoul .dsbody"]:::main
       INT["交互引擎<br/>cue 注册表 · 心情 · 主动策略"]:::main
@@ -258,7 +259,8 @@ flowchart TB
     S3["拟人化对话<br/>风格锚 · 自然节奏 · 表情兜底"]:::done
     S4["记忆 v1<br/>事实生命周期 · 会话摘要 · 世界设定"]:::done
     S5["记忆 v2 · 角色 wiki<br/>可读可编辑档案 · 三路注入"]:::active
-    S1 --> S2 --> S3 --> S4 --> S5
+    S6["记忆图谱<br/>双链 · Obsidian 兼容"]:::done
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
   end
 
   subgraph ECO["角色生态线 · 灵魂 / 肉体 / 声音分层流通"]
@@ -298,7 +300,7 @@ flowchart TB
   MVP --> L1
   MVP --> R1
   B3 -.打磨完成后.-> R3
-  S5 -.打磨完成后.-> R3
+  S6 -.打磨完成后.-> R3
 ```
 
 <div align="center"><sub>🟩 已完成 · 🟨 进行中 · ⬜ 候选 · 🟪 发布门</sub></div>

@@ -12,6 +12,24 @@ export interface MemoryInjection {
   pages: Array<{ title: string; body: string }>;
 }
 
+/**
+ * ㉒ 「记忆」块渲染（组装链与「试一句」预览共用 = 所见即所注入）；无内容 → ''。
+ * expand = 宏展开（组装链传 {{char}}/{{user}} 上下文，预览传恒等）。
+ */
+export function formatMemoryBlock(
+  memory: MemoryInjection | undefined,
+  expand: (t: string) => string = (t) => t,
+): string {
+  const parts = [
+    ...(memory?.resident ?? []),
+    ...(memory?.pages ?? []).map((p) => `### ${p.title}\n${p.body}`),
+  ];
+  if (parts.length === 0) return '';
+  return `## 记忆（关于用户与我们的过往，供参考，自然使用，勿逐条复述；与当前对话冲突时以当前为准）\n${parts
+    .map((m) => expand(m))
+    .join('\n\n')}`;
+}
+
 /** Working Memory 窗口（tech-design §8：最近 N=20 轮原始消息）。 */
 export const WORKING_TURNS = 20;
 
@@ -88,16 +106,8 @@ export function assembleContext(input: AssembleInput): ChatRequest {
           .join('\n\n')}`
       : '';
   // ⑲ 「记忆」块（memoryStage 三路产物）：常驻 + `### 标题` 命中页；宏同口径展开；只进 system。
-  const memParts = [
-    ...(input.memory?.resident ?? []),
-    ...(input.memory?.pages ?? []).map((p) => `### ${p.title}\n${p.body}`),
-  ];
-  const memoryBlock =
-    memParts.length > 0
-      ? `\n\n## 记忆（关于用户与我们的过往，供参考，自然使用，勿逐条复述）\n${memParts
-          .map((m) => ex(m))
-          .join('\n\n')}`
-      : '';
+  const memBody = formatMemoryBlock(input.memory, ex);
+  const memoryBlock = memBody ? `\n\n${memBody}` : '';
   // ⑫ 世界设定（Lorebook 命中）；宏先展开再拼块。
   const loreBlock =
     input.loreHits && input.loreHits.length > 0

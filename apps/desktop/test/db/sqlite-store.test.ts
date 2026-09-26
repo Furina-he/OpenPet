@@ -263,6 +263,66 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
   });
 });
 
+describe.skipIf(!available)('SqliteStore ㉒ 页向量指纹 + 被想起统计', () => {
+  it('v6 旧库（memory_page_index 无 model 列）打开即 ALTER；旧行 model = ""；新写带指纹', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v7-'));
+    const path = join(dir, 'sessions.db');
+    const Database = loadBetterSqlite();
+    const raw = new Database(path);
+    raw.exec(`CREATE TABLE memory_page_index (
+      path TEXT PRIMARY KEY, hash TEXT NOT NULL, vector BLOB, updated_at INTEGER NOT NULL
+    );`);
+    raw
+      .prepare('INSERT INTO memory_page_index(path, hash, vector, updated_at) VALUES (?, ?, NULL, 1)')
+      .run('user/profile.md', 'h0');
+    raw.close();
+    const s = new SqliteStore(path);
+    try {
+      expect(s.pageIndexList()).toEqual([
+        { path: 'user/profile.md', hash: 'h0', vector: [], model: '' },
+      ]);
+      s.pageIndexUpsert('user/people/王小明.md', 'h1', [0.5, 0.25], 2, 'src|bge');
+      expect(s.pageIndexList().find((r) => r.hash === 'h1')).toEqual({
+        path: 'user/people/王小明.md',
+        hash: 'h1',
+        vector: [0.5, 0.25],
+        model: 'src|bge',
+      });
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('pageStats：bump 累加 / rename 合并 / delete / clear，跨重开持久化', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-stats-'));
+    const path = join(dir, 'sessions.db');
+    const s1 = new SqliteStore(path);
+    s1.pageStatsBump(['user/people/a.md', 'user/topics/b.md'], 10);
+    s1.pageStatsBump(['user/people/a.md'], 20);
+    s1.close();
+    const s = new SqliteStore(path);
+    try {
+      expect(s.pageStatsList()).toEqual([
+        { path: 'user/people/a.md', count: 2, lastAt: 20 },
+        { path: 'user/topics/b.md', count: 1, lastAt: 10 },
+      ]);
+      s.pageStatsRename('user/topics/b.md', 'user/people/a.md');
+      expect(s.pageStatsList()).toEqual([{ path: 'user/people/a.md', count: 3, lastAt: 20 }]);
+      s.pageStatsRename('user/people/a.md', 'user/people/c.md');
+      expect(s.pageStatsList()).toEqual([{ path: 'user/people/c.md', count: 3, lastAt: 20 }]);
+      s.pageStatsBump(['user/people/d.md'], 30);
+      s.pageStatsDelete('user/people/c.md');
+      expect(s.pageStatsList().map((r) => r.path)).toEqual(['user/people/d.md']);
+      s.pageStatsClear();
+      expect(s.pageStatsList()).toEqual([]);
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(!available)('SqliteStore 会话管理查询（与 MemoryStore 语义对齐）', () => {
   it('sessionList/SetTitle/SetPinned/Delete/Messages 全链路', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-session-'));

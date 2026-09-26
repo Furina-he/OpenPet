@@ -72,16 +72,16 @@ describe('⑲ .dsbak 纳入 memory/ 目录', () => {
     const wiki = new MemoryWiki(memoryRoot, { now: () => Date.UTC(2026, 8, 22, 12) });
     wiki.ensureLayout('default');
     wiki.applyOps(
-      [{ op: 'create_page', kind: 'people', slug: 'a', title: 'A', keys: ['a'], content: '甲' }],
+      [{ op: 'create_page', kind: 'people', title: 'A', aliases: ['a'], tags: [], content: '甲' }],
       'default',
     );
     writeFileSync(path.join(memoryRoot, 'user', 'junk.md.tmp'), 'x');
     const out = path.join(dir, 'out.dsbak');
     await exportDsbak(new MemoryStore(), out, { memoryRoot });
     const names = new AdmZip(out).getEntries().map((e) => e.entryName);
-    expect(names).toContain('memory/index.md');
+    expect(names).toContain('memory/.openpet/index.md');
     expect(names).toContain('memory/user/profile.md');
-    expect(names).toContain('memory/user/people/a.md');
+    expect(names).toContain('memory/user/people/A.md');
     expect(names).toContain('memory/characters/default/timeline.md');
     expect(names.some((n) => n.endsWith('.tmp'))).toBe(false);
 
@@ -95,7 +95,7 @@ describe('⑲ .dsbak 纳入 memory/ 目录', () => {
     const out2 = path.join(dir, 'out2.dsbak');
     zip.writeZip(out2);
     stageDsbakImport(out2, sqlitePath, root2);
-    expect(existsSync(path.join(`${root2}.import`, 'user', 'people', 'a.md'))).toBe(true);
+    expect(existsSync(path.join(`${root2}.import`, 'user', 'people', 'A.md'))).toBe(true);
     writeFileSync(path.join(dir2, 'old.txt'), 'x');
     const wiki2 = new MemoryWiki(root2);
     wiki2.ensureLayout('other'); // 现有目录 → 应转 .bak
@@ -108,6 +108,41 @@ describe('⑲ .dsbak 纳入 memory/ 目录', () => {
       );
     }
     expect(existsSync(path.join(root2, 'characters', 'other'))).toBe(false);
+  });
+
+  it('㉒ 中文文件名往返：导出 user/people/王小明.md → 导入 → 同名同内容', async () => {
+    const dir = tmp();
+    const memoryRoot = path.join(dir, 'memory');
+    const wiki = new MemoryWiki(memoryRoot, { now: () => Date.UTC(2026, 8, 22, 12) });
+    wiki.ensureLayout('default');
+    wiki.applyOps(
+      [
+        {
+          op: 'create_page',
+          kind: 'people',
+          title: '王小明',
+          aliases: ['小王'],
+          tags: ['同事'],
+          content: '大学室友',
+        },
+      ],
+      'default',
+    );
+    const out = path.join(dir, 'cn.dsbak');
+    await exportDsbak(new MemoryStore(), out, { memoryRoot });
+    const zip = new AdmZip(out);
+    expect(zip.getEntries().map((e) => e.entryName)).toContain('memory/user/people/王小明.md');
+    zip.addFile('sessions.db', Buffer.from('fake'));
+    const out2 = path.join(dir, 'cn2.dsbak');
+    zip.writeZip(out2);
+    const dir2 = tmp();
+    const root2 = path.join(dir2, 'memory');
+    const sqlitePath = path.join(dir2, 'sessions.db');
+    stageDsbakImport(out2, sqlitePath, root2);
+    expect(applyPendingImport(sqlitePath, () => 1, root2)).toBe(true);
+    expect(readFileSync(path.join(root2, 'user', 'people', '王小明.md'), 'utf8')).toBe(
+      readFileSync(path.join(memoryRoot, 'user', 'people', '王小明.md'), 'utf8'),
+    );
   });
 
   it('旧备份无 memory/ → 不动现有 wiki（清掉残留 .import）', () => {

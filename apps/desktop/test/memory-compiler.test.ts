@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Prefs } from '@openpet/protocol';
 import { MemoryStore } from '../electron/main/db/index.js';
-import { createMemoryCompiler } from '../electron/main/memory-compiler.js';
+import { createMemoryCompiler, systemPrompt } from '../electron/main/memory-compiler.js';
 import { MemoryWiki } from '../electron/main/memory-wiki.js';
 
 const cleanups: string[] = [];
@@ -80,10 +80,10 @@ describe('⑲ memory-compiler v3', () => {
     await compiler.onTurnEnd('s1');
     expect(compiler.status()).toBeNull(); // 第 1 轮不触发
     await compiler.onTurnEnd('s1');
-    expect(read('user/people/nian-gao.md')).toContain('用户的猫');
+    expect(read('user/people/年糕.md')).toContain('用户的猫');
     expect(read('user/profile.md')).toContain('养猫的人');
-    expect(read('index.md')).toContain('user/people/nian-gao.md');
-    expect(reindexed.sort()).toEqual(['user/people/nian-gao.md', 'user/profile.md']);
+    expect(read('.openpet/index.md')).toContain('[[年糕]]');
+    expect(reindexed.sort()).toEqual(['user/people/年糕.md', 'user/profile.md']);
     expect(changed).toHaveLength(2);
     expect(compiler.status()).toMatchObject({ ok: true, ops: 2 });
   });
@@ -156,9 +156,9 @@ describe('⑲ memory-compiler v3', () => {
           {
             op: 'create_page',
             kind: 'topics',
-            slug: `t${i}`,
             title: `话题${i}`,
-            keys: [`猫${i}`],
+            aliases: [`猫${i}`],
+            tags: [],
             content: `内容${i}`,
           },
         ],
@@ -202,5 +202,82 @@ describe('⑲ memory-compiler v3', () => {
     expect(body.messages[0]!.content).toContain('初始化整理');
     expect(body.messages[1]!.content).toContain('1. 用户在深圳做前端');
     expect(await compiler.compileFacts('default', [])).toMatchObject({ ok: true, ops: 0 });
+  });
+});
+
+describe('㉒ memory-compiler v3.1', () => {
+  it('systemPrompt：链接 / 时间 / 口吻规则 + set_props 格式；角色名与截断后的人设；无人设只给名字', () => {
+    const p = systemPrompt(
+      { id: 'furina', name: '芙宁娜', persona: '水神。' + '戏'.repeat(700), userName: '阿明' },
+      'chat',
+    );
+    expect(p).toContain('[[页面名]]');
+    expect(p).toContain('[[页面名|别名]]');
+    expect(p).toContain('相对时间');
+    expect(p).toContain('换算成具体日期');
+    expect(p).toContain('"op":"set_props"');
+    expect(p).toContain('"title":"王小明","aliases":["小王"],"tags":["同事"]');
+    expect(p).not.toContain('slug');
+    expect(p).toContain('你是 芙宁娜，下面是你的人设摘要');
+    expect(p).toContain('水神。');
+    expect(p).not.toContain('戏'.repeat(600)); // 人设截 600 字（含前缀「水神。」）
+    expect(p).toContain('戏'.repeat(590));
+    expect(p).toContain('经历条目（append_timeline / merge_timeline）和关系页「亲密度叙事」节用你（芙宁娜）本人的第一人称');
+    expect(p).toContain('user/ 下的档案/人物/话题页所有角色共用，保持中性客观');
+    expect(p).toContain('> 「阿明」 > 「ta」');
+    expect(p).toContain('characters/furina/timeline.md');
+    const bare = systemPrompt({ id: 'furina', name: '芙宁娜' }, 'migrate');
+    expect(bare).toContain('你是 芙宁娜。');
+    expect(bare).not.toContain('人设摘要');
+    expect(bare).toContain('初始化整理');
+    expect(bare).toContain('关系页「称呼」节里的叫法 > 「ta」');
+  });
+
+  it('prompt 用 deps.character 的名字与人设；常驻块标题「最近经历（我记下的）」', async () => {
+    const calls = { n: 0, bodies: [] as string[] };
+    const { compiler, wiki } = make(fakeCompletion('[]', calls));
+    await compiler.compileNow('s1');
+    const sys = (JSON.parse(calls.bodies[0]!) as { messages: Array<{ content: string }> })
+      .messages[0]!.content;
+    expect(sys).toContain('你是 default。'); // 测试桩只给 id
+    wiki.applyOps([{ op: 'append_timeline', date: '2026-09-20', text: '我陪 ta 聊猫' }], 'default');
+    expect(wiki.residentBlocks('default').join('\n')).toContain('### 最近经历（我记下的）');
+  });
+
+  it('LLM 输出含 [[别名]] / 悬空链接 / 本批新建页链接 → 落盘经规范化；撞名 create_page 并入且 lastCompile.merged 有记录', async () => {
+    const { wiki, read } = make(fakeCompletion('[]'));
+    wiki.ensureLayout('default');
+    wiki.applyOps(
+      [{ op: 'create_page', kind: 'people', title: '王小明', aliases: ['小王'], tags: [], content: '室友' }],
+      'default',
+    );
+    const out = JSON.stringify([
+      {
+        op: 'upsert_section',
+        page: 'user/profile.md',
+        section: '近况',
+        content: '和[[小王]]去[[火星]]，认识了[[李雷]]',
+      },
+      { op: 'create_page', kind: 'people', title: '李雷', aliases: [], content: '新朋友' },
+      { op: 'create_page', kind: 'people', slug: 'xiao-wang', title: '小王', keys: ['王工'], content: '升职了' },
+    ]);
+    const c2 = createMemoryCompiler({
+      store: new MemoryStore(),
+      wiki,
+      embed,
+      fetchImpl: fakeCompletion(out),
+      getPrefs: () =>
+        ({ 'privacy.longTermMemory': true, 'chat.activeSessions': {} }) as unknown as Prefs,
+      resolveTarget: () => ({ apiBase: 'https://x/v1', model: 'gpt', key: 'k', adapter: 'openai' }),
+      character: () => ({ id: 'default' }),
+    });
+    const r = await c2.compileFacts('default', ['x']);
+    expect(r).toMatchObject({ ok: true, ops: 3 });
+    expect(read('user/profile.md')).toContain('和[[王小明|小王]]去火星，认识了[[李雷]]');
+    expect(existsSync(path.join(wiki.root, 'user/people/小王.md'))).toBe(false);
+    const wm = wiki.readPage('user/people/王小明.md')!;
+    expect(wm.frontmatter.aliases).toEqual(['小王', '王工']);
+    expect(wm.body).toContain('升职了');
+    expect(c2.status()).toMatchObject({ ok: true, merged: [['小王', 'user/people/王小明.md']] });
   });
 });

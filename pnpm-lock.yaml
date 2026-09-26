@@ -68,6 +68,9 @@ importers:
       unpdf:
         specifier: ^1.6.2
         version: 1.6.2
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^3.23.0
         version: 3.25.76
@@ -102,18 +105,24 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7
         version: 7.6.13
+      '@types/d3-force':
+        specifier: ^3.0.10
+        version: 3.0.10
       '@types/three':
         specifier: ^0.180.0
         version: 0.180.0
       '@vitejs/plugin-vue':
         specifier: ^5.2.1
-        version: 5.2.4(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7))(vue@3.5.33(typescript@5.6.3))
+        version: 5.2.4(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1))(vue@3.5.33(typescript@5.6.3))
       apexcharts:
         specifier: ^5.16.0
         version: 5.16.0
       autoprefixer:
         specifier: ^10.4
         version: 10.5.0(postcss@8.5.13)
+      d3-force:
+        specifier: ^3.0.0
+        version: 3.0.0
       electron:
         specifier: ^30.0.0
         version: 30.5.1
@@ -122,7 +131,7 @@ importers:
         version: 26.15.3(electron-builder-squirrel-windows@24.13.3)
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1))
       lucide-vue-next:
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.33(typescript@5.6.3))
@@ -137,7 +146,7 @@ importers:
         version: 8.5.13
       tailwindcss:
         specifier: ^3.4
-        version: 3.4.19
+        version: 3.4.19(yaml@2.9.1)
       three:
         specifier: ^0.180.0
         version: 0.180.0
@@ -146,7 +155,7 @@ importers:
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)
+        version: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1)
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
@@ -202,13 +211,13 @@ importers:
         version: 30.5.1
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1))
       typescript:
         specifier: ~5.6.2
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
 
   apps/spikes/S2-worker-rpc:
     dependencies:
@@ -227,13 +236,13 @@ importers:
         version: 30.5.1
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1))
       typescript:
         specifier: ~5.6.2
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
@@ -261,7 +270,7 @@ importers:
         version: 30.5.1
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1))
       stats.js:
         specifier: ^0.17.0
         version: 0.17.0
@@ -270,7 +279,7 @@ importers:
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
 
   apps/spikes/S4-streaming-chat:
     dependencies:
@@ -289,13 +298,13 @@ importers:
         version: 30.5.1
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1))
       typescript:
         specifier: ~5.6.2
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
@@ -310,13 +319,13 @@ importers:
         version: 30.5.1
       electron-vite:
         specifier: ^2.3.0
-        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0))
+        version: 2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1))
       typescript:
         specifier: ~5.6.2
         version: 5.6.3
       vite:
         specifier: ^6.0.3
-        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+        version: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
       vitest:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.39)
@@ -1479,6 +1488,9 @@ packages:
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
 
+  '@types/d3-force@3.0.10':
+    resolution: {integrity: sha512-ZYeSaCF3p73RdOKcjj+swRlZfnYpK1EbaDiYICEEp5Q6sUiqFaFQ9qgoshp5CzIyyb/yD09kD9o2zEltCexlgw==}
+
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
 
@@ -2108,6 +2120,22 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  d3-dispatch@3.0.1:
+    resolution: {integrity: sha512-rzUyPU/S7rwUflMyLc1ETDeBj0NRuHKKAcvukozwhshr6g6c5d8zh4c2gQjY2bZ0dXeGLWc1PF174P2tVvKhfg==}
+    engines: {node: '>=12'}
+
+  d3-force@3.0.0:
+    resolution: {integrity: sha512-zxV/SsA+U4yte8051P4ECydjD/S+qeYtnaIyAs9tgHCqfguma/aAQDjo85A9Z6EKhBirHRJHXIgJUlffT4wdLg==}
+    engines: {node: '>=12'}
+
+  d3-quadtree@3.0.1:
+    resolution: {integrity: sha512-04xDrxQTDTCFwP5H6hRhsRcb9xxv2RzkcsygFzmkSIOJy3PeRJP7sNk3VRIbKXcog561P9oU0/rVH6vDROAgUw==}
+    engines: {node: '>=12'}
+
+  d3-timer@3.0.1:
+    resolution: {integrity: sha512-ndfJ/JxxMd3nw31uyKoY2naivF+r29V+Lc0svZxe1JvvIRmi8hUsrMvdOwgS1o6uBHmiz91geQ0ylPP0aj1VUA==}
+    engines: {node: '>=12'}
 
   de-indent@1.0.2:
     resolution: {integrity: sha512-e/1zu3xH5MQryN2zdVaF0OrdNLUbvWxzMbi+iNA6Bky7l1RoP8a2fIbRocyHclXt/arDrrR6lL3TqFD9pMQTsg==}
@@ -4122,6 +4150,11 @@ packages:
     resolution: {integrity: sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==}
     engines: {node: '>=18'}
 
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   yargs-parser@21.1.1:
     resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
     engines: {node: '>=12'}
@@ -5153,6 +5186,8 @@ snapshots:
       '@types/node': 20.19.39
       '@types/responselike': 1.0.3
 
+  '@types/d3-force@3.0.10': {}
+
   '@types/debug@4.1.13':
     dependencies:
       '@types/ms': 2.1.0
@@ -5285,9 +5320,9 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vitejs/plugin-vue@5.2.4(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7))(vue@3.5.33(typescript@5.6.3))':
+  '@vitejs/plugin-vue@5.2.4(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1))(vue@3.5.33(typescript@5.6.3))':
     dependencies:
-      vite: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)
+      vite: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1)
       vue: 3.5.33(typescript@5.6.3)
 
   '@vitest/coverage-v8@1.6.1(vitest@1.6.1(@types/node@20.19.39))':
@@ -5964,6 +5999,18 @@ snapshots:
 
   csstype@3.2.3: {}
 
+  d3-dispatch@3.0.1: {}
+
+  d3-force@3.0.0:
+    dependencies:
+      d3-dispatch: 3.0.1
+      d3-quadtree: 3.0.1
+      d3-timer: 3.0.1
+
+  d3-quadtree@3.0.1: {}
+
+  d3-timer@3.0.1: {}
+
   de-indent@1.0.2: {}
 
   debug@4.4.3:
@@ -6138,7 +6185,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-vite@2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)):
+  electron-vite@2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1)):
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-arrow-functions': 7.29.7(@babel/core@7.29.7)
@@ -6146,11 +6193,11 @@ snapshots:
       esbuild: 0.21.5
       magic-string: 0.30.21
       picocolors: 1.1.1
-      vite: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)
+      vite: 6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
-  electron-vite@2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)):
+  electron-vite@2.3.0(vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)):
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-arrow-functions': 7.29.7(@babel/core@7.29.7)
@@ -6158,7 +6205,7 @@ snapshots:
       esbuild: 0.21.5
       magic-string: 0.30.21
       picocolors: 1.1.1
-      vite: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)
+      vite: 6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7353,12 +7400,13 @@ snapshots:
       camelcase-css: 2.0.1
       postcss: 8.5.13
 
-  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.13):
+  postcss-load-config@6.0.1(jiti@1.21.7)(postcss@8.5.13)(yaml@2.9.1):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 1.21.7
       postcss: 8.5.13
+      yaml: 2.9.1
 
   postcss-nested@6.2.0(postcss@8.5.13):
     dependencies:
@@ -7791,7 +7839,7 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  tailwindcss@3.4.19:
+  tailwindcss@3.4.19(yaml@2.9.1):
     dependencies:
       '@alloc/quick-lru': 5.2.0
       arg: 5.0.2
@@ -7810,7 +7858,7 @@ snapshots:
       postcss: 8.5.13
       postcss-import: 15.1.0(postcss@8.5.13)
       postcss-js: 4.1.0(postcss@8.5.13)
-      postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.13)
+      postcss-load-config: 6.0.1(jiti@1.21.7)(postcss@8.5.13)(yaml@2.9.1)
       postcss-nested: 6.2.0(postcss@8.5.13)
       postcss-selector-parser: 6.1.4
       resolve: 1.22.12
@@ -8023,7 +8071,7 @@ snapshots:
       '@types/node': 20.19.39
       fsevents: 2.3.3
 
-  vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7):
+  vite@6.4.2(@types/node@20.19.39)(jiti@1.21.7)(yaml@2.9.1):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
@@ -8035,8 +8083,9 @@ snapshots:
       '@types/node': 20.19.39
       fsevents: 2.3.3
       jiti: 1.21.7
+      yaml: 2.9.1
 
-  vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0):
+  vite@6.4.2(@types/node@20.19.39)(jiti@2.7.0)(yaml@2.9.1):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
@@ -8048,6 +8097,7 @@ snapshots:
       '@types/node': 20.19.39
       fsevents: 2.3.3
       jiti: 2.7.0
+      yaml: 2.9.1
 
   vitest@1.6.1(@types/node@20.19.39):
     dependencies:
@@ -8164,6 +8214,8 @@ snapshots:
   yallist@4.0.0: {}
 
   yallist@5.0.0: {}
+
+  yaml@2.9.1: {}
 
   yargs-parser@21.1.1: {}
 

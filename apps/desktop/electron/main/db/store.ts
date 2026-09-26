@@ -103,9 +103,25 @@ export interface ConversationStore {
   memoryCount(characterId: string): number;
 
   // --- ⑲ 记忆 v2：wiki 页级向量索引（memory_page_index；path 全局唯一，user/ 页跨角色共享）---
-  pageIndexUpsert(path: string, hash: string, vector: number[], updatedAt: number): void;
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[] }>;
+  /** model = 嵌入模型指纹（㉒ `sourceId|model`；未配置 = ''）。 */
+  pageIndexUpsert(
+    path: string,
+    hash: string,
+    vector: number[],
+    updatedAt: number,
+    model: string,
+  ): void;
+  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }>;
   pageIndexDelete(path: string): void;
+
+  // --- ㉒ 被想起的痕迹（memory_page_stats；派生数据，markdown 仍是真源）---
+  /** 单事务：各页 recall_count+1、last_recalled_at = now。 */
+  pageStatsBump(paths: readonly string[], now: number): void;
+  pageStatsList(): Array<{ path: string; count: number; lastAt: number | null }>;
+  /** 重命名迁移（目标已有行则合并计数、取较新时间）。 */
+  pageStatsRename(from: string, to: string): void;
+  pageStatsDelete(path: string): void;
+  pageStatsClear(): void;
 
   // --- ⑮ 记忆域：会话滚动摘要（session_meta.summary/summary_upto）与区间读取 ---
   sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null };

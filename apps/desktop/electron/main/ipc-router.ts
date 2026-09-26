@@ -39,8 +39,9 @@ import { createKbService } from './kb-service.js';
 import { parseKbFile } from './kb-file.js';
 import { rerankDocs } from './rerank-client.js';
 import { createMemoryService } from './memory-service.js';
+import { upgradeMemoryFormat } from './memory-format.js';
 import { MemoryWiki } from './memory-wiki.js';
-import { createMemoryCompiler } from './memory-compiler.js';
+import { createMemoryCompiler, PERSONA_EXCERPT_CHARS } from './memory-compiler.js';
 import { createMemoryMigrator } from './memory-migrate.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
@@ -407,15 +408,33 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       ),
     );
   };
+  // ㉒ §5.4 页向量模型指纹：当前默认嵌入目标 `sourceId|model`（未配置 = ''）。
+  const memoryEmbedKey = (): string => {
+    const p = prefsStore.getAll();
+    const t = resolveEmbeddingTarget(
+      p['model.providerSources'],
+      p['model.models'],
+      p['model.defaultEmbeddingModelId'],
+    );
+    return t ? `${t.sourceId}|${t.model}` : '';
+  };
   // ⑲ 记忆 wiki：markdown 真源（userData/memory）；service 三路注入 + F3 RPC。
   const memoryWiki = new MemoryWiki(memoryRoot);
+  // ㉒ §5.1 v1 → v2 自动升级（同步、零 LLM；先整目录备份；失败不写标记、下次启动重试）。
+  const memoryUpgrade = upgradeMemoryFormat(memoryRoot);
   const memoryService = createMemoryService({
     store,
     wiki: memoryWiki,
     embed: memoryEmbed,
     getPrefs: () => prefsStore.getAll(),
     character: () => ({ id: characters.current().characterId }),
+    characterName: (cid) =>
+      characters.list().find((c) => c.characterId === cid)?.manifest.name ?? cid,
+    onChanged: (pages) => broadcast('memory.changed', { pages }),
+    embedModelKey: memoryEmbedKey,
   });
+  // 升级改了文件名与正文 → 页向量全量重算（顺带写上模型指纹）。
+  if (memoryUpgrade.upgraded) void memoryService.reindexVectors();
   // 默认 chat 目标 + source key（memory-extractor 与 ⑩.7 testGreeting 共用的单发通道形态）。
   const chatTargetWithKey = () => {
     const p = prefsStore.getAll();
@@ -451,7 +470,20 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
     resolveTarget: utilityTargetWithKey,
-    character: () => ({ id: characters.current().characterId }),
+    // ㉒ 口吻输入：角色名 + 生效人设前 600 字 + 用户称呼（经历用角色第一人称）
+    character: () => {
+      const cur = characters.current();
+      return {
+        id: cur.characterId,
+        name: cur.manifest.name,
+        persona: (
+          personaService.resolveFor(cur.characterId, cur.manifest.persona ?? null)?.systemPrompt ??
+          ''
+        ).slice(0, PERSONA_EXCERPT_CHARS),
+        userName: prefsStore.getAll()['chat.userName'] ?? '',
+      };
+    },
+    embedModelKey: memoryEmbedKey,
     reindex: (paths) => memoryService.reindexVectors(paths),
     onChanged: (pages) => broadcast('memory.changed', { pages }),
   });
@@ -851,6 +883,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
               ok: last.ok,
               ops: last.ops,
               ...(last.error ? { error: last.error } : {}),
+              ...(last.merged ? { merged: last.merged } : {}),
             }
           : null,
         migration: memoryMigrator.status(cid),

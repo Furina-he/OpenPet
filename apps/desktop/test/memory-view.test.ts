@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { MemoryTree } from '@openpet/protocol';
+import type { MemoryGraph, MemoryTree } from '@openpet/protocol';
 import {
+  backlinksOf,
   buildGroups,
   filterGroups,
+  ghostPageSkeleton,
   highlight,
   isDeletable,
   isDirty,
+  linkResolverFor,
   listSections,
   stripFrontmatter,
   toggleSectionLock,
@@ -17,6 +20,8 @@ const node = (path: string, title: string, summary = '') => ({
   summary,
   updated: '2026-09-22',
   source: 'llm' as const,
+  aliases: [],
+  tags: [],
 });
 const tree: MemoryTree = {
   profile: node('user/profile.md', '用户档案'),
@@ -81,5 +86,46 @@ describe('memory-view（F3 wiki 浏览器纯逻辑）', () => {
     expect(isDeletable('user/people/a.md')).toBe(true);
     expect(isDeletable('user/profile.md')).toBe(false);
     expect(isDeletable('characters/default/timeline.md')).toBe(false);
+  });
+});
+
+describe('㉒ memory-view：反向链接 / 未建页面建页 / 预览解析器', () => {
+  const graph: MemoryGraph = {
+    nodes: [
+      { id: 'user/profile.md', title: '我', kind: 'profile', tags: [], aliases: [], chars: 1, readonly: false },
+      { id: 'user/people/王小明.md', title: '王小明', kind: 'people', tags: [], aliases: [], chars: 1, readonly: false },
+      { id: 'user/topics/爬山.md', title: '爬山', kind: 'topics', tags: [], aliases: [], chars: 1, readonly: false },
+      { id: 'ghost:珠峰', title: '珠峰', kind: 'ghost', tags: [], aliases: [], chars: 0, readonly: false },
+    ],
+    edges: [
+      { source: 'user/topics/爬山.md', target: 'user/people/王小明.md', kind: 'link', count: 2, context: '和小王去香山' },
+      { source: 'user/profile.md', target: 'user/people/王小明.md', kind: 'link', count: 1 },
+      { source: 'user/profile.md', target: 'user/topics/爬山.md', kind: 'mention', count: 1 },
+    ],
+    stats: { pages: 3, links: 2, ghosts: 1, orphans: 0 },
+  };
+
+  it('backlinksOf 只算 link 边、按标题（拼音）排序、带 context', () => {
+    expect(backlinksOf(graph, 'user/people/王小明.md')).toEqual([
+      { path: 'user/topics/爬山.md', title: '爬山', context: '和小王去香山', count: 2 },
+      { path: 'user/profile.md', title: '我', context: '', count: 1 },
+    ]);
+    expect(backlinksOf(graph, 'user/topics/爬山.md')).toEqual([]);
+    expect(backlinksOf(null, 'x')).toEqual([]);
+  });
+
+  it('ghostPageSkeleton：文件名安全化 + JSON 串标题（合法 YAML）', () => {
+    expect(ghostPageSkeleton('珠峰', 'topics')).toEqual({
+      path: 'user/topics/珠峰.md',
+      content: '---\ntitle: "珠峰"\n---\n\n',
+    });
+    expect(ghostPageSkeleton('a: b', 'people').path).toBe('user/people/a- b.md');
+  });
+
+  it('linkResolverFor：以图谱非 ghost 节点为目录、相对当前页', () => {
+    const r = linkResolverFor(graph, 'user/topics/爬山.md');
+    expect(r('王小明', false)).toBe('user/people/王小明.md');
+    expect(r('珠峰', false)).toBeNull();
+    expect(r('../profile.md', true)).toBe('user/profile.md');
   });
 });

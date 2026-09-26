@@ -12,6 +12,7 @@ import {
   PROVIDER_TEMPLATES,
   type Prefs,
 } from '@openpet/protocol';
+import { DEMO_GRAPH, DEMO_PAGES, DEMO_PROBE } from './memory-demo';
 
 type Cb = (payload: unknown) => void;
 
@@ -78,6 +79,37 @@ export function createMockBridge(): MockBridge {
           return { personas: [], defaultId: '', bindings: {} };
         case 'memory.list':
           return { facts: [] };
+        // ㉒ 记忆图谱视觉 harness：样例图 + 两页正文 + 试一句
+        case 'memory.graph':
+          return DEMO_GRAPH;
+        case 'memory.probe':
+          return DEMO_PROBE;
+        case 'memory.status':
+          return { enabled: true, pageCount: DEMO_GRAPH.stats.pages, lastCompile: null, migration: null, legacyFacts: 0 };
+        case 'memory.tree': {
+          const tn = (id: string) => {
+            const n = DEMO_GRAPH.nodes.find((x) => x.id === id)!;
+            return { path: id, title: n.title, summary: '', updated: '2026-09-24', source: 'llm', aliases: n.aliases, tags: n.tags };
+          };
+          const of = (k: string) => DEMO_GRAPH.nodes.filter((n) => n.kind === k).map((n) => tn(n.id));
+          return {
+            profile: tn('user/profile.md'),
+            people: of('people'),
+            topics: of('topics'),
+            relationship: tn('characters/default/relationship.md'),
+            timeline: tn('characters/default/timeline.md'),
+          };
+        }
+        case 'memory.readPage': {
+          const path = String(p.path);
+          const raw = DEMO_PAGES[path] ?? `---
+title: ${JSON.stringify(path)}
+---
+
+（样例页）
+`;
+          return { raw, page: null };
+        }
         case 'trace.history':
           return { records: [] };
         case 'character.current':

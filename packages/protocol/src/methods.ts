@@ -17,11 +17,13 @@ import { DesktopPluginManifestSchema, PluginRuntimeStatusSchema } from './plugin
 import { KbSchema, KbDocSchema, KbHitSchema } from './kb-config.js';
 import { MemoryFactSchema } from './memory-config.js';
 import {
+  MemoryGraphSchema,
   MemoryPageSchema,
+  MemoryProbeResultSchema,
   MemoryStatusSchema,
   MemoryTreeSchema,
-  MEMORY_PAGE_PATH_RE,
 } from './memory-wiki.js';
+import { isMemoryPagePath } from './memory-links.js';
 import { PersonaSchema } from './persona-config.js';
 import { TraceRecordSchema } from './trace-config.js';
 import { VoiceProfileSchema } from './voice-config.js';
@@ -944,37 +946,28 @@ export const Methods = {
     params: z.object({ text: z.string().min(1) }),
     result: z.object({ ok: z.literal(true), id: z.number().int() }),
   },
-  /** @deprecated ⑲ 起 F3 不再调用（wiki 无 id 行）；下批删。 */
-  'memory.delete': {
-    params: z.object({ id: z.number().int() }),
-    result: z.object({ ok: z.literal(true) }),
-  },
-  /** @deprecated ⑲ 起由节级 `<!-- locked -->` 取代；下批删。 */
-  'memory.setPinned': {
-    params: z.object({ id: z.number().int(), pinned: z.boolean() }),
-    result: z.object({ ok: z.literal(true) }),
-  },
   /** ⑲ 语义改为：清 wiki（当前角色页 + 共享 user/）+ 旧 memory_fact 表。 */
   'memory.clear': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },
 
   // --- ⑲ 记忆 v2 角色 wiki（spec §6）：F3 wiki 浏览器 RPC 面 ---
   'memory.tree': { params: z.object({}), result: MemoryTreeSchema },
   'memory.readPage': {
-    params: z.object({ path: z.string().regex(MEMORY_PAGE_PATH_RE) }),
+    params: z.object({ path: z.string().refine(isMemoryPagePath, '非法页面路径') }),
     // raw = 文件全文（frontmatter + 正文，编辑器编辑对象）；page = 解析后结构。
-    result: z.object({ raw: z.string(), page: MemoryPageSchema }),
+    // page = null：frontmatter 损坏（㉒ 编辑器仍可拿 raw 修复）。
+    result: z.object({ raw: z.string(), page: MemoryPageSchema.nullable() }),
   },
   'memory.writePage': {
     // content = 文件全文；Main 解析 frontmatter → MemoryPageSchema 校验 → source:user → 原子写 + 重索引。
     params: z.object({
-      path: z.string().regex(MEMORY_PAGE_PATH_RE),
+      path: z.string().refine(isMemoryPagePath, '非法页面路径'),
       content: z.string().max(40_000),
     }),
     result: z.object({ ok: z.literal(true) }),
   },
   'memory.deletePage': {
     // 仅 people/topics 可删；固定页（profile/relationship/timeline）删 = 重置为骨架。
-    params: z.object({ path: z.string().regex(MEMORY_PAGE_PATH_RE) }),
+    params: z.object({ path: z.string().refine(isMemoryPagePath, '非法页面路径') }),
     result: z.object({ ok: z.literal(true) }),
   },
   'memory.compileNow': {
@@ -993,6 +986,25 @@ export const Methods = {
     }),
   },
   'memory.status': { params: z.object({}), result: MemoryStatusSchema },
+  // --- ㉒ 记忆图谱（spec 2026-09-24-memory-graph-design §6）---
+  'memory.graph': {
+    // current = 共享 user/ + 本角色两页；all = 另含其他角色的关系 / 经历（只读）。
+    params: z.object({ scope: z.enum(['current', 'all']) }),
+    result: MemoryGraphSchema,
+  },
+  'memory.renamePage': {
+    // 仅人物 / 话题：文件名 = memoryFileStem(title)，全库链接跟着改；旧标题并入 aliases。
+    params: z.object({
+      path: z.string().refine(isMemoryPagePath, '非法页面路径'),
+      title: z.string().trim().min(1).max(100),
+    }),
+    result: z.object({ ok: z.literal(true), path: z.string() }),
+  },
+  'memory.probe': {
+    // 「试一句」：与聊天同一检索链，不记被想起统计。
+    params: z.object({ text: z.string().trim().min(1).max(500) }),
+    result: MemoryProbeResultSchema,
+  },
   // --- notification: Main → Hub（⑲ wiki 页变更：编译器落盘 / 用户保存 / 迁移完成）---
   'memory.changed': { params: z.object({ pages: z.array(z.string()) }), result: z.null() },
 

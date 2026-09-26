@@ -21,8 +21,11 @@
  *
  * ⑲ 记忆 v2：memory_page_index（wiki 页级向量缓存：path 主键 + 内容 hash + 向量；markdown 文件
  * 才是真源，本表可随时重建），additive → 6。memory_fact 保留只读（迁移源，spec §4）。
+ *
+ * ㉒ 记忆图谱：memory_page_index 加 model 列（嵌入模型指纹 `sourceId|model`，换模型即重算）+
+ * memory_page_stats（被想起的痕迹：注入次数 / 最后注入时间；派生数据，可随时清空），additive → 7。
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS messages (
@@ -109,7 +112,14 @@ CREATE TABLE IF NOT EXISTS memory_page_index (
   path        TEXT PRIMARY KEY,
   hash        TEXT NOT NULL,
   vector      BLOB,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  model       TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS memory_page_stats (
+  path             TEXT PRIMARY KEY,
+  recall_count     INTEGER NOT NULL DEFAULT 0,
+  last_recalled_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS session_meta (
@@ -128,4 +138,5 @@ export const MIGRATE_COLUMNS: Array<{ table: string; column: string; ddl: string
   { table: 'memory_fact', column: 'updated_at', ddl: 'INTEGER' },
   { table: 'session_meta', column: 'summary', ddl: 'TEXT' },
   { table: 'session_meta', column: 'summary_upto', ddl: 'INTEGER' },
+  { table: 'memory_page_index', column: 'model', ddl: "TEXT NOT NULL DEFAULT ''" },
 ];
