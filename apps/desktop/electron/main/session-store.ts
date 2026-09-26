@@ -114,7 +114,7 @@ export class SessionStore {
     if (this.partials.has(sessionId)) return null;
     const last = this.store.lastUserMessage(this.characterId(), sessionId);
     if (!last) return null;
-    this.store.deleteMessagesFrom(sessionId, last.id + 1);
+    this.store.deleteMessagesFrom(this.characterId(), sessionId, last.id + 1);
     return last.text;
   }
 
@@ -123,7 +123,7 @@ export class SessionStore {
     if (this.partials.has(sessionId)) return null;
     const last = this.store.lastUserMessage(this.characterId(), sessionId);
     if (!last) return null;
-    this.store.deleteMessagesFrom(sessionId, last.id);
+    this.store.deleteMessagesFrom(this.characterId(), sessionId, last.id);
     return last.text;
   }
 

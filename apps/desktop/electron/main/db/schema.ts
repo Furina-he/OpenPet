@@ -24,8 +24,11 @@
  *
  * ㉒ 记忆图谱：memory_page_index 加 model 列（嵌入模型指纹 `sourceId|model`，换模型即重算）+
  * memory_page_stats（被想起的痕迹：注入次数 / 最后注入时间；派生数据，可随时清空），additive → 7。
+ *
+ * ㉔ 记忆 v3：session_meta 主键改 (session_id, character_id)——每个角色的首个会话都叫 'default'，
+ * 单列主键让多角色的摘要 / 标题 / 置顶互相串（旧库由 SqliteStore 构造时整表重建，非 additive）→ 8。
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS messages (
@@ -123,13 +126,14 @@ CREATE TABLE IF NOT EXISTS memory_page_stats (
 );
 
 CREATE TABLE IF NOT EXISTS session_meta (
-  session_id   TEXT PRIMARY KEY,
+  session_id   TEXT NOT NULL,
   character_id TEXT NOT NULL,
   title        TEXT,
   pinned       INTEGER NOT NULL DEFAULT 0,
   created_at   INTEGER NOT NULL,
   summary      TEXT,
-  summary_upto INTEGER
+  summary_upto INTEGER,
+  PRIMARY KEY (session_id, character_id)
 );
 `;
 

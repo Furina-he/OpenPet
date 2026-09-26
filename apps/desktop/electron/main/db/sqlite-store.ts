@@ -56,9 +56,39 @@ export class SqliteStore implements ConversationStore {
         this.db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
       }
     }
+    this.migrateSessionMetaKey();
     this.db
       .prepare('INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)')
       .run('schema_version', String(SCHEMA_VERSION));
+  }
+
+  /**
+   * ㉔ v7 → v8：session_meta 单列主键（session_id）→ (session_id, character_id)。SQLite 不能改主键，
+   * 事务内改名 → 建新表 → 原样拷行 → 删旧表。原行归属它记录的 character_id；其他角色在同名会话上的
+   * 标题 / 置顶 / 摘要回到空（那本来就是串过去的）。须在 MIGRATE_COLUMNS 补列之后跑（旧库列齐）。
+   */
+  private migrateSessionMetaKey(): void {
+    const cols = this.db.pragma('table_info(session_meta)') as Array<{ name: string; pk: number }>;
+    const pk = cols.filter((c) => c.pk > 0).map((c) => c.name);
+    if (pk.length !== 1 || pk[0] !== 'session_id') return;
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE session_meta RENAME TO session_meta_v7;
+        CREATE TABLE session_meta (
+          session_id   TEXT NOT NULL,
+          character_id TEXT NOT NULL,
+          title        TEXT,
+          pinned       INTEGER NOT NULL DEFAULT 0,
+          created_at   INTEGER NOT NULL,
+          summary      TEXT,
+          summary_upto INTEGER,
+          PRIMARY KEY (session_id, character_id)
+        );
+        INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
+          SELECT session_id, character_id, title, pinned, created_at, summary, summary_upto FROM session_meta_v7;
+        DROP TABLE session_meta_v7;
+      `);
+    })();
   }
 
   appendMessage(input: AppendMessageInput): number {
@@ -96,7 +126,10 @@ export class SqliteStore implements ConversationStore {
   }
 
   clearMessages(): void {
-    this.db.prepare('DELETE FROM messages').run();
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM messages').run();
+      this.db.prepare('DELETE FROM session_meta').run();
+    })();
   }
 
   getPersonaState(characterId: string): PersonaStateBlob | null {
@@ -466,7 +499,7 @@ export class SqliteStore implements ConversationStore {
                 (SELECT text FROM messages WHERE session_id = m.session_id AND character_id = m.character_id
                  AND role = 'user' ORDER BY ts ASC, id ASC LIMIT 1) AS firstUserText
          FROM messages m
-         LEFT JOIN session_meta sm ON sm.session_id = m.session_id
+         LEFT JOIN session_meta sm ON sm.session_id = m.session_id AND sm.character_id = m.character_id
          WHERE m.character_id = ?
          GROUP BY m.session_id
          ORDER BY pinnedInt DESC, lastTs DESC`,
@@ -496,7 +529,7 @@ export class SqliteStore implements ConversationStore {
       .prepare(
         `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at)
          VALUES (?, ?, ?, 0, ?)
-         ON CONFLICT(session_id) DO UPDATE SET title = excluded.title`,
+         ON CONFLICT(session_id, character_id) DO UPDATE SET title = excluded.title`,
       )
       .run(sessionId, characterId, title, Date.now());
   }
@@ -506,15 +539,19 @@ export class SqliteStore implements ConversationStore {
       .prepare(
         `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at)
          VALUES (?, ?, NULL, ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET pinned = excluded.pinned`,
+         ON CONFLICT(session_id, character_id) DO UPDATE SET pinned = excluded.pinned`,
       )
       .run(sessionId, characterId, pinned ? 1 : 0, Date.now());
   }
 
-  sessionDelete(sessionId: string): void {
+  sessionDelete(characterId: string, sessionId: string): void {
     const tx = this.db.transaction(() => {
-      this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
-      this.db.prepare('DELETE FROM session_meta WHERE session_id = ?').run(sessionId);
+      this.db
+        .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM session_meta WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
     });
     tx();
   }
@@ -538,32 +575,37 @@ export class SqliteStore implements ConversationStore {
     return row ?? null;
   }
 
-  deleteMessagesFrom(sessionId: string, fromId: number): void {
-    this.db.prepare('DELETE FROM messages WHERE session_id = ? AND id >= ?').run(sessionId, fromId);
+  deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void {
+    this.db
+      .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ? AND id >= ?')
+      .run(characterId, sessionId, fromId);
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---
-  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
+  sessionSummaryGet(
+    characterId: string,
+    sessionId: string,
+  ): { summary: string | null; upto: number | null } {
     const row = this.db
-      .prepare('SELECT summary, summary_upto AS upto FROM session_meta WHERE session_id = ?')
-      .get(sessionId) as { summary: string | null; upto: number | null } | undefined;
+      .prepare(
+        'SELECT summary, summary_upto AS upto FROM session_meta WHERE session_id = ? AND character_id = ?',
+      )
+      .get(sessionId, characterId) as { summary: string | null; upto: number | null } | undefined;
     return { summary: row?.summary ?? null, upto: row?.upto ?? null };
   }
 
-  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
-    // meta 行可能尚不存在：character_id 从消息表回查（session_meta 列 NOT NULL）。
-    const characterId =
-      (
-        this.db
-          .prepare('SELECT character_id AS cid FROM messages WHERE session_id = ? LIMIT 1')
-          .get(sessionId) as { cid: string } | undefined
-      )?.cid ?? '';
+  sessionSummarySet(
+    characterId: string,
+    sessionId: string,
+    summary: string | null,
+    upto?: number,
+  ): void {
     if (upto === undefined) {
       this.db
         .prepare(
           `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary)
            VALUES (?, ?, NULL, 0, ?, ?)
-           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary`,
+           ON CONFLICT(session_id, character_id) DO UPDATE SET summary = excluded.summary`,
         )
         .run(sessionId, characterId, Date.now(), summary);
     } else {
@@ -571,7 +613,7 @@ export class SqliteStore implements ConversationStore {
         .prepare(
           `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
            VALUES (?, ?, NULL, 0, ?, ?, ?)
-           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, summary_upto = excluded.summary_upto`,
+           ON CONFLICT(session_id, character_id) DO UPDATE SET summary = excluded.summary, summary_upto = excluded.summary_upto`,
         )
         .run(sessionId, characterId, Date.now(), summary, upto);
     }
@@ -592,12 +634,13 @@ export class SqliteStore implements ConversationStore {
       .all(characterId, sessionId, afterId, beforeOrEqId) as Array<StoredRow & { id: number }>;
   }
 
-  messageStats(sessionId: string): { count: number; lastId: number } {
+  messageStats(characterId: string, sessionId: string): { count: number; lastId: number } {
     return this.db
       .prepare(
-        'SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS lastId FROM messages WHERE session_id = ?',
+        `SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS lastId FROM messages
+         WHERE character_id = ? AND session_id = ?`,
       )
-      .get(sessionId) as { count: number; lastId: number };
+      .get(characterId, sessionId) as { count: number; lastId: number };
   }
 
   async backupTo(dbPath: string): Promise<void> {

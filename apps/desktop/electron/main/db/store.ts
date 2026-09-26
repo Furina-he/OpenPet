@@ -54,7 +54,11 @@ export interface ConversationStore {
   appendMessage(input: AppendMessageInput): number;
   /** 最近 limit 条（角色 + 会话隔离），按 ts 升序返回。 */
   recentMessages(characterId: string, sessionId: string, limit: number): StoredRow[];
-  /** 批次⑥ D7：清空全部对话历史（跨角色/会话；危险操作，UI 侧 ConfirmDialog 把关）。 */
+  /**
+   * 批次⑥ D7：清空全部对话历史（跨角色/会话；危险操作，UI 侧 ConfirmDialog 把关）。
+   * ㉔ 连带清空 session_meta——否则同名会话（首个会话都叫 'default'）重新有消息时旧摘要 /
+   * 标题 / 置顶复活，摘要水位也卡在旧 id 上。
+   */
   clearMessages(): void;
 
   getPersonaState(characterId: string): PersonaStateBlob | null;
@@ -124,9 +128,18 @@ export interface ConversationStore {
   pageStatsClear(): void;
 
   // --- ⑮ 记忆域：会话滚动摘要（session_meta.summary/summary_upto）与区间读取 ---
-  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null };
+  // ㉔ 会话元数据按 (session_id, character_id) 隔离：各角色首个会话都叫 'default'。
+  sessionSummaryGet(
+    characterId: string,
+    sessionId: string,
+  ): { summary: string | null; upto: number | null };
   /** upto 缺省不动（用户手动编辑路径以现有水位为底稿继续合并）；summary=null 清除。 */
-  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void;
+  sessionSummarySet(
+    characterId: string,
+    sessionId: string,
+    summary: string | null,
+    upto?: number,
+  ): void;
   /** (afterId, beforeOrEqId] 半开区间消息，id 升序（摘要器取「窗口外未摘要」段并推进水位）。 */
   messagesBetween(
     characterId: string,
@@ -135,7 +148,7 @@ export interface ConversationStore {
     beforeOrEqId: number,
   ): Array<StoredRow & { id: number }>;
   /** 会话消息总数与最大行 id（空会话 lastId=0）。 */
-  messageStats(sessionId: string): { count: number; lastId: number };
+  messageStats(characterId: string, sessionId: string): { count: number; lastId: number };
 
   storageUsage(): StorageUsage;
   /**
@@ -177,14 +190,14 @@ export interface ConversationStore {
   }>;
   sessionSetTitle(sessionId: string, characterId: string, title: string): void;
   sessionSetPinned(sessionId: string, characterId: string, pinned: boolean): void;
-  /** 删除会话全部消息 + meta（单事务）。 */
-  sessionDelete(sessionId: string): void;
+  /** 删除本角色该会话全部消息 + meta（单事务；他角色同名会话不动）。 */
+  sessionDelete(characterId: string, sessionId: string): void;
   /** 导出用全量消息（ts 升序）。 */
   sessionMessages(characterId: string, sessionId: string): StoredRow[];
   /** 会话最后一条 user 行（重试/编辑重发定位用）；无 → null。 */
   lastUserMessage(characterId: string, sessionId: string): { id: number; text: string } | null;
   /** 删除该会话 id ≥ fromId 的全部行（重试 = 删尾部 assistant；编辑重发 = 删整轮）。 */
-  deleteMessagesFrom(sessionId: string, fromId: number): void;
+  deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void;
 
   /** 一致性快照到目标 .db 文件（SqliteStore 用 better-sqlite3 .backup；Memory 为 no-op）。 */
   backupTo(dbPath: string): Promise<void>;

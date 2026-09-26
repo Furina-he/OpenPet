@@ -145,4 +145,13 @@ describe('SessionStore · 重试 / 编辑重发截断', () => {
     expect(store.snapshot('s').messages).toEqual([]);
     expect(store.dropLastTurn('s')).toBeNull();
   });
+
+  it('㉔ 编辑重发只删本角色：另一角色在同名会话里更晚的消息保留', () => {
+    const backend = new MemoryStore();
+    const store = new SessionStore({ store: backend, characterId: 'A' });
+    store.appendUser('default', 'A 的话');
+    backend.appendMessage({ characterId: 'B', sessionId: 'default', role: 'user', text: 'B 更晚', ts: 9 });
+    expect(store.dropLastTurn('default')).toBe('A 的话');
+    expect(backend.sessionMessages('B', 'default').map((m) => m.text)).toEqual(['B 更晚']);
+  });
 });

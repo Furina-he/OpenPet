@@ -61,6 +61,7 @@ export class MemoryStore implements ConversationStore {
 
   clearMessages(): void {
     this.rows.length = 0;
+    this.sessionMeta.clear();
   }
 
   getPersonaState(characterId: string): PersonaStateBlob | null {
@@ -336,11 +337,10 @@ export class MemoryStore implements ConversationStore {
     return this.rows.length ? Math.min(...this.rows.map((r) => r.ts)) : null;
   }
 
-  // --- 会话管理（session_meta 等价内存表；语义与 SqliteStore SQL 对齐）---
+  // --- 会话管理（session_meta 等价内存表；语义与 SqliteStore SQL 对齐；㉔ 键 = 角色 + 会话）---
   private readonly sessionMeta = new Map<
     string,
     {
-      characterId: string;
       title: string | null;
       pinned: boolean;
       createdAt: number;
@@ -348,6 +348,10 @@ export class MemoryStore implements ConversationStore {
       summaryUpto: number | null;
     }
   >();
+
+  private metaKey(characterId: string, sessionId: string): string {
+    return JSON.stringify([characterId, sessionId]);
+  }
 
   private metaUpsert(
     sessionId: string,
@@ -359,15 +363,15 @@ export class MemoryStore implements ConversationStore {
       summaryUpto: number | null;
     }>,
   ): void {
-    const cur = this.sessionMeta.get(sessionId) ?? {
-      characterId,
+    const key = this.metaKey(characterId, sessionId);
+    const cur = this.sessionMeta.get(key) ?? {
       title: null as string | null,
       pinned: false,
       createdAt: ++this.clock,
       summary: null as string | null,
       summaryUpto: null as number | null,
     };
-    this.sessionMeta.set(sessionId, { ...cur, ...patch });
+    this.sessionMeta.set(key, { ...cur, ...patch });
   }
 
   sessionList(characterId: string): Array<{
@@ -387,7 +391,7 @@ export class MemoryStore implements ConversationStore {
       byId.set(r.sessionId, g);
     }
     const list = [...byId.entries()].map(([id, rows]) => {
-      const meta = this.sessionMeta.get(id);
+      const meta = this.sessionMeta.get(this.metaKey(characterId, id));
       const firstUser = rows.find((r) => r.role === 'user');
       const last = rows[rows.length - 1]!;
       return {
@@ -411,11 +415,12 @@ export class MemoryStore implements ConversationStore {
     this.metaUpsert(sessionId, characterId, { pinned });
   }
 
-  sessionDelete(sessionId: string): void {
+  sessionDelete(characterId: string, sessionId: string): void {
     for (let i = this.rows.length - 1; i >= 0; i--) {
-      if (this.rows[i]!.sessionId === sessionId) this.rows.splice(i, 1);
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId) this.rows.splice(i, 1);
     }
-    this.sessionMeta.delete(sessionId);
+    this.sessionMeta.delete(this.metaKey(characterId, sessionId));
   }
 
   sessionMessages(characterId: string, sessionId: string): StoredRow[] {
@@ -440,24 +445,29 @@ export class MemoryStore implements ConversationStore {
     return null;
   }
 
-  deleteMessagesFrom(sessionId: string, fromId: number): void {
+  deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void {
     for (let i = this.rows.length - 1; i >= 0; i--) {
-      if (this.rows[i]!.sessionId === sessionId && this.rows[i]!.id >= fromId)
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId && r.id >= fromId)
         this.rows.splice(i, 1);
     }
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取（语义与 SqliteStore 对齐）---
-  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
-    const meta = this.sessionMeta.get(sessionId);
+  sessionSummaryGet(
+    characterId: string,
+    sessionId: string,
+  ): { summary: string | null; upto: number | null } {
+    const meta = this.sessionMeta.get(this.metaKey(characterId, sessionId));
     return { summary: meta?.summary ?? null, upto: meta?.summaryUpto ?? null };
   }
 
-  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
-    const characterId =
-      this.sessionMeta.get(sessionId)?.characterId ??
-      this.rows.find((r) => r.sessionId === sessionId)?.characterId ??
-      '';
+  sessionSummarySet(
+    characterId: string,
+    sessionId: string,
+    summary: string | null,
+    upto?: number,
+  ): void {
     this.metaUpsert(
       sessionId,
       characterId,
@@ -490,8 +500,8 @@ export class MemoryStore implements ConversationStore {
       }));
   }
 
-  messageStats(sessionId: string): { count: number; lastId: number } {
-    const hit = this.rows.filter((r) => r.sessionId === sessionId);
+  messageStats(characterId: string, sessionId: string): { count: number; lastId: number } {
+    const hit = this.rows.filter((r) => r.characterId === characterId && r.sessionId === sessionId);
     return { count: hit.length, lastId: hit.length ? Math.max(...hit.map((r) => r.id)) : 0 };
   }
 

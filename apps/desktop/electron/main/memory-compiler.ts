@@ -245,7 +245,7 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
       .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.text}`)
       .join('\n');
     if (!recent) return { ok: true, ops: 0, changed: [] };
-    const { summary } = deps.store.sessionSummaryGet(sessionId);
+    const { summary } = deps.store.sessionSummaryGet(cid, sessionId);
     deps.wiki.ensureLayout(cid);
     const pages = await relatedPages(cid, recent);
     const user = [

@@ -69,7 +69,7 @@ describe('session-summarizer（⑮ 记忆域 spec §2）', () => {
     expect(log.calls).toBe(1);
     expect(log.bodies[0]).toContain('msg3');
     expect(log.bodies[0]).not.toContain('msg4'); // 窗口内不进摘要段
-    expect(store.sessionSummaryGet('s1')).toEqual({ summary: '第一版摘要', upto: ids[2]! });
+    expect(store.sessionSummaryGet('default', 's1')).toEqual({ summary: '第一版摘要', upto: ids[2]! });
 
     // 再涨 3 条（总数 10，窗口外 6，未摘要 = 6-3 = 3 ≥ 3）→ 旧摘要参与合并，段 = msg4..msg6
     const log2 = { calls: 0, bodies: [] as string[] };
@@ -80,17 +80,17 @@ describe('session-summarizer（⑮ 记忆域 spec §2）', () => {
     expect(log2.bodies[0]).toContain('第一版摘要'); // 旧摘要进 prompt
     expect(log2.bodies[0]).toContain('msg6');
     expect(log2.bodies[0]).not.toContain('msg7');
-    expect(store.sessionSummaryGet('s1')).toEqual({ summary: '第二版摘要', upto: ids[5]! });
+    expect(store.sessionSummaryGet('default', 's1')).toEqual({ summary: '第二版摘要', upto: ids[5]! });
   });
 
   it('失败静默：LLM 500 → 旧摘要与 upto 保留，下轮再试', async () => {
     const store = new MemoryStore();
     store.appendMessage({ characterId: 'default', sessionId: 's1', role: 'user', text: 'x', ts: 0 });
-    store.sessionSummarySet('s1', '旧摘要', 1);
+    store.sessionSummarySet('default', 's1', '旧摘要', 1);
     seed(store, 8, 10);
     const sum = makeSummarizer(store, fakeCompletion('', undefined, false));
     await sum.onTurnEnd('s1');
-    expect(store.sessionSummaryGet('s1')).toEqual({ summary: '旧摘要', upto: 1 });
+    expect(store.sessionSummaryGet('default', 's1')).toEqual({ summary: '旧摘要', upto: 1 });
   });
 
   it('开关关 / 非 openai 目标不干活', async () => {
@@ -112,6 +112,21 @@ describe('session-summarizer（⑮ 记忆域 spec §2）', () => {
     });
     await nonOpenai.onTurnEnd('s1');
     expect(log.calls).toBe(0);
-    expect(store.sessionSummaryGet('s1').summary).toBeNull();
+    expect(store.sessionSummaryGet('default', 's1').summary).toBeNull();
+  });
+
+  it('㉔ 两角色同名会话摘要不串：计数 / 旧摘要 / 写回都只看本角色', async () => {
+    const store = new MemoryStore();
+    seed(store, 7); // 角色 default 的 s1：7 条 → 触发
+    for (let i = 0; i < 7; i++)
+      store.appendMessage({ characterId: 'other', sessionId: 's1', role: 'user', text: `o${i}`, ts: i });
+    store.sessionSummarySet('other', 's1', '别人的摘要', 999);
+    const log = { calls: 0, bodies: [] as string[] };
+    await makeSummarizer(store, fakeCompletion('我的摘要', log)).onTurnEnd('s1');
+    expect(log.calls).toBe(1);
+    expect(log.bodies[0]).not.toContain('别人的摘要');
+    expect(log.bodies[0]).not.toContain('o0');
+    expect(store.sessionSummaryGet('default', 's1').summary).toBe('我的摘要');
+    expect(store.sessionSummaryGet('other', 's1')).toEqual({ summary: '别人的摘要', upto: 999 });
   });
 });

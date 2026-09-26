@@ -614,7 +614,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     // ⑮ 会话滚动摘要注入供给（summaryStage 纯 store 读；开关关 = null 块消失）。
     sessionSummary: (sid) => {
       if (!prefsStore.getAll()['chat.sessionSummary']) return null;
-      return store.sessionSummaryGet(sid).summary;
+      return store.sessionSummaryGet(characters.current().characterId, sid).summary;
     },
     // ⑭ 自然节奏：core 句缓冲分段+打字延迟+段级口癖正则（关 = null 直通零回归）。
     rhythm: () => {
@@ -756,10 +756,13 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { ok: true as const };
     },
     // --- ⑮ 记忆域：会话摘要读写（B3 详情编辑；IM 会话同样适用不设门）---
-    'session.summaryGet': (p) => ({ summary: store.sessionSummaryGet(p.id).summary }),
+    'session.summaryGet': (p) => ({
+      summary: store.sessionSummaryGet(characters.current().characterId, p.id).summary,
+    }),
     'session.summarySet': (p) => {
       const text = p.summary.trim();
-      store.sessionSummarySet(p.id, text ? text : null); // 空 = 清除；upto 不动
+      // 空 = 清除；upto 不动
+      store.sessionSummarySet(characters.current().characterId, p.id, text ? text : null);
       return { ok: true as const };
     },
     'chat.sessionPin': (p) => {
@@ -769,8 +772,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
     'chat.sessionDelete': (p) => {
       assertNotImSession(p.id);
-      store.sessionDelete(p.id);
       const cid = characters.current().characterId;
+      store.sessionDelete(cid, p.id);
       const map = prefsStore.getAll()['chat.activeSessions'];
       const next = nextActiveAfterDelete(
         p.id,

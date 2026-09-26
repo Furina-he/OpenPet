@@ -164,7 +164,7 @@ describe('⑲ memory-compiler v3', () => {
         ],
         'default',
       );
-    store.sessionSummarySet('s1', '之前聊过猫', 1);
+    store.sessionSummarySet('default', 's1', '之前聊过猫', 1);
     store.appendMessage({
       characterId: 'default',
       sessionId: 's1',

@@ -131,14 +131,14 @@ describe('记忆域 T1（spec 2026-07-14-memory-domain）', () => {
 
   it('sessionSummary：默认空；set 带 upto 推进；不带 upto 保留（手动编辑）；null 清除', () => {
     const s = new MemoryStore();
-    expect(s.sessionSummaryGet('s')).toEqual({ summary: null, upto: null });
+    expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: null, upto: null });
     s.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: 'x', ts: 1 });
-    s.sessionSummarySet('s', '聊了猫', 5);
-    expect(s.sessionSummaryGet('s')).toEqual({ summary: '聊了猫', upto: 5 });
-    s.sessionSummarySet('s', '用户改写的摘要'); // 手动编辑：upto 不动
-    expect(s.sessionSummaryGet('s')).toEqual({ summary: '用户改写的摘要', upto: 5 });
-    s.sessionSummarySet('s', null);
-    expect(s.sessionSummaryGet('s').summary).toBeNull();
+    s.sessionSummarySet('c', 's', '聊了猫', 5);
+    expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: '聊了猫', upto: 5 });
+    s.sessionSummarySet('c', 's', '用户改写的摘要'); // 手动编辑：upto 不动
+    expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: '用户改写的摘要', upto: 5 });
+    s.sessionSummarySet('c', 's', null);
+    expect(s.sessionSummaryGet('c', 's').summary).toBeNull();
   });
 
   it('sessionSummarySet 不冲掉已有 title/pinned；sessionSetTitle 不冲掉 summary', () => {
@@ -146,17 +146,17 @@ describe('记忆域 T1（spec 2026-07-14-memory-domain）', () => {
     s.appendMessage({ characterId: 'c', sessionId: 's', role: 'user', text: 'x', ts: 1 });
     s.sessionSetTitle('s', 'c', '标题');
     s.sessionSetPinned('s', 'c', true);
-    s.sessionSummarySet('s', '摘要', 3);
+    s.sessionSummarySet('c', 's', '摘要', 3);
     const meta = s.sessionList('c').find((x) => x.id === 's')!;
     expect(meta.title).toBe('标题');
     expect(meta.pinned).toBe(true);
     s.sessionSetTitle('s', 'c', '新标题');
-    expect(s.sessionSummaryGet('s')).toEqual({ summary: '摘要', upto: 3 });
+    expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: '摘要', upto: 3 });
   });
 
   it('messageStats/messagesBetween：计数+lastId；(afterId, beforeOrEqId] 半开区间', () => {
     const s = new MemoryStore();
-    expect(s.messageStats('s')).toEqual({ count: 0, lastId: 0 });
+    expect(s.messageStats('c', 's')).toEqual({ count: 0, lastId: 0 });
     const ids: number[] = [];
     for (let i = 1; i <= 5; i++) {
       ids.push(
@@ -164,7 +164,7 @@ describe('记忆域 T1（spec 2026-07-14-memory-domain）', () => {
       );
     }
     s.appendMessage({ characterId: 'c', sessionId: 'other', role: 'user', text: 'z', ts: 9 });
-    expect(s.messageStats('s')).toEqual({ count: 5, lastId: ids[4]! });
+    expect(s.messageStats('c', 's')).toEqual({ count: 5, lastId: ids[4]! });
     expect(
       s.messagesBetween('c', 's', ids[1]!, ids[3]!).map((m) => m.text),
     ).toEqual(['m3', 'm4']); // afterId 不含、beforeOrEqId 含
@@ -203,8 +203,59 @@ describe('会话管理查询（spec 2026-07-09-session-management）', () => {
     expect(a.title).toBe('改过的名');
     expect(a.pinned).toBe(true); // rename 不冲掉 pinned
     expect(s.sessionMessages('c', 'a').map((m) => m.text)).toEqual(['第一句话题', '回A']);
-    s.sessionDelete('a');
+    s.sessionDelete('c', 'a');
     expect(s.sessionList('c').map((x) => x.id)).toEqual(['b']);
     expect(s.sessionMessages('c', 'a')).toEqual([]);
+  });
+});
+
+describe('㉔ T1 会话元数据按角色隔离（spec 2026-09-26-memory-v3 §6）', () => {
+  function seedTwo(s: MemoryStore): { a: number[]; b: number[] } {
+    const a: number[] = [];
+    const b: number[] = [];
+    for (let i = 1; i <= 3; i++) {
+      a.push(s.appendMessage({ characterId: 'A', sessionId: 'default', role: 'user', text: `a${i}`, ts: i }));
+      b.push(s.appendMessage({ characterId: 'B', sessionId: 'default', role: 'user', text: `b${i}`, ts: i }));
+    }
+    return { a, b };
+  }
+
+  it("两角色同用 'default'：标题 / 置顶 / 摘要互不覆盖；messageStats 只数本角色", () => {
+    const s = new MemoryStore();
+    const { a, b } = seedTwo(s);
+    s.sessionSetTitle('default', 'A', 'A 的标题');
+    s.sessionSetPinned('default', 'A', true);
+    s.sessionSummarySet('A', 'default', 'A 的摘要', a[1]!);
+    s.sessionSetTitle('default', 'B', 'B 的标题');
+    s.sessionSummarySet('B', 'default', 'B 的摘要', b[0]!);
+    expect(s.sessionList('A')[0]).toMatchObject({ title: 'A 的标题', pinned: true });
+    expect(s.sessionList('B')[0]).toMatchObject({ title: 'B 的标题', pinned: false });
+    expect(s.sessionSummaryGet('A', 'default')).toEqual({ summary: 'A 的摘要', upto: a[1]! });
+    expect(s.sessionSummaryGet('B', 'default')).toEqual({ summary: 'B 的摘要', upto: b[0]! });
+    expect(s.messageStats('A', 'default')).toEqual({ count: 3, lastId: a[2]! });
+  });
+
+  it('sessionDelete / deleteMessagesFrom 只删本角色', () => {
+    const s = new MemoryStore();
+    const { a } = seedTwo(s);
+    s.sessionSummarySet('B', 'default', 'B 的摘要', 1);
+    s.deleteMessagesFrom('A', 'default', a[1]!); // A 删尾部：B 在 a[1] 之后的行不受影响
+    expect(s.sessionMessages('A', 'default').map((m) => m.text)).toEqual(['a1']);
+    expect(s.sessionMessages('B', 'default').map((m) => m.text)).toEqual(['b1', 'b2', 'b3']);
+    s.sessionDelete('A', 'default');
+    expect(s.sessionMessages('A', 'default')).toEqual([]);
+    expect(s.sessionMessages('B', 'default')).toHaveLength(3);
+    expect(s.sessionSummaryGet('B', 'default').summary).toBe('B 的摘要');
+  });
+
+  it('clearMessages 连带清空会话元数据（旧摘要 / 标题不复活）', () => {
+    const s = new MemoryStore();
+    seedTwo(s);
+    s.sessionSetTitle('default', 'A', '旧标题');
+    s.sessionSummarySet('A', 'default', '旧摘要', 3);
+    s.clearMessages();
+    s.appendMessage({ characterId: 'A', sessionId: 'default', role: 'user', text: '新', ts: 9 });
+    expect(s.sessionList('A')[0]!.title).toBeNull();
+    expect(s.sessionSummaryGet('A', 'default')).toEqual({ summary: null, upto: null });
   });
 });
