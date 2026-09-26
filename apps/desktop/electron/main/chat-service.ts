@@ -128,10 +128,19 @@ export interface ChatServiceOptions {
   emotionFallback?: (sessionId: string, cleanText: string) => void;
 }
 
-/** ChatService 对 McpManager 的最小需求（§4）。 */
+/**
+ * ㉔ 工具口上下文：toolsStage 传 {sessionId, userText}（挂载门用），TurnOrchestrator 执行时传
+ * {sessionId}；MCP 忽略它。
+ */
+export interface ToolContext {
+  sessionId: string;
+  userText?: string;
+}
+
+/** ChatService 对 McpManager 的最小需求（§4）；㉔ 两个方法加可选 ToolContext。 */
 export interface McpToolPort {
-  activeToolDefs: (serverActive: (id: string) => boolean) => ChatTool[];
-  callTool: (name: string, args: unknown) => Promise<string>;
+  activeToolDefs: (serverActive: (id: string) => boolean, ctx?: ToolContext) => ChatTool[];
+  callTool: (name: string, args: unknown, ctx?: ToolContext) => Promise<string>;
 }
 
 const DEFAULT_CHARACTER: CharacterRef = { id: 'default', name: '小灵' };

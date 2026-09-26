@@ -43,6 +43,7 @@ import { upgradeMemoryFormat } from './memory-format.js';
 import { MemoryWiki } from './memory-wiki.js';
 import { createMemoryCompiler, PERSONA_EXCERPT_CHARS } from './memory-compiler.js';
 import { createMemoryMigrator } from './memory-migrate.js';
+import { createMemoryTools } from './memory-tools.js';
 import { createSessionSummarizer } from './session-summarizer.js';
 import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
@@ -509,6 +510,18 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     resolveTarget: utilityTargetWithKey,
     character: () => ({ id: characters.current().characterId }),
   });
+  // ㉔ 主动记忆工具：挂载门 = 总闸 + 开关 + 默认对话模型勾了 tool；remember 另需会话可进记忆 + 记忆意图。
+  const memoryTools = createMemoryTools({
+    getPrefs: () => prefsStore.getAll(),
+    toolCapable: () => {
+      const p = prefsStore.getAll();
+      return p['model.models'].find((m) => m.id === p['model.defaultChatModelId'])?.caps.tool === true;
+    },
+    sessionAllowed: (sid) => imService?.shouldExtractMemory(sid) ?? true,
+    recall: (q, o) => memoryService.recall(q, o),
+    addNote: (sid, text) =>
+      store.memoryNoteAdd(characters.current().characterId, sid, text, Date.now()),
+  });
   // ⑬ 表情分类兜底：词表与行为标签 prompt 同源（⑳ protocol vocabOf 唯一真源）。
   const emotionFallbackSvc = createEmotionFallback({
     fetchImpl: voiceFetch,
@@ -538,8 +551,9 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     providerEntryPath: deps.providerEntryPath,
     broadcast,
     store,
-    // 线 B-2：MCP 工具 + Desktop 插件工具合流（wire 名 p_<id>_<tool> 前缀路由回插件 worker）。
-    mcp: mergeToolPorts(mcpManager, pluginHost),
+    // 线 B-2：MCP 工具 + Desktop 插件工具合流（wire 名 p_<id>_<tool> 前缀路由回插件 worker）；
+    // ㉔ + 记忆工具（recall_memory / remember，自有工具同名优先）。
+    mcp: mergeToolPorts(mcpManager, pluginHost, memoryTools),
     character: () => {
       const c = characters.current();
       return {

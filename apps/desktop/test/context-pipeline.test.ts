@@ -200,3 +200,22 @@ describe('㉔ 缓存友好开关 + context.prefix', () => {
     });
   });
 });
+
+describe('㉔ toolsStage 工具口上下文', () => {
+  it('activeToolDefs 收到 {sessionId, userText}', async () => {
+    const got: unknown[] = [];
+    const pipeline = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'a', name: 'A' }),
+      mcp: {
+        activeToolDefs: (_sa, ctx) => {
+          got.push(ctx);
+          return [{ name: 'remember' }];
+        },
+      },
+    });
+    const req = await pipeline.build({ sessionId: 's9', userText: '记住这个' });
+    expect(got).toEqual([{ sessionId: 's9', userText: '记住这个' }]);
+    expect(req.tools?.map((t) => t.name)).toEqual(['remember']);
+  });
+});

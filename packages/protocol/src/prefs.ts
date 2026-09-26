@@ -39,6 +39,9 @@ export const PrefsSchema = z.object({
   'privacy.longTermMemory': z.boolean().default(true),
   // ㉔ 记忆 v3：语义回想门槛（块向量相似度门的最低分；实际门 = max(它, 中位数 + 0.12)）
   'memory.recallMinScore': z.number().min(0).max(1).default(0.25),
+  // ㉔ 主动记忆工具（需默认对话模型勾了 tool 能力）：recall_memory 主动回想 / remember「记住」立即记下
+  'memory.recallTool': z.boolean().default(true),
+  'memory.rememberTool': z.boolean().default(true),
   'privacy.anonymousStats': z.boolean().default(false),
   'privacy.crashReport': z.boolean().default(true),
   // general（D2 通用）
