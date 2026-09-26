@@ -63,6 +63,14 @@ export const MEMORY_QUOTAS = {
   compilerPages: 5,
   /** 编译器输入相关页总字数上限。 */
   compilerPageChars: 6000,
+  /** ㉔ 编译一段最多整理的消息条数（一段一次 LLM 调用）。 */
+  compileSegmentMessages: 24,
+  /** ㉔ 编译输入「此前对话」前情条数（已整理过，只供理解上下文）。 */
+  compileLeadIn: 4,
+  /** ㉔ 同一段输出类失败满 N 次放弃（防一段「毒」对话永久卡住后面的整理）。 */
+  compileMaxRetries: 3,
+  /** ㉔ remember 便签单条上限。 */
+  noteChars: 200,
 } as const;
 
 export const MemoryPageSourceSchema = z.enum(['llm', 'user']);
@@ -242,6 +250,21 @@ export const MemoryStatusSchema = z.object({
     .nullable(),
   /** 当前角色旧 memory_fact 行数（横幅「旧数据仍保留」）。 */
   legacyFacts: z.number().int().nonnegative(),
+  /**
+   * ㉔ 当前角色当前会话的编译积压：未整理消息数 / 待重试段失败次数 / 上次失败原因；
+   * 无积压且无错误 = null。
+   */
+  backlog: z
+    .object({
+      messages: z.number().int().nonnegative(),
+      retries: z.number().int().nonnegative(),
+      error: z.string().optional(),
+    })
+    .nullable(),
+  /** ㉔ 最近一次放弃的段（进程内）：输出类失败满 3 次后跳过。 */
+  gaveUp: z
+    .object({ at: z.number(), messages: z.number().int().nonnegative(), error: z.string() })
+    .nullable(),
 });
 export type MemoryStatus = z.infer<typeof MemoryStatusSchema>;
 

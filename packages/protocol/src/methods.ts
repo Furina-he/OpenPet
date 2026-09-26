@@ -976,6 +976,8 @@ export const Methods = {
       ok: z.boolean(),
       ops: z.number().int().nonnegative(),
       error: z.string().optional(),
+      /** ㉔ 没有新对话可整理（不再重复整理已整理过的消息）。 */
+      idle: z.boolean().optional(),
     }),
   },
   'memory.openFolder': { params: z.object({}), result: z.object({ ok: z.literal(true) }) },

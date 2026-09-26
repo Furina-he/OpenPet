@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MemoryStore } from '../../electron/main/db/memory-store.js';
 import { DEFAULT_PERSONA_STATE } from '@openpet/protocol';
+import { runMemoryV3Contract } from './memory-v3-contract.js';
 
 describe('MemoryStore', () => {
   it('appends and reads back recent messages in ts order', () => {
@@ -257,5 +258,11 @@ describe('㉔ T1 会话元数据按角色隔离（spec 2026-09-26-memory-v3 §6�
     s.appendMessage({ characterId: 'A', sessionId: 'default', role: 'user', text: '新', ts: 9 });
     expect(s.sessionList('A')[0]!.title).toBeNull();
     expect(s.sessionSummaryGet('A', 'default')).toEqual({ summary: null, upto: null });
+  });
+});
+
+describe('㉔ T2 编译账本 / 便签 / 来源日志（双实现契约）', () => {
+  it('MemoryStore 满足契约', () => {
+    runMemoryV3Contract(new MemoryStore());
   });
 });

@@ -50,6 +50,13 @@ import {
 } from '@openpet/protocol';
 
 /** 非法操作（护栏/配额/锁定节）；message 进 memory.status.lastCompile.error。 */
+/** ㉔ applyOps 逐条记录（来源日志）：op 同 MemoryOp.op，撞名并入记 'merge_page'。 */
+export interface AppliedOp {
+  op: MemoryOp['op'] | 'merge_page';
+  path: string;
+  detail: string;
+}
+
 export class MemoryOpError extends Error {
   constructor(message: string) {
     super(message);
@@ -457,12 +464,13 @@ export class MemoryWiki {
    * 六种操作（⑲ §3 + ㉒ §2.2）。先在内存里全部校验并算出新页，再统一落盘——第 N 个非法则前 N-1 个
    * 不落盘。LLM 写入的文本落盘前两遍规范化（§2.3）：链接目录 = 现有页 ∪ 本批新建（撞名并入的名字
    * 挂到目标页别名上）→ 别名写法改文件名 / 悬空降纯文本 → 提及补链。
-   * 返回变更页路径（去重）与撞名并入记录。
+   * 返回变更页路径（去重）、撞名并入记录与 ㉔ 逐条操作记录（来源日志；撞名并入记为 merge_page，
+   * detail = 节名 / 日期 / 标题 / 改了哪些属性）。
    */
   applyOps(
     ops: readonly MemoryOp[],
     characterId: string,
-  ): { changed: string[]; merged: Array<[string, string]> } {
+  ): { changed: string[]; merged: Array<[string, string]>; applied: AppliedOp[] } {
     if (ops.length > MEMORY_QUOTAS.opsPerBatch) throw new MemoryOpError('操作数超上限');
     const pp = pagePaths(characterId);
     const today = this.today();
@@ -532,6 +540,7 @@ export class MemoryWiki {
     };
     const createdCount = { people: 0, topics: 0 };
     const merged: Array<[string, string]> = [];
+    const applied: AppliedOp[] = [];
 
     for (const op of ops) {
       switch (op.op) {
@@ -551,6 +560,7 @@ export class MemoryWiki {
           const next = { ...page, body: joinSections(parsed) };
           checkQuota(next);
           bump(op.page, next);
+          applied.push({ op: op.op, path: op.page, detail: op.section });
           break;
         }
         case 'remove_line': {
@@ -569,6 +579,7 @@ export class MemoryWiki {
             throw new MemoryOpError(`remove_line 无匹配行：${op.match}`);
           sec.body = kept.join('\n').trim();
           bump(op.page, { ...page, body: joinSections(parsed) });
+          applied.push({ op: op.op, path: op.page, detail: op.section });
           break;
         }
         case 'create_page': {
@@ -596,6 +607,7 @@ export class MemoryWiki {
             checkQuota(next);
             bump(plan.path, next);
             merged.push([op.title, plan.path]);
+            applied.push({ op: 'merge_page', path: plan.path, detail: op.title });
             break;
           }
           const rel = plan.path;
@@ -626,6 +638,7 @@ export class MemoryWiki {
           };
           checkQuota(page);
           work.set(rel, page);
+          applied.push({ op: op.op, path: rel, detail: op.title });
           break;
         }
         case 'set_props': {
@@ -641,6 +654,13 @@ export class MemoryWiki {
               ...(op.summary !== undefined ? { summary: op.summary } : {}),
             },
           });
+          applied.push({
+            op: op.op,
+            path: op.page,
+            detail: (['aliases', 'tags', 'summary'] as const)
+              .filter((k) => op[k] !== undefined)
+              .join(','),
+          });
           break;
         }
         case 'append_timeline': {
@@ -652,6 +672,7 @@ export class MemoryWiki {
           const date = op.date > today ? today : op.date;
           entries.push({ date, text: norm(op.text, pp.timeline).replace(/\s+/g, ' ').trim() });
           bump(pp.timeline, { ...page, body: joinTimeline(preamble, entries) });
+          applied.push({ op: op.op, path: pp.timeline, detail: date });
           break;
         }
         case 'merge_timeline': {
@@ -666,6 +687,7 @@ export class MemoryWiki {
             text: `（此前合并）${norm(op.text, pp.timeline).replace(/\s+/g, ' ').trim()}`,
           });
           bump(pp.timeline, { ...page, body: joinTimeline(preamble, keep) });
+          applied.push({ op: op.op, path: pp.timeline, detail: op.before });
           break;
         }
       }
@@ -674,7 +696,7 @@ export class MemoryWiki {
     const changed = [...work.keys()];
     for (const rel of changed) this.writePageRaw(work.get(rel)!, false);
     if (changed.length > 0) this.rebuildIndex();
-    return { changed, merged };
+    return { changed, merged, applied };
   }
 
   /** 同目录大小写不敏感查重（Windows 文件系统口径；其他平台同样拒）。 */

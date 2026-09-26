@@ -84,7 +84,14 @@ describe('⑲ memory-wiki 文件层', () => {
       { op: 'append_timeline', date: '2026-09-20', text: '聊了猫' },
       { op: 'append_timeline', date: '2026-09-22', text: '聊了工作' },
     ];
-    const { changed } = w.applyOps(ops, CID);
+    const { changed, applied } = w.applyOps(ops, CID);
+    // ㉔ 逐条操作记录（来源日志）
+    expect(applied).toEqual([
+      { op: 'upsert_section', path: 'user/profile.md', detail: '工作学习' },
+      { op: 'create_page', path: 'user/people/年糕.md', detail: '年糕' },
+      { op: 'append_timeline', path: 'characters/default/timeline.md', detail: '2026-09-20' },
+      { op: 'append_timeline', path: 'characters/default/timeline.md', detail: '2026-09-22' },
+    ]);
     expect(changed.sort()).toEqual([
       'characters/default/timeline.md',
       'user/people/年糕.md',
@@ -99,12 +106,17 @@ describe('⑲ memory-wiki 文件层', () => {
     expect(read(w, '.openpet/index.md')).toContain('[[年糕]]（人物）');
     expect(read(w, '.openpet/characters/default/index.md')).toContain('## 本角色');
 
-    w.applyOps(
-      [{ op: 'remove_line', page: 'user/profile.md', section: '工作学习', match: '深圳' }],
-      CID,
-    );
+    expect(
+      w.applyOps(
+        [{ op: 'remove_line', page: 'user/profile.md', section: '工作学习', match: '深圳' }],
+        CID,
+      ).applied,
+    ).toEqual([{ op: 'remove_line', path: 'user/profile.md', detail: '工作学习' }]);
     expect(read(w, 'user/profile.md')).not.toContain('深圳');
-    w.applyOps([{ op: 'merge_timeline', before: '2026-09-21', text: '九月中旬聊猫' }], CID);
+    expect(
+      w.applyOps([{ op: 'merge_timeline', before: '2026-09-21', text: '九月中旬聊猫' }], CID)
+        .applied,
+    ).toEqual([{ op: 'merge_timeline', path: 'characters/default/timeline.md', detail: '2026-09-21' }]);
     const tl = read(w, 'characters/default/timeline.md');
     expect(tl).toContain('（此前合并）九月中旬聊猫');
     expect(tl).not.toContain('聊了猫');
@@ -393,6 +405,11 @@ describe('㉒ vault v2 文件层', () => {
       ['小王', 'user/people/王小明.md'],
       ['「王小明」', 'user/people/王小明.md'],
     ]);
+    expect(r.applied.map((a) => [a.op, a.path])).toEqual([
+      ['merge_page', 'user/people/王小明.md'],
+      ['merge_page', 'user/people/王小明.md'],
+      ['create_page', 'user/topics/小王.md'],
+    ]);
     expect(existsSync(path.join(w.root, 'user/people/小王.md'))).toBe(false);
     expect(existsSync(path.join(w.root, 'user/topics/小王.md'))).toBe(true);
     const p = w.readPage('user/people/王小明.md')!;
@@ -423,7 +440,7 @@ describe('㉒ vault v2 文件层', () => {
     const w = makeWiki();
     w.ensureLayout(CID);
     w.applyOps([people('王小明', ['小王'])], CID);
-    w.applyOps(
+    const { applied } = w.applyOps(
       [
         {
           op: 'set_props',
@@ -436,6 +453,11 @@ describe('㉒ vault v2 文件层', () => {
       ],
       CID,
     );
+    expect(applied[0]).toEqual({
+      op: 'set_props',
+      path: 'user/people/王小明.md',
+      detail: 'aliases,tags,summary',
+    });
     const fm = w.readPage('user/people/王小明.md')!.frontmatter;
     expect(fm).toMatchObject({
       title: '王小明',

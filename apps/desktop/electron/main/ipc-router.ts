@@ -564,9 +564,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
     retrieveKb: (q) => kbService.retrieveForChat(q),
     retrieveMemory: (q, h) => memoryService.retrieveForChat(q, h),
-    // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）。
+    // 线 B-1 记忆口径：IM 群聊会话默认不进轮末提炼（噪音大；im.groupIntoMemory 放开）；
+    // ㉔ 不进记忆的轮推进编译水位跳过（之后放开也不补整理关着时聊的内容）。
     onTurnEnd: (sid) => {
       if (imService?.shouldExtractMemory(sid) ?? true) void memoryCompiler.onTurnEnd(sid);
+      else void memoryCompiler.skip(sid);
       // ⑮ 滚动摘要不受 im 门限制（只摘要本会话，无群聊污染问题，spec §2）。
       void sessionSummarizer.onTurnEnd(sid);
     },
@@ -867,7 +869,12 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     // --- ⑲ 记忆 wiki：编译/状态/打开文件夹（其余 memory.* 在 memoryHandlers）---
     'memory.compileNow': async () => {
       const r = await memoryCompiler.compileNow();
-      return { ok: r.ok, ops: r.ops, ...(r.error ? { error: r.error } : {}) };
+      return {
+        ok: r.ok,
+        ops: r.ops,
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.idle ? { idle: true } : {}),
+      };
     },
     'memory.openFolder': () => {
       mkdirSync(memoryRoot, { recursive: true });
@@ -891,6 +898,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
           : null,
         migration: memoryMigrator.status(cid),
         legacyFacts: store.memoryCount(cid),
+        backlog: memoryCompiler.backlog(cid, memoryCompiler.sessionOf(cid)),
+        gaveUp: memoryCompiler.gaveUp(),
       };
     },
     'app.openDataDir': () => {

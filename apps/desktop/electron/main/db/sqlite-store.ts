@@ -7,9 +7,13 @@ import {
 } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  CompileStateRow,
   ConversationStore,
   KbChunkRow,
   KbDocRow,
+  MemoryNoteRow,
+  MemoryOpLogInput,
+  MemoryOpLogRow,
   StoredRow,
 } from './store.js';
 import { MIGRATE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
@@ -48,6 +52,10 @@ export class SqliteStore implements ConversationStore {
     const Database = loadBetterSqlite();
     this.db = nativeBinding ? new Database(dbPath, { nativeBinding }) : new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
+    const hadCompileState =
+      this.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_compile_state'")
+        .get() !== undefined;
     this.db.exec(SCHEMA_SQL);
     // CREATE IF NOT EXISTS 不改旧表：缺列的旧库按 table_info 条件 ALTER（⑮ 记忆域起）。
     for (const m of MIGRATE_COLUMNS) {
@@ -57,6 +65,12 @@ export class SqliteStore implements ConversationStore {
       }
     }
     this.migrateSessionMetaKey();
+    // ㉔ 编译账本首建：存量会话一律记为「已整理到最后一条」。旧计数器下它们已被整理过大半、确切位置
+    // 不可知——宁可漏掉最后不足 8 轮，也不重放整段历史（大批重复经历 + 大笔杂务模型费用）。
+    if (!hadCompileState) {
+      this.db.exec(`INSERT OR IGNORE INTO memory_compile_state(character_id, session_id, upto)
+        SELECT character_id, session_id, MAX(id) FROM messages GROUP BY character_id, session_id`);
+    }
     this.db
       .prepare('INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)')
       .run('schema_version', String(SCHEMA_VERSION));
@@ -129,6 +143,8 @@ export class SqliteStore implements ConversationStore {
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM messages').run();
       this.db.prepare('DELETE FROM session_meta').run();
+      this.db.prepare('DELETE FROM memory_compile_state').run();
+      this.db.prepare('DELETE FROM memory_note').run();
     })();
   }
 
@@ -552,6 +568,12 @@ export class SqliteStore implements ConversationStore {
       this.db
         .prepare('DELETE FROM session_meta WHERE character_id = ? AND session_id = ?')
         .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM memory_compile_state WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM memory_note WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
     });
     tx();
   }
@@ -576,9 +598,19 @@ export class SqliteStore implements ConversationStore {
   }
 
   deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void {
-    this.db
-      .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ? AND id >= ?')
-      .run(characterId, sessionId, fromId);
+    this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ? AND id >= ?')
+        .run(characterId, sessionId, fromId);
+      this.db
+        .prepare(
+          `UPDATE memory_compile_state SET upto = MIN(upto, ?),
+             retries = CASE WHEN pending_to >= ? THEN 0 ELSE retries END,
+             pending_to = CASE WHEN pending_to >= ? THEN NULL ELSE pending_to END
+           WHERE character_id = ? AND session_id = ?`,
+        )
+        .run(fromId - 1, fromId, fromId, characterId, sessionId);
+    })();
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---
@@ -641,6 +673,119 @@ export class SqliteStore implements ConversationStore {
          WHERE character_id = ? AND session_id = ?`,
       )
       .get(characterId, sessionId) as { count: number; lastId: number };
+  }
+
+  messagesBefore(
+    characterId: string,
+    sessionId: string,
+    beforeOrEqId: number,
+    limit: number,
+  ): Array<StoredRow & { id: number }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, role, text, finish_reason AS finishReason, ts, tokens_in AS tokensIn, tokens_out AS tokensOut
+         FROM messages WHERE character_id = ? AND session_id = ? AND id <= ?
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(characterId, sessionId, beforeOrEqId, limit) as Array<StoredRow & { id: number }>;
+    return rows.reverse();
+  }
+
+  messageCountAfter(characterId: string, sessionId: string, afterId: number): number {
+    return (
+      this.db
+        .prepare(
+          'SELECT COUNT(*) AS n FROM messages WHERE character_id = ? AND session_id = ? AND id > ?',
+        )
+        .get(characterId, sessionId, afterId) as { n: number }
+    ).n;
+  }
+
+  // --- ㉔ 记忆 v3：编译账本 / 便签 / 来源日志 ---
+  compileStateGet(characterId: string, sessionId: string): CompileStateRow {
+    const row = this.db
+      .prepare(
+        `SELECT upto, pending_to AS pendingTo, retries, last_error AS lastError,
+                last_attempt_at AS lastAttemptAt
+         FROM memory_compile_state WHERE character_id = ? AND session_id = ?`,
+      )
+      .get(characterId, sessionId) as CompileStateRow | undefined;
+    return row ?? { upto: 0, pendingTo: null, retries: 0, lastError: null, lastAttemptAt: null };
+  }
+
+  compileStatePut(characterId: string, sessionId: string, patch: Partial<CompileStateRow>): void {
+    const next = { ...this.compileStateGet(characterId, sessionId), ...patch };
+    this.db
+      .prepare(
+        `INSERT INTO memory_compile_state
+           (character_id, session_id, upto, pending_to, retries, last_error, last_attempt_at)
+         VALUES (@cid, @sid, @upto, @pendingTo, @retries, @lastError, @lastAttemptAt)
+         ON CONFLICT(character_id, session_id) DO UPDATE SET upto = excluded.upto,
+           pending_to = excluded.pending_to, retries = excluded.retries,
+           last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at`,
+      )
+      .run({ cid: characterId, sid: sessionId, ...next });
+  }
+
+  memoryNoteAdd(characterId: string, sessionId: string, text: string, createdAt: number): number {
+    const info = this.db
+      .prepare(
+        'INSERT INTO memory_note(character_id, session_id, text, created_at) VALUES (?, ?, ?, ?)',
+      )
+      .run(characterId, sessionId, text, createdAt);
+    return Number(info.lastInsertRowid);
+  }
+
+  memoryNotes(characterId: string, sessionId: string): MemoryNoteRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, text, created_at AS createdAt FROM memory_note
+         WHERE character_id = ? AND session_id = ? ORDER BY id ASC`,
+      )
+      .all(characterId, sessionId) as MemoryNoteRow[];
+  }
+
+  memoryNotesDelete(ids: readonly number[]): void {
+    const stmt = this.db.prepare('DELETE FROM memory_note WHERE id = ?');
+    this.db.transaction((xs: readonly number[]) => {
+      for (const id of xs) stmt.run(id);
+    })(ids);
+  }
+
+  memoryNotesClear(): void {
+    this.db.prepare('DELETE FROM memory_note').run();
+  }
+
+  opLogAdd(rows: readonly MemoryOpLogInput[]): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO memory_op_log(at, character_id, session_id, msg_from, msg_to, path, op, detail)
+       VALUES (@at, @characterId, @sessionId, @msgFrom, @msgTo, @path, @op, @detail)`,
+    );
+    this.db.transaction((xs: readonly MemoryOpLogInput[]) => {
+      for (const x of xs) stmt.run(x);
+    })(rows);
+  }
+
+  opLogForPath(path: string, limit: number): MemoryOpLogRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, at, character_id AS characterId, session_id AS sessionId, msg_from AS msgFrom,
+                msg_to AS msgTo, path, op, detail
+         FROM memory_op_log WHERE path = ? ORDER BY at DESC, id ASC LIMIT ?`,
+      )
+      .all(path, limit) as MemoryOpLogRow[];
+  }
+
+  opLogRenamePath(from: string, to: string): void {
+    this.db.prepare('UPDATE memory_op_log SET path = ? WHERE path = ?').run(to, from);
+  }
+
+  opLogDeletePath(path: string): void {
+    this.db.prepare('DELETE FROM memory_op_log WHERE path = ?').run(path);
+  }
+
+  opLogClear(): void {
+    this.db.prepare('DELETE FROM memory_op_log').run();
   }
 
   async backupTo(dbPath: string): Promise<void> {

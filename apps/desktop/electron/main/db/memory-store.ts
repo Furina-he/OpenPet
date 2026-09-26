@@ -1,9 +1,13 @@
 import type { PersonaStateBlob, StorageUsage } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  CompileStateRow,
   ConversationStore,
   KbChunkRow,
   KbDocRow,
+  MemoryNoteRow,
+  MemoryOpLogInput,
+  MemoryOpLogRow,
   StoredRow,
 } from './store.js';
 
@@ -62,6 +66,8 @@ export class MemoryStore implements ConversationStore {
   clearMessages(): void {
     this.rows.length = 0;
     this.sessionMeta.clear();
+    this.compileState.clear();
+    this.notes.length = 0;
   }
 
   getPersonaState(characterId: string): PersonaStateBlob | null {
@@ -421,6 +427,8 @@ export class MemoryStore implements ConversationStore {
       if (r.characterId === characterId && r.sessionId === sessionId) this.rows.splice(i, 1);
     }
     this.sessionMeta.delete(this.metaKey(characterId, sessionId));
+    this.compileState.delete(this.metaKey(characterId, sessionId));
+    this.dropNotes((n) => n.characterId === characterId && n.sessionId === sessionId);
   }
 
   sessionMessages(characterId: string, sessionId: string): StoredRow[] {
@@ -450,6 +458,16 @@ export class MemoryStore implements ConversationStore {
       const r = this.rows[i]!;
       if (r.characterId === characterId && r.sessionId === sessionId && r.id >= fromId)
         this.rows.splice(i, 1);
+    }
+    const key = this.metaKey(characterId, sessionId);
+    const st = this.compileState.get(key);
+    if (st) {
+      const cut = st.pendingTo !== null && st.pendingTo >= fromId;
+      this.compileState.set(key, {
+        ...st,
+        upto: Math.min(st.upto, fromId - 1),
+        ...(cut ? { pendingTo: null, retries: 0 } : {}),
+      });
     }
   }
 
@@ -503,6 +521,95 @@ export class MemoryStore implements ConversationStore {
   messageStats(characterId: string, sessionId: string): { count: number; lastId: number } {
     const hit = this.rows.filter((r) => r.characterId === characterId && r.sessionId === sessionId);
     return { count: hit.length, lastId: hit.length ? Math.max(...hit.map((r) => r.id)) : 0 };
+  }
+
+  messagesBefore(
+    characterId: string,
+    sessionId: string,
+    beforeOrEqId: number,
+    limit: number,
+  ): Array<StoredRow & { id: number }> {
+    return this.messagesBetween(characterId, sessionId, 0, beforeOrEqId).slice(-limit);
+  }
+
+  messageCountAfter(characterId: string, sessionId: string, afterId: number): number {
+    return this.rows.filter(
+      (r) => r.characterId === characterId && r.sessionId === sessionId && r.id > afterId,
+    ).length;
+  }
+
+  // --- ㉔ 记忆 v3：编译账本 / 便签 / 来源日志（语义与 SqliteStore 对齐）---
+  private readonly compileState = new Map<string, CompileStateRow>();
+  private readonly notes: Array<MemoryNoteRow & { characterId: string; sessionId: string }> = [];
+  private noteSeq = 0;
+  private readonly opLog: MemoryOpLogRow[] = [];
+  private opLogSeq = 0;
+
+  private dropNotes(
+    pred: (n: { id: number; characterId: string; sessionId: string }) => boolean,
+  ): void {
+    for (let i = this.notes.length - 1; i >= 0; i--)
+      if (pred(this.notes[i]!)) this.notes.splice(i, 1);
+  }
+
+  compileStateGet(characterId: string, sessionId: string): CompileStateRow {
+    const st = this.compileState.get(this.metaKey(characterId, sessionId));
+    return st
+      ? { ...st }
+      : { upto: 0, pendingTo: null, retries: 0, lastError: null, lastAttemptAt: null };
+  }
+
+  compileStatePut(characterId: string, sessionId: string, patch: Partial<CompileStateRow>): void {
+    this.compileState.set(this.metaKey(characterId, sessionId), {
+      ...this.compileStateGet(characterId, sessionId),
+      ...patch,
+    });
+  }
+
+  memoryNoteAdd(characterId: string, sessionId: string, text: string, createdAt: number): number {
+    const id = ++this.noteSeq;
+    this.notes.push({ id, characterId, sessionId, text, createdAt });
+    return id;
+  }
+
+  memoryNotes(characterId: string, sessionId: string): MemoryNoteRow[] {
+    return this.notes
+      .filter((n) => n.characterId === characterId && n.sessionId === sessionId)
+      .map((n) => ({ id: n.id, text: n.text, createdAt: n.createdAt }));
+  }
+
+  memoryNotesDelete(ids: readonly number[]): void {
+    const set = new Set(ids);
+    this.dropNotes((n) => set.has(n.id));
+  }
+
+  memoryNotesClear(): void {
+    this.notes.length = 0;
+  }
+
+  opLogAdd(rows: readonly MemoryOpLogInput[]): void {
+    for (const r of rows) this.opLog.push({ ...r, id: ++this.opLogSeq });
+  }
+
+  opLogForPath(path: string, limit: number): MemoryOpLogRow[] {
+    return this.opLog
+      .filter((r) => r.path === path)
+      .sort((a, b) => b.at - a.at || a.id - b.id)
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
+  }
+
+  opLogRenamePath(from: string, to: string): void {
+    for (const r of this.opLog) if (r.path === from) r.path = to;
+  }
+
+  opLogDeletePath(path: string): void {
+    for (let i = this.opLog.length - 1; i >= 0; i--)
+      if (this.opLog[i]!.path === path) this.opLog.splice(i, 1);
+  }
+
+  opLogClear(): void {
+    this.opLog.length = 0;
   }
 
   async backupTo(): Promise<void> {

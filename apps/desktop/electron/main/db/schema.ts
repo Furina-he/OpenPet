@@ -27,6 +27,9 @@
  *
  * ㉔ 记忆 v3：session_meta 主键改 (session_id, character_id)——每个角色的首个会话都叫 'default'，
  * 单列主键让多角色的摘要 / 标题 / 置顶互相串（旧库由 SqliteStore 构造时整表重建，非 additive）→ 8。
+ * 同版新增：memory_compile_state（编译进度账本：水位 / 待重试段 / 失败次数，重启不丢；首建时存量会话
+ * 基线 = 最后一条，见 SqliteStore）、memory_note（remember 便签，随下一次编译进记忆）、memory_op_log
+ * （来源追溯：哪次编译、出自哪段对话、对哪页做了什么）。
  */
 export const SCHEMA_VERSION = 8;
 
@@ -135,6 +138,38 @@ CREATE TABLE IF NOT EXISTS session_meta (
   summary_upto INTEGER,
   PRIMARY KEY (session_id, character_id)
 );
+
+CREATE TABLE IF NOT EXISTS memory_compile_state (
+  character_id    TEXT NOT NULL,
+  session_id      TEXT NOT NULL,
+  upto            INTEGER NOT NULL DEFAULT 0,
+  pending_to      INTEGER,
+  retries         INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  last_attempt_at INTEGER,
+  PRIMARY KEY (character_id, session_id)
+);
+
+CREATE TABLE IF NOT EXISTS memory_note (
+  id           INTEGER PRIMARY KEY,
+  character_id TEXT NOT NULL,
+  session_id   TEXT NOT NULL,
+  text         TEXT NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_op_log (
+  id           INTEGER PRIMARY KEY,
+  at           INTEGER NOT NULL,
+  character_id TEXT NOT NULL,
+  session_id   TEXT,
+  msg_from     INTEGER,
+  msg_to       INTEGER,
+  path         TEXT NOT NULL,
+  op           TEXT NOT NULL,
+  detail       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_op_log_path ON memory_op_log(path, at);
 `;
 
 /** ⑮ 记忆域旧库迁移：v4 及以前的表缺这些列，打开时按 table_info 条件 ALTER。 */

@@ -85,7 +85,7 @@ export function createMockBridge(): MockBridge {
         case 'memory.probe':
           return DEMO_PROBE;
         case 'memory.status':
-          return { enabled: true, pageCount: DEMO_GRAPH.stats.pages, lastCompile: null, migration: null, legacyFacts: 0 };
+          return { enabled: true, pageCount: DEMO_GRAPH.stats.pages, lastCompile: null, migration: null, legacyFacts: 0, backlog: null, gaveUp: null };
         case 'memory.tree': {
           const tn = (id: string) => {
             const n = DEMO_GRAPH.nodes.find((x) => x.id === id)!;

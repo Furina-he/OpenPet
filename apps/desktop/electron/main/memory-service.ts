@@ -257,12 +257,17 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       return { ok: true as const, id: parsed.sections.indexOf(misc) + 1 };
     },
 
-    /** ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 页向量索引 + ㉒ 被想起统计。 */
+    /**
+     * ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 页向量索引 + ㉒ 被想起统计 +
+     * ㉔ remember 便签与来源日志。
+     */
     'memory.clear': async () => {
       deps.wiki.clear(cid());
       deps.store.memoryClear(cid());
       for (const r of deps.store.pageIndexList()) deps.store.pageIndexDelete(r.path);
       deps.store.pageStatsClear();
+      deps.store.memoryNotesClear();
+      deps.store.opLogClear();
       return { ok: true as const };
     },
 
@@ -289,6 +294,7 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       deps.wiki.deletePage(p.path, cid());
       deps.store.pageIndexDelete(p.path);
       deps.store.pageStatsDelete(p.path);
+      deps.store.opLogDeletePath(p.path); // ㉔ 删页 / 固定页重置：来源随之作废
       return { ok: true as const };
     },
 
@@ -315,6 +321,7 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       if (r.path !== p.path) {
         deps.store.pageIndexDelete(p.path);
         deps.store.pageStatsRename(p.path, r.path);
+        deps.store.opLogRenamePath(p.path, r.path);
       }
       void reindexVectors([r.path, ...r.changed]);
       deps.onChanged?.([r.path, ...r.changed]);

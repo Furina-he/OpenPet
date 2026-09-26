@@ -8,6 +8,7 @@ import {
   loadBetterSqlite,
   resolveNativeBinding,
 } from '../../electron/main/db/sqlite-store.js';
+import { runMemoryV3Contract } from './memory-v3-contract.js';
 
 // better-sqlite3 是原生模块：CI/本地 Node 可加载则实测；不可加载时跳过（真机覆盖）。
 let available = false;
@@ -438,6 +439,56 @@ describe.skipIf(!available)('SqliteStore ㉔ T1 会话元数据按角色隔离 +
       expect(row).toEqual({ title: '旧标题', pinned: 1, c: 5 });
     } finally {
       check.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!available)('SqliteStore ㉔ T2 编译账本 / 便签 / 来源日志', () => {
+  it('满足双实现契约', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v3-'));
+    const s = new SqliteStore(join(dir, 'sessions.db'));
+    try {
+      runMemoryV3Contract(s);
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('账本首建基线：存量会话记为已整理到最后一条；已有账本的库重开不再重置', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-baseline-'));
+    const path = join(dir, 'sessions.db');
+    const Database = loadBetterSqlite();
+    const raw = new Database(path);
+    raw.exec(`CREATE TABLE messages (
+      id INTEGER PRIMARY KEY, character_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      text TEXT NOT NULL, raw TEXT, ts INTEGER NOT NULL, tokens_in INTEGER, tokens_out INTEGER,
+      finish_reason TEXT, provider TEXT, model TEXT
+    );`);
+    const ins = raw.prepare(
+      "INSERT INTO messages(character_id, session_id, role, text, ts) VALUES (?, ?, 'user', 'x', 1)",
+    );
+    for (const [c, sid] of [['a', 'default'], ['a', 'default'], ['b', 'default'], ['a', 'other']])
+      ins.run(c, sid);
+    raw.close();
+
+    const s1 = new SqliteStore(path);
+    try {
+      expect(s1.compileStateGet('a', 'default').upto).toBe(2);
+      expect(s1.compileStateGet('b', 'default').upto).toBe(3);
+      expect(s1.compileStateGet('a', 'other').upto).toBe(4);
+      s1.compileStatePut('a', 'default', { upto: 1 });
+      s1.appendMessage({ characterId: 'c', sessionId: 'new', role: 'user', text: 'y', ts: 2 });
+    } finally {
+      s1.close();
+    }
+    const s2 = new SqliteStore(path);
+    try {
+      expect(s2.compileStateGet('a', 'default').upto).toBe(1); // 不再重置
+      expect(s2.compileStateGet('c', 'new').upto).toBe(0); // 新会话从头整理
+    } finally {
+      s2.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

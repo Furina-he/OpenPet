@@ -392,6 +392,31 @@ describe('㉒ 召回可见性 + 页向量模型指纹', () => {
     expect(store.pageStatsList()).toEqual([]);
   });
 
+  it('㉔ 来源日志随页走：重命名迁移路径、删页删日志；清空记忆连带清便签与日志', async () => {
+    const key = { v: '' };
+    const { store, svc } = makeKeyed(key, throwEmbed);
+    const row = (path: string) => ({
+      at: 1,
+      characterId: 'default',
+      sessionId: 's1',
+      msgFrom: 0,
+      msgTo: 4,
+      path,
+      op: 'upsert_section',
+      detail: 'x',
+    });
+    store.opLogAdd([row('user/topics/工作.md'), row('user/profile.md')]);
+    await svc['memory.renamePage']({ path: 'user/topics/工作.md', title: '职场' });
+    expect(store.opLogForPath('user/topics/工作.md', 10)).toEqual([]);
+    expect(store.opLogForPath('user/topics/职场.md', 10)).toHaveLength(1);
+    await svc['memory.deletePage']({ path: 'user/topics/职场.md' });
+    expect(store.opLogForPath('user/topics/职场.md', 10)).toEqual([]);
+    store.memoryNoteAdd('default', 's1', '记住', 1);
+    await svc['memory.clear']();
+    expect(store.opLogForPath('user/profile.md', 10)).toEqual([]);
+    expect(store.memoryNotes('default', 's1')).toEqual([]);
+  });
+
   it('memory.probe：命中结构 + 预算 + 注入原文与组装链记忆块逐字一致', async () => {
     const key = { v: 'src|m1' };
     const { store, wiki, svc } = makeKeyed(key);
