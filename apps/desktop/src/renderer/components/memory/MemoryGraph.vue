@@ -341,7 +341,13 @@ function draw(): void {
       ctx.beginPath();
       ctx.arc(p.x, p.y, r + (ring === 'resident' ? 3 : 4), 0, Math.PI * 2);
       ctx.strokeStyle =
-        ring === 'keyword' ? colors.brandTo! : ring === 'vector' ? colors.cool! : colors.main!;
+        ring === 'keyword' || ring === 'text'
+          ? colors.brandTo!
+          : ring === 'vector'
+            ? colors.cool!
+            : ring === 'hybrid'
+              ? colors.brandFrom!
+              : colors.main!;
       ctx.lineWidth = ring === 'resident' ? 1 : 2.5;
       ctx.stroke();
     } else if (searching && props.hits.has(n.id)) {

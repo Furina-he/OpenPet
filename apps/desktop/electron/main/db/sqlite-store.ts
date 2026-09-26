@@ -7,6 +7,7 @@ import {
 } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  ChunkIndexRow,
   CompileStateRow,
   ConversationStore,
   KbChunkRow,
@@ -325,29 +326,27 @@ export class SqliteStore implements ConversationStore {
     return r.n;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（㉒ 带模型指纹）---
-  pageIndexUpsert(
-    path: string,
-    hash: string,
-    vector: number[],
-    updatedAt: number,
-    model: string,
-  ): void {
-    const buf = vector.length > 0 ? Buffer.from(new Float32Array(vector).buffer) : null;
-    this.db
-      .prepare(
-        `INSERT INTO memory_page_index(path, hash, vector, updated_at, model) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, vector = excluded.vector,
-           updated_at = excluded.updated_at, model = excluded.model`,
-      )
-      .run(path, hash, buf, updatedAt, model);
+  // --- ㉔ 块级向量索引 ---
+  chunkIndexUpsert(rows: readonly ChunkIndexRow[], updatedAt: number): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO memory_chunk_index(id, path, hash, model, vector, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET path = excluded.path, hash = excluded.hash,
+         model = excluded.model, vector = excluded.vector, updated_at = excluded.updated_at`,
+    );
+    this.db.transaction((xs: readonly ChunkIndexRow[]) => {
+      for (const r of xs) {
+        const buf = r.vector.length > 0 ? Buffer.from(new Float32Array(r.vector).buffer) : null;
+        stmt.run(r.id, r.path, r.hash, r.model, buf, updatedAt);
+      }
+    })(rows);
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
+  chunkIndexList(): ChunkIndexRow[] {
     const rows = this.db
-      .prepare('SELECT path, hash, vector, model FROM memory_page_index ORDER BY path ASC')
-      .all() as Array<{ path: string; hash: string; vector: Buffer | null; model: string }>;
+      .prepare('SELECT id, path, hash, model, vector FROM memory_chunk_index ORDER BY id ASC')
+      .all() as Array<{ id: string; path: string; hash: string; model: string; vector: Buffer | null }>;
     return rows.map((r) => ({
+      id: r.id,
       path: r.path,
       hash: r.hash,
       model: r.model,
@@ -359,8 +358,19 @@ export class SqliteStore implements ConversationStore {
     }));
   }
 
-  pageIndexDelete(path: string): void {
-    this.db.prepare('DELETE FROM memory_page_index WHERE path = ?').run(path);
+  chunkIndexDeletePath(path: string): void {
+    this.db.prepare('DELETE FROM memory_chunk_index WHERE path = ?').run(path);
+  }
+
+  chunkIndexDelete(ids: readonly string[]): void {
+    const stmt = this.db.prepare('DELETE FROM memory_chunk_index WHERE id = ?');
+    this.db.transaction((xs: readonly string[]) => {
+      for (const id of xs) stmt.run(id);
+    })(ids);
+  }
+
+  chunkIndexClear(): void {
+    this.db.prepare('DELETE FROM memory_chunk_index').run();
   }
 
   // --- ㉒ 被想起的痕迹 ---

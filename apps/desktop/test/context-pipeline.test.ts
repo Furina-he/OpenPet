@@ -44,7 +44,7 @@ describe('context-pipeline', () => {
       character: () => ({ id: 'c', name: '小灵' }),
       retrieveMemory: async (_q, h) => {
         gotHistory = h;
-        return { ...MEM_SZ, stats: { resident: 1, keyword: 2, vector: 0, chars: 30 } };
+        return { ...MEM_SZ, stats: { resident: 1, keyword: 2, text: 1, vector: 0, hybrid: 1, chars: 30 } };
       },
     });
     await p2.build({ sessionId: 's', userText: 'hi', trace: (a, f) => trace.push([a, f]) });
@@ -52,7 +52,9 @@ describe('context-pipeline', () => {
     expect(trace.find(([a]) => a === 'context.memory')?.[1]).toEqual({
       resident: 1,
       keyword: 2,
+      text: 1,
       vector: 0,
+      hybrid: 1,
       chars: 30,
     });
     const pipeline = createContextPipeline({

@@ -21,8 +21,6 @@ function fakeCompletion(content: string, calls?: { n: number; bodies: string[] }
     return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
   };
 }
-const embed = async (inputs: string[]): Promise<number[][]> =>
-  inputs.map((t) => (t.includes('猫') ? [1, 0] : [0, 1]));
 
 function make(
   fetchImpl: ReturnType<typeof fakeCompletion>,
@@ -35,7 +33,6 @@ function make(
   const compiler = createMemoryCompiler({
     store,
     wiki,
-    embed,
     fetchImpl,
     getPrefs: () =>
       ({
@@ -292,7 +289,6 @@ describe('㉒ memory-compiler v3.1', () => {
     const c2 = createMemoryCompiler({
       store: new MemoryStore(),
       wiki,
-      embed,
       fetchImpl: fakeCompletion(out),
       getPrefs: () =>
         ({ 'privacy.longTermMemory': true, 'chat.activeSessions': {} }) as unknown as Prefs,
@@ -322,7 +318,6 @@ describe('㉔ memory-compiler 编译水位 / 失败重试 / 串行 / 便签 / �
     return createMemoryCompiler({
       store,
       wiki,
-      embed,
       fetchImpl,
       getPrefs: () =>
         ({
@@ -607,5 +602,51 @@ describe('㉔ memory-compiler 编译水位 / 失败重试 / 串行 / 便签 / �
     expect(r.ok).toBe(false);
     expect(store.compileStateGet('Bad', 'x')).toMatchObject({ retries: 0, pendingTo: ids[1]! });
     expect(c.backlog('Bad', 'x')?.error).toMatch(/非法/);
+  });
+});
+
+describe('㉔ 编译器相关页（spec §3.4）', () => {
+  it('名字路（查询 = 本段对话）∪ 块混合映射回的页；块检索抛错只剩名字路', async () => {
+    const calls = { n: 0, bodies: [] as string[] };
+    const { store, wiki } = make(fakeCompletion('[]', calls));
+    wiki.ensureLayout('default');
+    wiki.applyOps(
+      [
+        { op: 'create_page', kind: 'topics', title: '爬山', aliases: [], tags: [], content: '香山' },
+        { op: 'create_page', kind: 'people', title: '老张', aliases: [], tags: [], content: '驴友' },
+        { op: 'create_page', kind: 'topics', title: '无关', aliases: [], tags: [], content: '别的' },
+      ],
+      'default',
+    );
+    say(store, 1, { text: '周末去爬山' });
+    const probes: string[] = [];
+    const mk = (related: (cid: string, probe: string) => Promise<string[]>) =>
+      createMemoryCompiler({
+        store,
+        wiki,
+        fetchImpl: fakeCompletion('[]', calls),
+        getPrefs: () =>
+          ({ 'privacy.longTermMemory': true, 'chat.activeSessions': {} }) as unknown as Prefs,
+        resolveTarget: () => ({ apiBase: 'https://x/v1', model: 'gpt', key: 'k', adapter: 'openai' }),
+        character: () => ({ id: 'default' }),
+        relatedPaths: related,
+      });
+    await mk(async (_c, probe) => {
+      probes.push(probe);
+      return ['user/people/老张.md'];
+    }).compileNow('s1');
+    const user = userOf(calls.bodies.at(-1)!);
+    expect(probes[0]).toContain('周末去爬山');
+    expect(user).toContain('<<< user/topics/爬山.md'); // 名字路
+    expect(user).toContain('<<< user/people/老张.md'); // 块路
+    expect(user).not.toContain('<<< user/topics/无关.md');
+
+    say(store, 1, { text: '又去爬山' });
+    await mk(async () => {
+      throw new Error('no embedding');
+    }).compileNow('s1');
+    const user2 = userOf(calls.bodies.at(-1)!);
+    expect(user2).toContain('<<< user/topics/爬山.md');
+    expect(user2).not.toContain('<<< user/people/老张.md');
   });
 });

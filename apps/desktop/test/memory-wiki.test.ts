@@ -612,3 +612,52 @@ describe('㉒ vault v2 文件层', () => {
     expect(w.search('同事', CID)[0]?.path).toBe('user/people/王小明.md');
   });
 });
+
+describe('㉔ chunks（块级检索单位，spec 2026-09-26-memory-v3 §3.1）', () => {
+  it('人物 / 话题每页一块；档案非空节（除一句话档案）各一块；经历除最近 3 条外每条一块；纯文本、去锁定', () => {
+    const w = makeWiki();
+    w.ensureLayout(CID);
+    w.applyOps([people('王小明', ['小王'], '大学室友，和[[年糕]]玩')], CID);
+    w.applyOps(
+      [
+        { op: 'upsert_section', page: 'user/profile.md', section: '一句话档案', content: '程序员' },
+        { op: 'upsert_section', page: 'user/profile.md', section: '喜好厌恶', content: '不吃香菜' },
+      ],
+      CID,
+    );
+    w.applyOps(
+      [
+        { op: 'append_timeline', date: '2026-01-01', text: '最早的一条' },
+        { op: 'append_timeline', date: '2026-09-18', text: '近一' },
+        { op: 'append_timeline', date: '2026-09-19', text: '近二' },
+        { op: 'append_timeline', date: '2026-09-20', text: '近三' },
+      ],
+      CID,
+    );
+    w.writeRaw(
+      'user/profile.md',
+      read(w, 'user/profile.md').replace('## 习惯作息\n', '## 习惯作息\n\n<!-- locked -->\n晚睡'),
+    );
+    const chunks = w.chunks(CID);
+    const byId = new Map(chunks.map((c) => [c.id, c]));
+    expect(chunks.map((c) => c.kind).sort()).toEqual(['people', 'profile', 'profile', 'timeline']);
+    const person = byId.get('user/people/王小明.md#page')!;
+    expect(person).toMatchObject({ label: '王小明', text: '大学室友，和年糕玩', date: '2026-09-22' });
+    expect(person.indexText).toBe('王小明\n小王\n大学室友，和年糕玩');
+    expect(byId.get('user/profile.md#喜好厌恶')).toMatchObject({
+      label: '用户档案 · 喜好厌恶',
+      text: '不吃香菜',
+    });
+    expect(byId.get('user/profile.md#习惯作息')!.text).toBe('晚睡');
+    expect(byId.has('user/profile.md#一句话档案')).toBe(false);
+    const tl = chunks.find((c) => c.kind === 'timeline')!;
+    expect(tl.id).toMatch(/^characters\/default\/timeline\.md#2026-01-01#[0-9a-f]{8}$/);
+    expect(tl).toMatchObject({ label: '共同经历 · 2026-01-01', text: '最早的一条', date: '2026-01-01' });
+    expect(chunks.map((c) => c.indexText).join('\n')).not.toContain('[[');
+    expect(chunks.map((c) => c.indexText).join('\n')).not.toContain('<!--');
+    // hash 随内容变
+    const h0 = person.hash;
+    w.applyOps([{ op: 'upsert_section', page: 'user/people/王小明.md', section: '正文', content: '换了工作' }], CID);
+    expect(w.chunks(CID).find((c) => c.id === person.id)!.hash).not.toBe(h0);
+  });
+});

@@ -265,7 +265,7 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
 });
 
 describe.skipIf(!available)('SqliteStore ㉒ 页向量指纹 + 被想起统计', () => {
-  it('v6 旧库（memory_page_index 无 model 列）打开即 ALTER；旧行 model = ""；新写带指纹', () => {
+  it('㉔ v6 / v7 旧库（有 memory_page_index）打开即退役页向量表、建块向量表', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v7-'));
     const path = join(dir, 'sessions.db');
     const Database = loadBetterSqlite();
@@ -279,18 +279,25 @@ describe.skipIf(!available)('SqliteStore ㉒ 页向量指纹 + 被想起统计',
     raw.close();
     const s = new SqliteStore(path);
     try {
-      expect(s.pageIndexList()).toEqual([
-        { path: 'user/profile.md', hash: 'h0', vector: [], model: '' },
+      s.chunkIndexUpsert(
+        [{ id: 'user/people/王小明.md#page', path: 'user/people/王小明.md', hash: 'h1', model: 'src|bge', vector: [0.5, 0.25] }],
+        2,
+      );
+      expect(s.chunkIndexList()).toEqual([
+        { id: 'user/people/王小明.md#page', path: 'user/people/王小明.md', hash: 'h1', model: 'src|bge', vector: [0.5, 0.25] },
       ]);
-      s.pageIndexUpsert('user/people/王小明.md', 'h1', [0.5, 0.25], 2, 'src|bge');
-      expect(s.pageIndexList().find((r) => r.hash === 'h1')).toEqual({
-        path: 'user/people/王小明.md',
-        hash: 'h1',
-        vector: [0.5, 0.25],
-        model: 'src|bge',
-      });
     } finally {
       s.close();
+    }
+    const check = new Database(path);
+    try {
+      const tables = (
+        check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>
+      ).map((r) => r.name);
+      expect(tables).not.toContain('memory_page_index');
+      expect(tables).toContain('memory_chunk_index');
+    } finally {
+      check.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -61,6 +61,15 @@ export interface CompileStateRow {
   lastAttemptAt: number | null;
 }
 
+/** ㉔ 块级向量索引行（memory_chunk_index；model = 嵌入模型指纹 `sourceId|model`）。 */
+export interface ChunkIndexRow {
+  id: string;
+  path: string;
+  hash: string;
+  model: string;
+  vector: number[];
+}
+
 /** ㉔ remember 便签（memory_note）。 */
 export interface MemoryNoteRow {
   id: number;
@@ -142,17 +151,13 @@ export interface ConversationStore {
   /** 旧表行数（⑲ 迁移检测 + F3 横幅）。 */
   memoryCount(characterId: string): number;
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（memory_page_index；path 全局唯一，user/ 页跨角色共享）---
-  /** model = 嵌入模型指纹（㉒ `sourceId|model`；未配置 = ''）。 */
-  pageIndexUpsert(
-    path: string,
-    hash: string,
-    vector: number[],
-    updatedAt: number,
-    model: string,
-  ): void;
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }>;
-  pageIndexDelete(path: string): void;
+  // --- ㉔ 块级向量索引（memory_chunk_index；块 id 全局唯一，user/ 块跨角色共享）---
+  /** 单事务 upsert（逐批落库：中途失败已算的不丢）。 */
+  chunkIndexUpsert(rows: readonly ChunkIndexRow[], updatedAt: number): void;
+  chunkIndexList(): ChunkIndexRow[];
+  chunkIndexDeletePath(path: string): void;
+  chunkIndexDelete(ids: readonly string[]): void;
+  chunkIndexClear(): void;
 
   // --- ㉒ 被想起的痕迹（memory_page_stats；派生数据，markdown 仍是真源）---
   /** 单事务：各页 recall_count+1、last_recalled_at = now。 */

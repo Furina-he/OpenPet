@@ -29,7 +29,8 @@
  * 单列主键让多角色的摘要 / 标题 / 置顶互相串（旧库由 SqliteStore 构造时整表重建，非 additive）→ 8。
  * 同版新增：memory_compile_state（编译进度账本：水位 / 待重试段 / 失败次数，重启不丢；首建时存量会话
  * 基线 = 最后一条，见 SqliteStore）、memory_note（remember 便签，随下一次编译进记忆）、memory_op_log
- * （来源追溯：哪次编译、出自哪段对话、对哪页做了什么）。
+ * （来源追溯：哪次编译、出自哪段对话、对哪页做了什么）、memory_chunk_index（块级向量：档案各节 / 人物话题页 /
+ * 更早的经历各一块，带模型指纹）；memory_page_index 退役（页级向量，派生数据，DROP 即可）。
  */
 export const SCHEMA_VERSION = 8;
 
@@ -114,13 +115,17 @@ CREATE TABLE IF NOT EXISTS memory_fact (
 );
 CREATE INDEX IF NOT EXISTS idx_memory_char ON memory_fact(character_id, pinned);
 
-CREATE TABLE IF NOT EXISTS memory_page_index (
-  path        TEXT PRIMARY KEY,
-  hash        TEXT NOT NULL,
-  vector      BLOB,
-  updated_at  INTEGER NOT NULL,
-  model       TEXT NOT NULL DEFAULT ''
+DROP TABLE IF EXISTS memory_page_index;
+
+CREATE TABLE IF NOT EXISTS memory_chunk_index (
+  id         TEXT PRIMARY KEY,
+  path       TEXT NOT NULL,
+  hash       TEXT NOT NULL,
+  model      TEXT NOT NULL DEFAULT '',
+  vector     BLOB,
+  updated_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_memory_chunk_path ON memory_chunk_index(path);
 
 CREATE TABLE IF NOT EXISTS memory_page_stats (
   path             TEXT PRIMARY KEY,
@@ -177,5 +182,4 @@ export const MIGRATE_COLUMNS: Array<{ table: string; column: string; ddl: string
   { table: 'memory_fact', column: 'updated_at', ddl: 'INTEGER' },
   { table: 'session_meta', column: 'summary', ddl: 'TEXT' },
   { table: 'session_meta', column: 'summary_upto', ddl: 'INTEGER' },
-  { table: 'memory_page_index', column: 'model', ddl: "TEXT NOT NULL DEFAULT ''" },
 ];

@@ -1,6 +1,7 @@
 import type { PersonaStateBlob, StorageUsage } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  ChunkIndexRow,
   CompileStateRow,
   ConversationStore,
   KbChunkRow,
@@ -210,27 +211,29 @@ export class MemoryStore implements ConversationStore {
     return this.memoryRows.filter((r) => r.characterId === characterId).length;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（内存等价表；㉒ 带模型指纹）---
-  private readonly pageIndex = new Map<string, { hash: string; vector: number[]; model: string }>();
+  // --- ㉔ 块级向量索引（内存等价表）---
+  private readonly chunkIndex = new Map<string, ChunkIndexRow>();
 
-  pageIndexUpsert(
-    path: string,
-    hash: string,
-    vector: number[],
-    _updatedAt: number,
-    model: string,
-  ): void {
-    this.pageIndex.set(path, { hash, vector: [...vector], model });
+  chunkIndexUpsert(rows: readonly ChunkIndexRow[], _updatedAt: number): void {
+    for (const r of rows) this.chunkIndex.set(r.id, { ...r, vector: [...r.vector] });
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
-    return [...this.pageIndex.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([path, v]) => ({ path, hash: v.hash, vector: [...v.vector], model: v.model }));
+  chunkIndexList(): ChunkIndexRow[] {
+    return [...this.chunkIndex.values()]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map((r) => ({ ...r, vector: [...r.vector] }));
   }
 
-  pageIndexDelete(path: string): void {
-    this.pageIndex.delete(path);
+  chunkIndexDeletePath(path: string): void {
+    for (const [id, r] of this.chunkIndex) if (r.path === path) this.chunkIndex.delete(id);
+  }
+
+  chunkIndexDelete(ids: readonly string[]): void {
+    for (const id of ids) this.chunkIndex.delete(id);
+  }
+
+  chunkIndexClear(): void {
+    this.chunkIndex.clear();
   }
 
   // --- ㉒ 被想起的痕迹（内存等价表）---

@@ -421,7 +421,9 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   // ⑲ 记忆 wiki：markdown 真源（userData/memory）；service 三路注入 + F3 RPC。
   const memoryWiki = new MemoryWiki(memoryRoot);
   // ㉒ §5.1 v1 → v2 自动升级（同步、零 LLM；先整目录备份；失败不写标记、下次启动重试）。
-  const memoryUpgrade = upgradeMemoryFormat(memoryRoot);
+  // ㉔ 升级后的向量重算并入 chat 就绪后的启动增量重算（见 chatRef = chat 处）：㉒ 原先在这里立即
+  // 重算，此时 chat 尚未装配、memoryEmbed 同步抛错被吞，那次重算从未真正执行。
+  upgradeMemoryFormat(memoryRoot);
   const memoryService = createMemoryService({
     store,
     wiki: memoryWiki,
@@ -433,8 +435,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     onChanged: (pages) => broadcast('memory.changed', { pages }),
     embedModelKey: memoryEmbedKey,
   });
-  // 升级改了文件名与正文 → 页向量全量重算（顺带写上模型指纹）。
-  if (memoryUpgrade.upgraded) void memoryService.reindexVectors();
   // 默认 chat 目标 + source key（memory-extractor 与 ⑩.7 testGreeting 共用的单发通道形态）。
   const chatTargetWithKey = () => {
     const p = prefsStore.getAll();
@@ -466,7 +466,6 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   const memoryCompiler = createMemoryCompiler({
     store,
     wiki: memoryWiki,
-    embed: memoryEmbed,
     fetchImpl: voiceFetch,
     getPrefs: () => prefsStore.getAll(),
     resolveTarget: utilityTargetWithKey,
@@ -483,7 +482,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
         userName: prefsStore.getAll()['chat.userName'] ?? '',
       };
     },
-    embedModelKey: memoryEmbedKey,
+    relatedPaths: (cid, probe) => memoryService.relatedPagePaths(cid, probe),
     reindex: (paths) => memoryService.reindexVectors(paths),
     onChanged: (pages) => broadcast('memory.changed', { pages }),
   });
@@ -627,6 +626,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     trace,
   });
   chatRef = chat;
+  // ㉔ §3.5 启动增量重算块向量（只嵌 hash / 指纹变了或缺失的块）：chat 就绪后延迟 3s 后台跑。
+  const reindexTimer = setTimeout(() => {
+    if (prefsStore.getAll()['privacy.longTermMemory']) void memoryService.reindexVectors();
+  }, 3000);
   // 线 B-1 IM 通道：唤醒/白名单/串行化编排。IM 与桌宠同一个灵魂——chat.send 复用同一
   // ChatService（persona/记忆/KB 全链路生效）；enable 平台随启动/配置变更起停。
   imService = createImService({
@@ -681,6 +684,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   const {
     retrieveForChat: _memRetrieve,
     reindexVectors: _memReindex,
+    recall: _memRecall,
+    relatedPagePaths: _memRelated,
     ...memoryHandlers
   } = memoryService;
   // resolveFor 是组装链内部 API，非 RPC handler —— 从 spread 里剔除（同 kb retrieveForChat 手法）。
@@ -1003,6 +1008,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       characters.switch(p.id);
       characterChanged(p.id);
       runMemoryMigration(p.id);
+      // ㉔ 新角色的经历块补向量（增量；总闸关不算）
+      if (prefsStore.getAll()['privacy.longTermMemory']) void memoryService.reindexVectors();
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
       const greeting = pickGreeting(characters.current().manifest, {
         user: prefsStore.getAll()['chat.userName'] || '用户',
@@ -1212,6 +1219,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     },
     stage,
     dispose: async () => {
+      clearTimeout(reindexTimer);
       const memoryFlush = memoryCompiler.flush(); // ⑮ 退出前收尾（store.close 前 await）
       stage.flush(); // ㉓ 未落盘的拖拽位置立即存（prefsStore.close 前）
       stage.dispose();

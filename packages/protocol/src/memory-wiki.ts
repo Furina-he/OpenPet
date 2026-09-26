@@ -51,14 +51,20 @@ export const MEMORY_QUOTAS = {
   residentRelationshipChars: 400,
   /** 常驻：timeline 最近 N 条。 */
   residentTimelineEntries: 3,
-  /** 注入总预算（常驻 > 关键词 > 向量 顺序截断）。 */
+  /** 注入总预算（常驻 > 名字 > 块混合 顺序截断）。 */
   injectBudgetChars: 2500,
   /** 关键词路 lorebook 预算（token；activateLorebook 内 ×2 近似字数）。 */
   keywordTokenBudget: 1200,
   /** 关键词路扫描深度。 */
   keywordScanDepth: 4,
-  /** 向量兜底页数。 */
-  vectorPages: 2,
+  /** ㉔ 块混合检索每轮注入的单元数（更早的经历合并算一个单元）。 */
+  recallUnits: 3,
+  /** ㉔ BM25 / 向量各路进融合的候选上限。 */
+  recallCandidates: 20,
+  /** ㉔ recall_memory 工具一次返回的单元上限。 */
+  toolRecallUnits: 6,
+  /** ㉔ recall_memory 工具一次返回的总字数上限。 */
+  toolRecallChars: 2000,
   /** 编译器输入相关页上限。 */
   compilerPages: 5,
   /** 编译器输入相关页总字数上限。 */
@@ -321,14 +327,21 @@ export const MemoryGraphSchema = z.object({
 });
 export type MemoryGraph = z.infer<typeof MemoryGraphSchema>;
 
-/** §4.6「试一句」：与聊天同一个 retrieveForChat 的命中结构 + 注入原文（不记统计）。 */
+/**
+ * §4.6「试一句」：与聊天同一个 retrieveForChat 的命中结构 + 注入原文（不记统计）。
+ * ㉔ 路线：keyword = 名字路（标题 / 别名出现在对话里）；text = 只中 BM25；vector = 只中向量；
+ * hybrid = 两路都中。同一页可出现多次（档案不同节各一个单元）。
+ */
+export const MemoryRecallViaSchema = z.enum(['keyword', 'text', 'vector', 'hybrid']);
+export type MemoryRecallVia = z.infer<typeof MemoryRecallViaSchema>;
+
 export const MemoryProbeResultSchema = z.object({
   resident: z.array(z.object({ title: z.string(), chars: z.number().int().nonnegative() })),
   pages: z.array(
     z.object({
       path: z.string(),
       title: z.string(),
-      via: z.enum(['keyword', 'vector']),
+      via: MemoryRecallViaSchema,
       score: z.number().optional(),
       chars: z.number().int().nonnegative(),
     }),

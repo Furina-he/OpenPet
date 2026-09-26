@@ -50,6 +50,23 @@ import {
 } from '@openpet/protocol';
 
 /** 非法操作（护栏/配额/锁定节）；message 进 memory.status.lastCompile.error。 */
+/** ㉔ §3.1 检索块（块级混合检索与块向量索引的单位）。 */
+export interface MemoryChunk {
+  /** `路径#键`：人物 / 话题 `#page`、档案 `#节名`、经历 `#日期#文本 sha1 前 8 位`。 */
+  id: string;
+  path: string;
+  kind: 'people' | 'topics' | 'profile' | 'timeline';
+  /** 注入标题：页标题 /「用户档案 · 喜好厌恶」/「共同经历 · 2026-03-01」。 */
+  label: string;
+  /** 注入正文（纯文本投影）。 */
+  text: string;
+  /** 检索文本 = 标签 + 别名（人物 / 话题）+ 正文。 */
+  indexText: string;
+  /** 经历 = 条目日期；其余 = 页 updated。 */
+  date: string;
+  hash: string;
+}
+
 /** ㉔ applyOps 逐条记录（来源日志）：op 同 MemoryOp.op，撞名并入记 'merge_page'。 */
 export interface AppliedOp {
   op: MemoryOp['op'] | 'merge_page';
@@ -897,12 +914,67 @@ export class MemoryWiki {
     return this.listPages(characterId).length;
   }
 
-  /** 页级向量索引输入：path + 内容 hash（变更检测）+ 嵌入文本（纯文本投影）。 */
-  pagesForIndex(characterId: string): Array<{ path: string; hash: string; text: string }> {
-    return this.listPages(characterId).map((p) => {
-      const text = `${p.frontmatter.title}\n${p.frontmatter.aliases.join(' ')}\n${toPlainText(p.body)}`;
-      return { path: p.path, hash: createHash('sha1').update(text).digest('hex'), text };
-    });
+  /**
+   * ㉔ §3.1 可召回内容切块（纯文本投影、去锁定标记；常驻内容不出块）：人物 / 话题每页一块（正文
+   * ≤2000 字）；档案「一句话档案」以外的每个非空节一块；经历除最近 3 条外每条一块；关系页不切。
+   * 块 id = `路径#键`；indexText = 标签 + 别名 + 正文（BM25 与向量的检索文本）；hash = sha1(indexText)。
+   */
+  chunks(characterId: string): MemoryChunk[] {
+    const out: MemoryChunk[] = [];
+    const sha1 = (t: string): string => createHash('sha1').update(t).digest('hex');
+    const push = (c: Omit<MemoryChunk, 'hash'>): void => {
+      if (c.text.trim()) out.push({ ...c, hash: sha1(c.indexText) });
+    };
+    for (const p of this.listPages(characterId)) {
+      const kind = memoryPageKind(p.path);
+      if (kind !== 'people' && kind !== 'topics') continue;
+      const fm = p.frontmatter;
+      const text = toPlainText(p.body).trim().slice(0, MEMORY_QUOTAS.pageChars);
+      push({
+        id: `${p.path}#page`,
+        path: p.path,
+        kind,
+        label: fm.title,
+        text,
+        indexText: [fm.title, fm.aliases.join(' '), text].filter(Boolean).join('\n'),
+        date: fm.updated,
+      });
+    }
+    const profile = this.readPage(PROFILE_PATH);
+    if (profile) {
+      for (const sec of splitSections(profile.body).sections) {
+        if (sec.name === MEMORY_PROFILE_SECTIONS[0]) continue; // 一句话档案已常驻
+        const label = `用户档案 · ${sec.name}`;
+        const text = toPlainText(sec.body).trim();
+        push({
+          id: `${PROFILE_PATH}#${sec.name}`,
+          path: PROFILE_PATH,
+          kind: 'profile',
+          label,
+          text,
+          indexText: `${label}\n${text}`,
+          date: profile.frontmatter.updated,
+        });
+      }
+    }
+    const tlPath = pagePaths(characterId).timeline;
+    const tl = this.readPage(tlPath);
+    if (tl) {
+      for (const e of parseTimeline(tl.body).slice(MEMORY_QUOTAS.residentTimelineEntries)) {
+        const label = `共同经历 · ${e.date}`;
+        const text = toPlainText(e.text).trim();
+        push({
+          id: `${tlPath}#${e.date}#${sha1(e.text).slice(0, 8)}`,
+          path: tlPath,
+          kind: 'timeline',
+          label,
+          text,
+          indexText: `${label}\n${text}`,
+          date: e.date,
+        });
+      }
+    }
+    return out;
   }
 
   // ---------- 三路注入视图（一律纯文本投影）----------

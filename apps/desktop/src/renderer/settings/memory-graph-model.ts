@@ -157,11 +157,12 @@ export function recallGlow(lastAt: number | undefined, now: number): number {
   return 0;
 }
 
-export type ProbeRoute = 'resident' | 'keyword' | 'vector';
+/** ㉔ 路线扩为 名字 keyword / 文本 text / 向量 vector / 混合 hybrid（+ 常驻）。 */
+export type ProbeRoute = 'resident' | MemoryProbeResult['pages'][number]['via'];
 
 /**
- * §4.6 试一句命中环：常驻三页细环、关键词暖环、向量冷环。常驻按块标题映射到本角色的固定页
- * （他角色只读节点不参与）。
+ * §4.6 试一句命中环：常驻三页细环、名字 / 文本暖环、向量冷环、混合双色。常驻按块标题映射到本角色的
+ * 固定页（他角色只读节点不参与）；同一页多个单元（档案不同节）以名字路优先、其余取先出现的。
  */
 export function probeRings(
   nodes: readonly MemoryGraphNode[],
@@ -181,6 +182,9 @@ export function probeRings(
     const id = kind ? own(kind) : undefined;
     if (id) out.set(id, 'resident');
   }
-  for (const p of r.pages) out.set(p.path, p.via);
+  for (const p of r.pages) {
+    const cur = out.get(p.path);
+    if (!cur || cur === 'resident' || p.via === 'keyword') out.set(p.path, p.via);
+  }
   return out;
 }

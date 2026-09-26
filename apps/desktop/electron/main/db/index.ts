@@ -11,6 +11,7 @@ export type {
   KbChunkRow,
   KbDocRow,
   CompileStateRow,
+  ChunkIndexRow,
   MemoryNoteRow,
   MemoryOpLogInput,
   MemoryOpLogRow,

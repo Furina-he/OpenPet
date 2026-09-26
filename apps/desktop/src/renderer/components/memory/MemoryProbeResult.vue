@@ -1,5 +1,6 @@
 <!-- components/memory/MemoryProbeResult.vue — ㉒「试一句」结果侧栏（spec §4.6）：会想起的页（路线徽标 +
-     向量相似度 + 字数）/ 共注入字数与预算 / 折叠的注入原文（所见即所注入）。 -->
+     向量相似度 + 字数）/ 共注入字数与预算 / 折叠的注入原文（所见即所注入）。㉔ 路线四种：名字 / 文本 /
+     向量 / 混合；同一页可出多个单元（档案不同节）。 -->
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import type { MemoryProbeResult } from '@openpet/protocol';
@@ -7,8 +8,20 @@ import type { MemoryProbeResult } from '@openpet/protocol';
 defineProps<{ result: MemoryProbeResult }>();
 const emit = defineEmits<{ select: [string] }>();
 const { t } = useI18n();
-const routeLabel = (via: 'keyword' | 'vector'): string =>
-  t(via === 'keyword' ? 'settings.memory.graph.probeKeyword' : 'settings.memory.graph.probeVector');
+type Via = MemoryProbeResult['pages'][number]['via'];
+const ROUTE_KEY: Record<Via, string> = {
+  keyword: 'settings.memory.graph.probeKeyword',
+  text: 'settings.memory.graph.probeText',
+  vector: 'settings.memory.graph.probeVector',
+  hybrid: 'settings.memory.graph.probeHybrid',
+};
+const ROUTE_BG: Record<Via, string> = {
+  keyword: 'var(--ds-brand-to)',
+  text: 'var(--ds-brand-to)',
+  vector: 'var(--ds-cool)',
+  hybrid: 'linear-gradient(90deg, var(--ds-brand-to), var(--ds-cool))',
+};
+const routeLabel = (via: Via): string => t(ROUTE_KEY[via]);
 </script>
 
 <template>
@@ -26,14 +39,14 @@ const routeLabel = (via: 'keyword' | 'vector'): string =>
       </div>
       <button
         v-for="p in result.pages"
-        :key="p.path"
+        :key="`${p.path}#${p.title}`"
         class="ds-focus flex items-center gap-2 rounded-btn px-1 py-0.5 text-left hover:bg-glass-border"
         @click="emit('select', p.path)"
       >
         <span
           class="rounded-full px-1.5 text-white"
           :style="{
-            background: p.via === 'keyword' ? 'var(--ds-brand-to)' : 'var(--ds-cool)',
+            background: ROUTE_BG[p.via],
           }"
           >{{ routeLabel(p.via) }}</span
         >

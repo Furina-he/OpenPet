@@ -99,4 +99,36 @@ export function runMemoryV3Contract(s: ConversationStore): void {
   expect(s.opLogForPath('user/people/王小明.md', 10)).toEqual([]);
   s.opLogClear();
   expect(s.opLogForPath('user/profile.md', 10)).toEqual([]);
+
+  // 块向量索引：upsert（同 id 覆盖）/ 按路径删 / 按 id 删 / 清空；向量 Float32 往返
+  const row = (id: string, path: string, hash = 'h') => ({
+    id,
+    path,
+    hash,
+    model: 'src|m',
+    vector: [0.5, 0.25],
+  });
+  s.chunkIndexUpsert(
+    [
+      row('user/profile.md#近况', 'user/profile.md'),
+      row('user/profile.md#身份', 'user/profile.md'),
+      row('user/people/王.md#page', 'user/people/王.md'),
+      row('characters/a/timeline.md#2026-01-01#abcd1234', 'characters/a/timeline.md'),
+    ],
+    1,
+  );
+  s.chunkIndexUpsert([row('user/people/王.md#page', 'user/people/王.md', 'h2')], 2);
+  expect(s.chunkIndexList()).toHaveLength(4);
+  expect(s.chunkIndexList().find((r) => r.id === 'user/people/王.md#page')).toEqual(
+    row('user/people/王.md#page', 'user/people/王.md', 'h2'),
+  );
+  s.chunkIndexDeletePath('user/profile.md');
+  expect(s.chunkIndexList().map((r) => r.id)).toEqual([
+    'characters/a/timeline.md#2026-01-01#abcd1234',
+    'user/people/王.md#page',
+  ]);
+  s.chunkIndexDelete(['user/people/王.md#page']);
+  expect(s.chunkIndexList()).toHaveLength(1);
+  s.chunkIndexClear();
+  expect(s.chunkIndexList()).toEqual([]);
 }

@@ -37,6 +37,8 @@ export const PrefsSchema = z.object({
   'display.dndManual': z.boolean().default(false),
   'display.focusMode': z.boolean().default(false),
   'privacy.longTermMemory': z.boolean().default(true),
+  // ㉔ 记忆 v3：语义回想门槛（块向量相似度门的最低分；实际门 = max(它, 中位数 + 0.12)）
+  'memory.recallMinScore': z.number().min(0).max(1).default(0.25),
   'privacy.anonymousStats': z.boolean().default(false),
   'privacy.crashReport': z.boolean().default(true),
   // general（D2 通用）

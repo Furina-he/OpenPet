@@ -17,7 +17,14 @@ import { assembleContext, type MemoryInjection } from './context-assembler.js';
 
 /** retrieveMemory 返回形状（memory-service.MemoryRetrieval 的管道视角；stats 只进 trace）。 */
 export interface MemoryRetrievalLite extends MemoryInjection {
-  stats?: { resident: number; keyword: number; vector: number; chars: number };
+  stats?: {
+    resident: number;
+    keyword: number;
+    text: number;
+    vector: number;
+    hybrid: number;
+    chars: number;
+  };
 }
 import type { ConversationStore } from './db/index.js';
 
@@ -125,7 +132,9 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       got?.stats ?? {
         resident: got?.resident.length ?? 0,
         keyword: got?.pages.length ?? 0,
+        text: 0,
         vector: 0,
+        hybrid: 0,
         chars: 0,
       },
     );

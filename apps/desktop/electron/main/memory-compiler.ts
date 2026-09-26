@@ -17,19 +17,18 @@
  * 尝试 ≥ 60s / 有 remember 便签 / 未整理 ≥ 2 × turnsPerCompile 条 → 整理一段（≤ 24 条，前情 ≤ 4 条只供
  * 理解）；调 LLM 前先锁段落库。失败分类：暂时类（模型不可用 / 网络 / HTTP）不计次、原段下次重试；
  * 输出类（非 JSON / schema / 护栏拒）计次，满 3 次放弃该段。全部编译（聊天 / 迁移 / 立即整理）走一条
- * 全局串行链，同一会话已在队列里不重复排队。成功后逐条写来源日志（memory_op_log）。
+ * 全局串行链，同一会话已在队列里不重复排队。成功后逐条写来源日志（memory_op_log）。相关页 = 名字路
+ * （查询 = 本段对话）∪ 块混合排名映射回人物 / 话题页（§3.4，非固定页 ≤5、总字数 ≤6000）。
  */
 import type { Prefs, MemoryOp } from '@openpet/protocol';
 import { activateLorebook, MEMORY_QUOTAS, MemoryOpsSchema } from '@openpet/protocol';
 import type { ConversationStore, MemoryNoteRow, StoredRow } from './db/index.js';
-import { cosineTopK } from './kb-search.js';
 import { type AppliedOp, MemoryOpError, MemoryWiki, pagePaths } from './memory-wiki.js';
 import type { FetchLike } from './rerank-client.js';
 
 export interface MemoryCompilerDeps {
   store: ConversationStore;
   wiki: MemoryWiki;
-  embed: (inputs: string[]) => Promise<number[][]>;
   fetchImpl: FetchLike;
   getPrefs: () => Prefs;
   resolveTarget: () => { apiBase: string; model: string; key: string; adapter: string } | null;
@@ -37,8 +36,11 @@ export interface MemoryCompilerDeps {
    * 当前角色；㉒ name / persona（生效人设前 600 字）/ userName 只用于定经历口吻，缺省只给 id。
    */
   character: () => CompilerCharacter;
-  /** ㉒ §5.4 当前嵌入目标指纹；相关页向量只用指纹一致的行。缺省 ''。 */
-  embedModelKey?: () => string;
+  /**
+   * ㉔ §3.4 相关页的块混合路（memory-service.relatedPagePaths：块排名映射回人物 / 话题页，无门）；
+   * 缺省只走名字路。
+   */
+  relatedPaths?: ((cid: string, probe: string) => Promise<string[]>) | undefined;
   /** 变更页向量重算（memory-service.reindexVectors）；缺省不算。 */
   reindex?: ((paths: readonly string[]) => Promise<void>) | undefined;
   /** 变更通知（broadcast 'memory.changed'）。 */
@@ -94,7 +96,6 @@ const RETRY_INTERVAL_MS = 60_000;
 const MESSAGE_CHARS = 800;
 /** 一次排队最多连续整理的段数（追赶积压；剩下的下次触发接着来）。 */
 const MAX_SEGMENTS_PER_RUN = 10;
-const VECTOR_TOP = 3;
 
 type Mode = 'turn' | 'flush' | 'now';
 const MODE_RANK: Record<Mode, number> = { turn: 0, flush: 1, now: 2 };
@@ -220,20 +221,9 @@ export function createMemoryCompiler(deps: MemoryCompilerDeps) {
       book.entries.filter((e) => hitContents.includes(e.content)).map((e) => e.name ?? ''),
     );
     try {
-      const key = deps.embedModelKey?.() ?? '';
-      const index = store.pageIndexList().filter((r) => r.vector.length > 0 && r.model === key);
-      if (index.length > 0) {
-        const qv = (await deps.embed([probe.slice(0, 4000)]))[0];
-        if (qv && qv.length > 0)
-          for (const t of cosineTopK(
-            index.map((r) => ({ meta: r.path, vector: r.vector })),
-            qv,
-            VECTOR_TOP,
-          ))
-            paths.add(t.meta);
-      }
+      for (const p of (await deps.relatedPaths?.(cid, probe)) ?? []) paths.add(p);
     } catch {
-      /* 无 embedding：只靠关键词 */
+      /* 块检索失败：只靠名字路 */
     }
     // 固定页永远在（编译器要看到全节才能整节改写）
     const pp = pagePaths(cid);
