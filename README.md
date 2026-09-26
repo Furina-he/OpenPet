@@ -257,7 +257,7 @@ flowchart TB
     S3["拟人化对话<br/>风格锚 · 自然节奏 · 表情兜底"]:::done
     S4["记忆 v1<br/>事实生命周期 · 会话摘要 · 世界设定"]:::done
     S5["记忆 v2 · 角色 wiki<br/>可读可编辑档案 · 三路注入"]:::active
-    S6["记忆图谱<br/>双链 · Obsidian 兼容"]:::active
+    S6["记忆图谱<br/>双链 · Obsidian 兼容"]:::done
     S1 --> S2 --> S3 --> S4 --> S5 --> S6
   end
 
