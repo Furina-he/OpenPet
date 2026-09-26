@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { assembleContext } from '../electron/main/context-assembler.js';
+import {
+  assembleContext,
+  prefixDigest,
+  WORKING_TURNS,
+  workingWindow,
+} from '../electron/main/context-assembler.js';
 import { MemoryStore } from '../electron/main/db/memory-store.js';
 import { DEFAULT_PERSONA_STATE } from '@openpet/protocol';
 
@@ -271,5 +276,162 @@ describe('⑭ 风格锚 + idle_duration', () => {
       userText: 'hi',
     });
     expect(req.messages.filter((m) => m.role === 'system')).toHaveLength(1); // 只有开头 system
+  });
+});
+
+describe('㉔ 缓存友好布局（spec 2026-09-26-memory-v3 §4）', () => {
+  const MEM = {
+    resident: ['### 用户档案\n深圳前端'],
+    pages: [{ title: '年糕', body: '橘猫' }],
+  };
+  function seed(store: MemoryStore, n: number, from = 0): void {
+    for (let i = from; i < from + n; i++)
+      store.appendMessage({
+        characterId: 'default',
+        sessionId: 's',
+        role: i % 2 === 0 ? 'user' : 'assistant',
+        text: `m${i}`,
+        ts: i + 1,
+      });
+  }
+  const base = (store: MemoryStore, over: Record<string, unknown> = {}) =>
+    assembleContext({
+      store,
+      character: CH,
+      sessionId: 's',
+      userText: '现在',
+      memory: MEM,
+      kbHits: [{ text: 'KB 片段' }],
+      loreHits: ['世界设定条目'],
+      sessionSummary: '早前聊过猫',
+      styleAnchor: '说人话',
+      moodValue: 0.9,
+      cacheFriendly: true,
+      ...over,
+    });
+
+  it('前缀 = 人设 + 规约 + 摘要 + 常驻记忆；不含关系记忆 / 命中 / 知识库 / 世界设定 / 锚', () => {
+    const store = new MemoryStore();
+    store.putPersonaState('default', { ...DEFAULT_PERSONA_STATE, affinity: 66 }, 1);
+    const req = base(store);
+    const prefix = req.messages[0]!.content;
+    expect(prefix).toContain('行为标签');
+    expect(prefix).toContain('## 早前对话摘要');
+    expect(prefix).toContain('## 记忆（关于用户与我们的过往');
+    expect(prefix).toContain('深圳前端');
+    for (const s of ['关系记忆', '年糕', 'KB 片段', '世界设定', '说人话', '相关记忆'])
+      expect(prefix).not.toContain(s);
+  });
+
+  it('句尾一条 system：关系记忆 + 世界设定 + 相关记忆 + 参考资料 + 风格锚（锚在最后），紧贴当前输入', () => {
+    const store = new MemoryStore();
+    store.putPersonaState('default', { ...DEFAULT_PERSONA_STATE, affinity: 66 }, 1);
+    seed(store, 4);
+    const req = base(store);
+    const tail = req.messages.at(-2)!;
+    expect(req.messages.at(-1)).toEqual({ role: 'user', content: '现在' });
+    expect(tail.role).toBe('system');
+    expect(req.messages.filter((m) => m.role === 'system')).toHaveLength(2);
+    const t = tail.content;
+    const order = ['【关系记忆】你与用户的亲密度 66/100', '## 世界设定', '## 相关记忆（这一轮想起的', '### 年糕\n橘猫', '## 参考资料', '说人话'];
+    const idx = order.map((s) => t.indexOf(s));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    expect(t.endsWith('说人话')).toBe(true);
+    expect(t).toContain('你现在心情不错'); // 心情句随关系记忆挪到句尾
+  });
+
+  it('两轮之间前缀逐字相同（亲密度 / 心情 / 命中 / 知识库都变了）', () => {
+    const store = new MemoryStore();
+    store.putPersonaState('default', { ...DEFAULT_PERSONA_STATE, affinity: 50 }, 1);
+    seed(store, 6);
+    const r1 = base(store);
+    store.putPersonaState('default', { ...DEFAULT_PERSONA_STATE, affinity: 51, turns: 9 }, 2);
+    seed(store, 2, 6);
+    const r2 = base(store, {
+      moodValue: -0.9,
+      memory: { resident: MEM.resident, pages: [{ title: '别的', body: '别的' }] },
+      kbHits: [{ text: '另一片段' }],
+      loreHits: ['另一条'],
+      userText: '下一句',
+    });
+    expect(r2.messages[0]).toEqual(r1.messages[0]);
+    // 历史前缀也不动：r1 的历史是 r2 历史的前缀
+    const h1 = r1.messages.slice(1, -2);
+    expect(r2.messages.slice(1, 1 + h1.length)).toEqual(h1);
+  });
+
+  it('分档窗口：n ≤ 20 全带；n > 20 带 20 + (n − 20) mod 10 条，起点每 10 条才跳', () => {
+    expect([0, 5, 20, 21, 29, 30, 31, 39, 40].map(workingWindow)).toEqual([
+      0, 5, 20, 21, 29, 20, 21, 29, 20,
+    ]);
+    const store = new MemoryStore();
+    seed(store, 25);
+    const hist = (r: ReturnType<typeof base>) => r.messages.slice(1, -2).map((m) => m.content);
+    const a = hist(base(store));
+    expect(a).toHaveLength(25);
+    expect(a[0]).toBe('m0');
+    seed(store, 4, 25); // 29 条：起点不动
+    const b = hist(base(store));
+    expect(b).toHaveLength(29);
+    expect(b[0]).toBe('m0');
+    seed(store, 1, 29); // 30 条：起点跳 10
+    const c = hist(base(store));
+    expect(c).toHaveLength(20);
+    expect(c[0]).toBe('m10');
+  });
+
+  it('宏照旧展开（前缀与句尾两处）；无易变内容时句尾只剩关系记忆行', () => {
+    const store = new MemoryStore();
+    const req = assembleContext({
+      store,
+      character: CH,
+      sessionId: 's',
+      userText: 'x',
+      personaPrompt: '你是{{char}}，叫用户{{user}}。',
+      styleAnchor: '对{{user}}说人话',
+      macroCtx: { user: '阿明' },
+      cacheFriendly: true,
+    });
+    expect(req.messages[0]!.content).toContain('你是小灵，叫用户阿明。');
+    expect(req.messages.at(-2)!.content).toMatch(/^【关系记忆】[\s\S]*对阿明说人话$/);
+    const bare = assembleContext({ store, character: CH, sessionId: 's', userText: 'x', cacheFriendly: true });
+    expect(bare.messages.at(-2)!.content).toMatch(/^【关系记忆】[^\n]*。$/);
+  });
+
+  it('开场白留在前缀之后、历史之前；prefixDigest 覆盖开头 system + 开场白', () => {
+    const store = new MemoryStore();
+    seed(store, 2);
+    const req = assembleContext({
+      store,
+      character: CH,
+      sessionId: 's',
+      userText: 'x',
+      beginDialogs: ['你好', '嗨'],
+      cacheFriendly: true,
+    });
+    expect(req.messages.slice(1, 5).map((m) => m.content)).toEqual(['你好', '嗨', 'm0', 'm1']);
+    const d = prefixDigest(req.messages, 2);
+    expect(d.hash).toMatch(/^[0-9a-f]{8}$/);
+    expect(d.chars).toBe(req.messages[0]!.content.length + 3);
+    expect(prefixDigest(req.messages, 0).hash).not.toBe(d.hash);
+  });
+
+  it('开关关（缺省）= 本批前布局：记忆 / 关系记忆都在开头 system，锚单独一条，窗口 20 条滑动', () => {
+    const store = new MemoryStore();
+    seed(store, 25);
+    const req = assembleContext({
+      store,
+      character: CH,
+      sessionId: 's',
+      userText: '现在',
+      memory: MEM,
+      styleAnchor: '说人话',
+    });
+    expect(req.messages[0]!.content).toContain('关系记忆');
+    expect(req.messages[0]!.content).toContain('### 年糕\n橘猫');
+    expect(req.messages[0]!.content).not.toContain('相关记忆');
+    expect(req.messages.at(-2)).toEqual({ role: 'system', content: '说人话' });
+    expect(req.messages.slice(1, -2)).toHaveLength(WORKING_TURNS);
   });
 });

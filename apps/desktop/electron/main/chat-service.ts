@@ -114,6 +114,8 @@ export interface ChatServiceOptions {
   styleAnchor?: () => string | null;
   /** ⑮ 会话滚动摘要供给（纯 store 读 + 开关门）；缺省不注入。ipc-router 注入。 */
   sessionSummary?: (sessionId: string) => string | null;
+  /** ㉔ 缓存友好上下文开关（chat.cacheFriendlyContext）；缺省 false = 旧布局。ipc-router 注入。 */
+  cacheFriendly?: () => boolean;
   /** ⑭ 自然节奏供给（core 句缓冲分段+打字延迟+段级正则）；缺省 null 直通零回归。ipc-router 注入。 */
   rhythm?: () => import('./conversation-core.js').RhythmConfig | null;
   /** §7：诊断时间线采集器；缺省不埋点。ipc-router 注入。 */
@@ -242,6 +244,7 @@ export class ChatService {
       styleAnchor: opts.styleAnchor,
       mood: () => this.interactions.moodValue(), // ⑱ mood → 灵魂（心情句）
       sessionSummary: opts.sessionSummary,
+      cacheFriendly: opts.cacheFriendly,
     });
     this.onTurnEnd = opts.onTurnEnd;
     this.budgetGate = opts.budgetGate;
@@ -405,9 +408,12 @@ export class ChatService {
   private onProviderEvent(sessionId: string, event: ChatEvent): void {
     if (event.type === 'usage') {
       this.session.recordUsage(sessionId, event.prompt, event.completion);
-      this.traceSpans
-        .get(sessionId)
-        ?.record('turn.usage', { prompt: event.prompt, completion: event.completion });
+      // ㉔ cached = 命中前缀缓存的 prompt token（端点报了才有）
+      this.traceSpans.get(sessionId)?.record('turn.usage', {
+        prompt: event.prompt,
+        completion: event.completion,
+        ...(event.cached !== undefined ? { cached: event.cached } : {}),
+      });
       return;
     }
     if (this.orchestrator.onProviderEvent(sessionId, event) === 'consumed') return;

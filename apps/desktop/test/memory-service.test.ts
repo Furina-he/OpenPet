@@ -679,3 +679,49 @@ describe('㉒ 图谱 / 被想起 / 来源 / 试一句', () => {
     expect(probe.injectedChars).toBe(r.stats.chars);
   });
 });
+
+describe('㉔ 试一句预览随缓存友好布局', () => {
+  it('开 = 常驻块 + 相关记忆块（与组装链前缀 / 句尾逐字一致）；关 = 旧合并块', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ds-msvc-'));
+    cleanups.push(dir);
+    const store = new MemoryStore();
+    const wiki = new MemoryWiki(dir, { now: () => Date.UTC(2026, 8, 22, 12) });
+    wiki.ensureLayout('default');
+    let on = true;
+    const svc = createMemoryService({
+      store,
+      wiki,
+      embed: throwEmbed,
+      getPrefs: () =>
+        ({ 'privacy.longTermMemory': true, 'chat.cacheFriendlyContext': on }) as unknown as Prefs,
+      character: () => ({ id: 'default' }),
+    });
+    wiki.applyOps(
+      [
+        { op: 'upsert_section', page: 'user/profile.md', section: '一句话档案', content: '程序员' },
+        topic('工作', '写代码', ['上班']),
+      ],
+      'default',
+    );
+    const probe = await svc['memory.probe']({ text: '上班好累' });
+    const [resident, recall] = probe.preview.split('\n\n## 相关记忆');
+    expect(resident).toMatch(/^## 记忆（关于用户与我们的过往/);
+    expect(resident).not.toContain('写代码');
+    expect(`## 相关记忆${recall}`).toContain('### 工作\n写代码');
+    const r = await svc.retrieveForChat('上班好累');
+    const req = assembleContext({
+      store,
+      character: { id: 'default', name: '阿芙' },
+      sessionId: 's',
+      userText: 'x',
+      memory: r,
+      cacheFriendly: true,
+    });
+    expect(req.messages[0]!.content).toContain(`\n\n${resident}`);
+    expect(req.messages.at(-2)!.content).toContain(`## 相关记忆${recall}`);
+    on = false;
+    const old = await svc['memory.probe']({ text: '上班好累' });
+    expect(old.preview).not.toContain('## 相关记忆');
+    expect(old.preview).toContain('程序员\n\n### 工作\n写代码');
+  });
+});

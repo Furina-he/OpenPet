@@ -139,6 +139,8 @@ export const PrefsSchema = z.object({
   'chat.regexRules': z.array(RegexRuleSchema).default(REGEX_PRESETS),
   // ⑮ 记忆域：会话滚动摘要总闸（窗口外轮末合并 ≤300 字，会额外调用杂务模型）
   'chat.sessionSummary': z.boolean().default(true),
+  // ㉔ 缓存友好上下文：稳定前缀 + 句尾一条易变 system + 分档历史窗口（关 = 本批前布局逐字节不变）
+  'chat.cacheFriendlyContext': z.boolean().default(true),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
   // voice（F-VC 语音运行时 + ⑩.6 音色工坊）

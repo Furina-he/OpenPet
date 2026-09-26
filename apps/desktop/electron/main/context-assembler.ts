@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import {
+  buildRelationshipLine,
   buildSystemPrompt,
   DEFAULT_PERSONA_STATE,
   expandMacros,
@@ -12,26 +14,82 @@ export interface MemoryInjection {
   pages: Array<{ title: string; body: string }>;
 }
 
+const MEMORY_HEADER =
+  '## 记忆（关于用户与我们的过往，供参考，自然使用，勿逐条复述；与当前对话冲突时以当前为准）';
+const RECALL_HEADER =
+  '## 相关记忆（这一轮想起的，供参考，自然使用，勿逐条复述；与当前对话冲突时以当前为准）';
+
+function block(
+  header: string,
+  parts: readonly string[],
+  expand: (t: string) => string,
+): string {
+  return parts.length === 0 ? '' : `${header}\n${parts.map((m) => expand(m)).join('\n\n')}`;
+}
+
+const pageParts = (memory: MemoryInjection | undefined): string[] =>
+  (memory?.pages ?? []).map((p) => `### ${p.title}\n${p.body}`);
+
 /**
  * ㉒ 「记忆」块渲染（组装链与「试一句」预览共用 = 所见即所注入）；无内容 → ''。
- * expand = 宏展开（组装链传 {{char}}/{{user}} 上下文，预览传恒等）。
+ * expand = 宏展开（组装链传 {{char}}/{{user}} 上下文，预览传恒等）。㉔ 缓存友好关时的旧布局。
  */
 export function formatMemoryBlock(
   memory: MemoryInjection | undefined,
   expand: (t: string) => string = (t) => t,
 ): string {
-  const parts = [
-    ...(memory?.resident ?? []),
-    ...(memory?.pages ?? []).map((p) => `### ${p.title}\n${p.body}`),
-  ];
-  if (parts.length === 0) return '';
-  return `## 记忆（关于用户与我们的过往，供参考，自然使用，勿逐条复述；与当前对话冲突时以当前为准）\n${parts
-    .map((m) => expand(m))
-    .join('\n\n')}`;
+  return block(MEMORY_HEADER, [...(memory?.resident ?? []), ...pageParts(memory)], expand);
+}
+
+/** ㉔ 缓存友好布局：稳定前缀里只放常驻（档案 / 关系 / 最近经历，分钟到小时级才变）。 */
+export function formatResidentBlock(
+  memory: MemoryInjection | undefined,
+  expand: (t: string) => string = (t) => t,
+): string {
+  return block(MEMORY_HEADER, memory?.resident ?? [], expand);
+}
+
+/** ㉔ 缓存友好布局：句尾易变块里放这一轮想起的（名字 / 块混合命中）。 */
+export function formatRecallBlock(
+  memory: MemoryInjection | undefined,
+  expand: (t: string) => string = (t) => t,
+): string {
+  return block(RECALL_HEADER, pageParts(memory), expand);
+}
+
+/** ㉔ 「试一句」预览按当前布局拼（所见即所注入）：开 = 常驻块 + 相关记忆块；关 = 旧合并块。 */
+export function formatMemoryPreview(memory: MemoryInjection, cacheFriendly: boolean): string {
+  if (!cacheFriendly) return formatMemoryBlock(memory);
+  return [formatResidentBlock(memory), formatRecallBlock(memory)].filter(Boolean).join('\n\n');
 }
 
 /** Working Memory 窗口（tech-design §8：最近 N=20 轮原始消息）。 */
 export const WORKING_TURNS = 20;
+/** ㉔ 分档窗口的跳档步长。 */
+export const WINDOW_STEP = 10;
+
+/**
+ * ㉔ §4.2 分档窗口：会话消息数 n > 20 时带最近 20 + (n − 20) mod 10 条（20–29 条），起点每 10 条才跳
+ * 一次，其间历史前缀逐轮不变；n ≤ 20 全带（与旧窗口相同）。
+ */
+export function workingWindow(n: number): number {
+  return n <= WORKING_TURNS ? n : WORKING_TURNS + ((n - WORKING_TURNS) % WINDOW_STEP);
+}
+
+/**
+ * ㉔ §4.3 稳定前缀摘要：开头 system + 开场白（beginCount 条）的 sha1 前 8 位与字数——诊断页里
+ * 连续几轮 hash 相同即前缀稳定。
+ */
+export function prefixDigest(
+  messages: ChatRequest['messages'],
+  beginCount = 0,
+): { hash: string; chars: number } {
+  const head = messages.slice(0, 1 + beginCount).map((m) => [m.role, m.content]);
+  return {
+    hash: createHash('sha1').update(JSON.stringify(head)).digest('hex').slice(0, 8),
+    chars: head.reduce((n, [, c]) => n + String(c).length, 0),
+  };
+}
 
 export interface AssembleInput {
   store: ConversationStore;
@@ -66,6 +124,11 @@ export interface AssembleInput {
   styleAnchor?: string;
   /** ⑱ 当前心情 [-1,1]（MoodState.current()）→ 【关系记忆】语气句。 */
   moodValue?: number;
+  /**
+   * ㉔ 缓存友好布局（缺省 false = 本批前布局，逐字节不变）：稳定前缀（人设 + 规约 + 摘要 + 常驻记忆）
+   * + 分档历史窗口 + 句尾一条易变 system（关系记忆 + 世界设定 + 相关记忆 + 参考资料 + 风格锚）。
+   */
+  cacheFriendly?: boolean;
 }
 
 /**
@@ -74,8 +137,13 @@ export interface AssembleInput {
  * Episodic 向量召回 / Semantic 事实硬注入 / token budget packing 留 V1+。
  */
 export function assembleContext(input: AssembleInput): ChatRequest {
+  const cache = input.cacheFriendly === true;
+  const limit = cache
+    ? workingWindow(input.store.messageStats(input.character.id, input.sessionId).count)
+    : WORKING_TURNS;
   // ⑭ {{idle_duration}} 数据源：history 最后一条消息距今的毫秒数（无历史不注入，宏原样保留）。
-  const rows = input.store.recentMessages(input.character.id, input.sessionId, WORKING_TURNS);
+  const rows =
+    limit > 0 ? input.store.recentMessages(input.character.id, input.sessionId, limit) : [];
   const lastTs = [...rows].reverse().find((r) => typeof r.ts === 'number')?.ts;
   const idleMs = lastTs !== undefined ? Math.max(0, Date.now() - lastTs) : undefined;
   const mc = input.macroCtx;
@@ -93,6 +161,7 @@ export function assembleContext(input: AssembleInput): ChatRequest {
   const base = buildSystemPrompt({
     name: input.character.name,
     persona,
+    ...(cache ? { relationshipInPrefix: false } : {}),
     ...(input.moodValue !== undefined ? { moodValue: input.moodValue } : {}),
     ...(input.personaPrompt ? { personaPrompt: ex(input.personaPrompt) } : {}),
     ...(input.character.emotions ? { emotions: input.character.emotions } : {}),
@@ -106,8 +175,11 @@ export function assembleContext(input: AssembleInput): ChatRequest {
           .join('\n\n')}`
       : '';
   // ⑲ 「记忆」块（memoryStage 三路产物）：常驻 + `### 标题` 命中页；宏同口径展开；只进 system。
-  const memBody = formatMemoryBlock(input.memory, ex);
-  const memoryBlock = memBody ? `\n\n${memBody}` : '';
+  // ㉔ 缓存友好：常驻进前缀、命中进句尾（两半按注入顺序拼 = 试一句预览）。
+  const para = (t: string): string => (t ? `\n\n${t}` : '');
+  const memoryBlock = para(
+    cache ? formatResidentBlock(input.memory, ex) : formatMemoryBlock(input.memory, ex),
+  );
   // ⑫ 世界设定（Lorebook 命中）；宏先展开再拼块。
   const loreBlock =
     input.loreHits && input.loreHits.length > 0
@@ -117,7 +189,6 @@ export function assembleContext(input: AssembleInput): ChatRequest {
   const summaryBlock = input.sessionSummary
     ? `\n\n## 早前对话摘要（本会话更早的内容，供参考，自然衔接勿复述）\n${input.sessionSummary}`
     : '';
-  const system = base + loreBlock + summaryBlock + memoryBlock + kbBlock;
   const history = rows
     .filter((r) => r.text.length > 0)
     .map((r) => ({ role: r.role, content: r.text }));
@@ -126,6 +197,34 @@ export function assembleContext(input: AssembleInput): ChatRequest {
     role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
     content: ex(text),
   }));
+  if (cache) {
+    // 稳定前缀：人设 + 规约 + 早前对话摘要 + 常驻记忆（逐轮不变）
+    const prefix = base + summaryBlock + memoryBlock;
+    // 句尾易变块（一条）：关系记忆 + 世界设定 + 相关记忆 + 参考资料 + 风格锚（锚最后，离生成点最近）
+    const tail = [
+      buildRelationshipLine({
+        persona,
+        ...(input.moodValue !== undefined ? { moodValue: input.moodValue } : {}),
+      }) ?? '',
+      loreBlock.trim(),
+      formatRecallBlock(input.memory, ex),
+      kbBlock.trim(),
+      input.styleAnchor ? ex(input.styleAnchor) : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    return {
+      messages: [
+        { role: 'system', content: prefix },
+        ...beginMsgs,
+        ...history,
+        ...(tail ? [{ role: 'system' as const, content: tail }] : []),
+        { role: 'user', content: input.userText },
+      ],
+      ...(input.model ? { model: input.model } : {}),
+    };
+  }
+  const system = base + loreBlock + summaryBlock + memoryBlock + kbBlock;
   return {
     messages: [
       { role: 'system', content: system },

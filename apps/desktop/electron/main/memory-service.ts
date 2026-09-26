@@ -16,7 +16,7 @@
  */
 import type { MemoryRecallVia, Prefs } from '@openpet/protocol';
 import { activateLorebook, MEMORY_QUOTAS, memoryPageKind } from '@openpet/protocol';
-import { formatMemoryBlock } from './context-assembler.js';
+import { formatMemoryPreview } from './context-assembler.js';
 import type { ConversationStore } from './db/index.js';
 import { cosineSim } from './kb-search.js';
 import { buildMemoryGraph } from './memory-graph.js';
@@ -523,7 +523,8 @@ export function createMemoryService(deps: MemoryServiceDeps) {
         })),
         injectedChars: r.stats.chars,
         budget: MEMORY_QUOTAS.injectBudgetChars,
-        preview: formatMemoryBlock(r),
+        // ㉔ 按当前布局拼（开 = 常驻块 + 相关记忆块；关 = 旧合并块）：所见即所注入
+        preview: formatMemoryPreview(r, Boolean(deps.getPrefs()['chat.cacheFriendlyContext'])),
       };
     },
 

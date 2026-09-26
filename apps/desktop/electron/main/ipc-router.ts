@@ -617,6 +617,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       if (!prefsStore.getAll()['chat.sessionSummary']) return null;
       return store.sessionSummaryGet(characters.current().characterId, sid).summary;
     },
+    // ㉔ 缓存友好上下文：稳定前缀 + 句尾易变块 + 分档窗口（关 = 本批前布局）。
+    cacheFriendly: () => Boolean(prefsStore.getAll()['chat.cacheFriendlyContext']),
     // ⑭ 自然节奏：core 句缓冲分段+打字延迟+段级口癖正则（关 = null 直通零回归）。
     rhythm: () => {
       const p = prefsStore.getAll();

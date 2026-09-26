@@ -667,6 +667,28 @@ describe('ChatService · §7 Trace 埋点', () => {
     expect(actions).toContain('context.assembled');
     expect(actions.at(-1)).toBe('turn.done');
   });
+
+  it('㉔ turn.usage 带上前缀缓存命中 cached（端点报了才有）', () => {
+    const collector = createTraceCollector({ broadcast: () => {}, enabled: () => true });
+    svc = new ChatService({
+      providerEntryPath: PROVIDER_ENTRY,
+      broadcast: () => {},
+      host: { intervalMs: 0 },
+      trace: collector,
+    });
+    const white = svc as unknown as {
+      traceSpans: Map<string, ReturnType<typeof collector.span>>;
+      onProviderEvent: (sid: string, e: unknown) => void;
+    };
+    white.traceSpans.set('s1', collector.span(undefined, 'turn'));
+    white.onProviderEvent('s1', { type: 'usage', prompt: 900, completion: 20, cached: 768 });
+    white.onProviderEvent('s1', { type: 'usage', prompt: 5, completion: 1 });
+    const usage = collector.history().filter((r) => r.action === 'turn.usage');
+    expect(usage.map((r) => r.fields)).toEqual([
+      { prompt: 900, completion: 20, cached: 768 },
+      { prompt: 5, completion: 1 },
+    ]);
+  });
 });
 
 describe('ChatService · ⑬ 表情分类兜底钩子', () => {

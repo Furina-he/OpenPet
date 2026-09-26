@@ -13,7 +13,7 @@ import {
   type ChatTool,
   type PackLorebook,
 } from '@openpet/protocol';
-import { assembleContext, type MemoryInjection } from './context-assembler.js';
+import { assembleContext, prefixDigest, type MemoryInjection } from './context-assembler.js';
 
 /** retrieveMemory 返回形状（memory-service.MemoryRetrieval 的管道视角；stats 只进 trace）。 */
 export interface MemoryRetrievalLite extends MemoryInjection {
@@ -58,6 +58,8 @@ export interface ContextPipelineDeps {
   styleAnchor?: (() => string | null) | undefined;
   /** ⑱ 当前心情供给（MoodState.current()，ChatService 从 InteractionService 取）；缺省不注入。 */
   mood?: (() => number) | undefined;
+  /** ㉔ 缓存友好上下文开关（ipc-router 读 chat.cacheFriendlyContext）；缺省 false = 旧布局。 */
+  cacheFriendly?: (() => boolean) | undefined;
 }
 
 export interface BuildInput {
@@ -184,6 +186,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       const anchor = deps.styleAnchor?.() ?? null;
       const moodValue = deps.mood?.();
       if (moodValue !== undefined) input.trace?.('context.mood', { value: Number(moodValue.toFixed(3)) });
+      const cacheFriendly = deps.cacheFriendly?.() === true;
       const assembled = assembleContext({
         store: deps.store,
         character: deps.character(),
@@ -197,9 +200,15 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(mc ? { macroCtx: mc } : {}),
         ...(anchor ? { styleAnchor: anchor } : {}),
         ...(moodValue !== undefined ? { moodValue } : {}),
+        ...(cacheFriendly ? { cacheFriendly: true } : {}),
         ...(personaSel
           ? { personaPrompt: personaSel.systemPrompt, beginDialogs: personaSel.beginDialogs }
           : {}),
+      });
+      // ㉔ 稳定前缀（开头 system + 开场白）摘要：连续几轮 hash 相同 = 前缀缓存可命中。
+      input.trace?.('context.prefix', {
+        ...prefixDigest(assembled.messages, personaSel?.beginDialogs.length ?? 0),
+        cacheFriendly,
       });
       // 空 tools 不设，避免空 tools 干扰 provider。
       const request: ChatRequest =
