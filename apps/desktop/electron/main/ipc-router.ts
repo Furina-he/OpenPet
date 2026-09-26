@@ -47,7 +47,7 @@ import { createEmotionFallback } from './emotion-fallback.js';
 import { createPersonaService } from './persona-service.js';
 import { createTraceCollector } from './trace-collector.js';
 import { createRouter, RpcError } from './router.js';
-import { buildCharacterMenuTemplate } from './character-menu.js';
+import { buildCharacterMenuTemplate, scaleMenuFromLayout } from './character-menu.js';
 import { menuLabels } from './menu-labels.js';
 import * as appActions from './app-actions.js';
 import { assembleDiag } from './crash-payload.js';
@@ -70,7 +70,7 @@ import { createPluginService, readPluginConfig } from './plugins/plugin-service.
 import { createConversationStore } from './db/index.js';
 import { stageDsbakImport } from './db/import-data.js';
 import { createIdleResponder } from './idle-responder.js';
-import { scaledBounds, CHARACTER_BASE_SIZE } from './window-scale.js';
+import { createCharacterStage, type CharacterStage, type StageScreen } from './character-stage.js';
 import {
   createPrefsStore,
   createPrefEffects,
@@ -85,8 +85,10 @@ import { createOnboardingService } from './onboarding-service.js';
 
 export interface IpcRouterDeps {
   targets: () => WebContents[];
-  /** character 窗口定位（setScale / 主动行为直发）。 */
+  /** character 窗口定位（主动行为直发 / character-stage 改几何）。 */
   characterWindow: () => BrowserWindow | null;
+  /** ㉓ Electron screen（character-stage 查显示器 / 工作区 / DPI）；index 注入。 */
+  screen: StageScreen;
   /** Hub（settings 窗口）定位器；index 注入。openHub RPC 用它 show+focus。 */
   settingsWindow?: () => BrowserWindow | null;
   /** 引导窗定位器（M7b-2）；finishOnboarding hide 它。 */
@@ -167,6 +169,8 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   dispose: () => Promise<void>;
   /** F-IT-06：index 的 fullscreen-watch 状态变化转入（true → desktop.fullscreen cue）。 */
   notifyDesktopState: (fullscreen: boolean) => void;
+  /** ㉓ character 窗几何真源：index 接显示器事件 / 休眠唤醒 / 托盘「角色大小」。 */
+  stage: CharacterStage;
 } {
   // F-VC：先声明后装配（broadcast 闭包引用它；构造依赖 store/characters 在下方才建）。
   let voiceService: ReturnType<typeof createVoiceService> | null = null;
@@ -598,18 +602,27 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
   });
   void imService.reload();
   const idleResponder = createIdleResponder(() => interactions.trigger('idle.timeout'));
-  // character 窗口的期望尺寸真源：唯一合法的尺寸变更入口是 setScale。
-  // Windows 非 100% DPI 下 setPosition 每次调用有 DIP↔物理像素舍入漂移
-  //（125% 实测 40 次 moveBy 涨 36×53px），位置操作必须用 setBounds 锁回期望尺寸。
-  let characterSize: { width: number; height: number } = { ...CHARACTER_BASE_SIZE };
+  // ㉓ character 窗几何唯一真源：每角色大小 / 模型框 + 舞台边 / 脚底锚点 / 夹屏 / 位置记忆。
+  // 锚点只存在 stage 里、bounds 永远算出来不回读——保住 Windows 非 100% DPI 下 setPosition 舍入
+  // 漂移的修复（125% 实测 40 次 moveBy 涨 36×53px）。启动即落位（取代旧 characterScale 副作用 hydrate）。
+  const stage = createCharacterStage({
+    window: deps.characterWindow,
+    screen: deps.screen,
+    prefs: prefsStore,
+    current: () => characters.current(),
+    broadcast: (layout) => broadcast('character.layoutChanged', layout),
+  });
+  stage.apply('boot');
+  /** 切角色 / 编辑 / 换形象后：两渲染窗热重载 + 新形象站回同一个脚底位置（底座随形象变）。 */
+  const characterChanged = (id: string): void => {
+    broadcast('character.changed', { characterId: id });
+    stage.apply('character');
+  };
   const prefEffects =
     deps.prefEffects ??
     createPrefEffects({
       characterWindow: deps.characterWindow,
       setLoginItem: deps.setLoginItem ?? (() => {}),
-      setCharacterSize: (s) => {
-        characterSize = s;
-      },
       broadcast,
     });
   applyAllEffects(prefEffects, prefsStore.getAll());
@@ -924,15 +937,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       }
       return { ok: true as const };
     },
-    'character.setScale': (p) => {
-      const win = deps.characterWindow();
-      if (win && !win.isDestroyed()) {
-        const b = scaledBounds(win.getBounds(), p.scale);
-        characterSize = { width: b.width, height: b.height };
-        win.setBounds(b);
-      }
-      return { ok: true as const };
-    },
+    'character.setScale': (p) => ({
+      ok: true as const,
+      scale: stage.setScale(p.scale, { persist: p.persist ?? false }),
+    }),
+    'character.layout': () => stage.layout(),
     'character.idleTimeout': (p) => {
       idleResponder.onIdleTimeout(p.idleMs);
       return { ok: true as const };
@@ -947,7 +956,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     'character.switch': (p) => {
       void memoryCompiler.flush(); // ⑮ 切换前收尾旧角色未提炼的轮（同步前缀读旧 cid）
       characters.switch(p.id);
-      broadcast('character.changed', { characterId: p.id });
+      characterChanged(p.id);
       runMemoryMigration(p.id);
       // ⑫ 切换问候：greetings 随机一条（宏展开，不落库不进上下文，spec §6）。
       const greeting = pickGreeting(characters.current().manifest, {
@@ -994,15 +1003,16 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       removeCharacter(p.id, {
         characters,
         importedRoot,
-        onChanged: (id) => broadcast('character.changed', { characterId: id }),
+        onChanged: characterChanged,
       });
+      stage.forgetCharacter(p.id); // ㉓ 大小记录随角色走
       return { ok: true as const };
     },
     // --- ⑩.7 E4 角色编辑器写侧 ---
     'character.updateManifest': (p) => {
       const manifest = characters.updateManifest(p.id, p.manifest);
       if (characters.current().characterId === p.id) {
-        broadcast('character.changed', { characterId: p.id }); // 编辑当前角色 → 热重载
+        characterChanged(p.id); // 编辑当前角色 → 热重载（sprite 适配改了底座也跟着变）
       }
       return { ok: true as const, manifest };
     },
@@ -1071,7 +1081,7 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       });
       characters.invalidate();
       if (characters.current().characterId === p.characterId) {
-        broadcast('character.changed', { characterId: p.characterId }); // 换当前角色 → 两渲染窗热重载
+        characterChanged(p.characterId); // 换当前角色 → 两渲染窗热重载 + 新底座站回原脚底
       }
       return { ok: true as const, id: p.characterId };
     },
@@ -1098,15 +1108,12 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
       return { ok: true as const };
     },
     'app.window.moveBy': (p, ctx) => {
-      if (ctx.win) {
+      if (!ctx.win) return { ok: true as const };
+      if (ctx.win === deps.characterWindow()) {
+        stage.moveBy(p.dx, p.dy); // ㉓ 锚点平移 + 期望尺寸 setBounds（DPI 漂移修复在 stage 内）
+      } else {
         const [x, y] = ctx.win.getPosition();
-        const nx = x + Math.round(p.dx);
-        const ny = y + Math.round(p.dy);
-        if (ctx.win === deps.characterWindow()) {
-          ctx.win.setBounds({ x: nx, y: ny, ...characterSize });
-        } else {
-          ctx.win.setPosition(nx, ny);
-        }
+        ctx.win.setPosition(x + Math.round(p.dx), y + Math.round(p.dy));
       }
       return { ok: true as const };
     },
@@ -1130,6 +1137,10 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
             openHub: () => appActions.openHub(settingsWindow),
           },
           menuLabels(String(prefsStore.getAll()['general.language'] ?? 'zh-CN')),
+          // ㉓「大小 ▸」：选档即按当前角色持久化
+          scaleMenuFromLayout(stage.layout(), (s) => {
+            stage.setScale(s, { persist: true });
+          }),
         ),
       );
       const c = deps.characterWindow();
@@ -1154,8 +1165,11 @@ export function registerIpcRouter(deps: IpcRouterDeps): {
     notifyDesktopState: (fullscreen: boolean): void => {
       if (fullscreen) interactions.trigger('desktop.fullscreen');
     },
+    stage,
     dispose: async () => {
       const memoryFlush = memoryCompiler.flush(); // ⑮ 退出前收尾（store.close 前 await）
+      stage.flush(); // ㉓ 未落盘的拖拽位置立即存（prefsStore.close 前）
+      stage.dispose();
       ipcMain.removeHandler('openpet:rpc');
       scheduler.stop();
       interactions.dispose();

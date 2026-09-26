@@ -1,19 +1,16 @@
 import type { BrowserWindow } from 'electron';
 import type { Prefs, PrefKey } from '@openpet/protocol';
-import { scaledBounds } from '../window-scale.js';
 
 /**
  * Main 侧副作用表：pref → 系统状态实际作用。set() 时与启动 hydrate 时各跑一遍。
  * 只装"有 Main 动作"的键；theme/lookAt/footGlow 靠 prefs-service 的 app.prefs.changed
- * 广播由 renderer 自响应，不进此表。characterScale 在 P2（与 D4 一起）。
+ * 广播由 renderer 自响应，不进此表。角色大小 / 位置归 ㉓ character-stage（不经 prefs 副作用）。
  */
 export type PrefEffects = Partial<{ [K in PrefKey]: (value: Prefs[K]) => void }>;
 
 export interface EffectsDeps {
   characterWindow?: () => BrowserWindow | null;
   setLoginItem?: (open: boolean) => void;
-  /** 缩放后回写 ipc-router 的 characterSize 真源（moveBy 锁尺寸用）。 */
-  setCharacterSize?: (size: { width: number; height: number }) => void;
   broadcast?: (channel: string, params: unknown) => void;
 }
 
@@ -28,13 +25,6 @@ export function createPrefEffects(deps: EffectsDeps = {}): PrefEffects {
     'general.launchAtLogin': (v) => setLoginItem(v),
     'display.alwaysOnTop': (v) => win()?.setAlwaysOnTop(v),
     'display.clickThrough': (v) => win()?.setIgnoreMouseEvents(v, { forward: true }),
-    'display.characterScale': (v) => {
-      const w = win();
-      if (!w) return;
-      const b = scaledBounds(w.getBounds(), v);
-      deps.setCharacterSize?.({ width: b.width, height: b.height });
-      w.setBounds(b);
-    },
   };
 }
 

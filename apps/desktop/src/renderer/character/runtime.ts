@@ -60,6 +60,7 @@ import { PostureLayer } from './posture';
 import { GazeMachine } from './gaze';
 import { BlinkScheduler } from './blink';
 import { settle } from './settle';
+import { modelScreenRect } from './model-rect';
 import type { CharacterRuntime } from './runtime-types';
 
 export type { CharacterRuntime, HitSurface } from './runtime-types';
@@ -563,12 +564,7 @@ export async function createVrmRuntime(
   const smoothN: Normalized = { nx: 0, ny: 0 };
   const headWorld = new THREE.Vector3(0, 1.35, 0);
   head?.getWorldPosition(headWorld);
-  const windowRect = () => ({
-    x: window.screenX,
-    y: window.screenY,
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+  const windowRect = () => modelScreenRect(container); // ㉓ 模型框，不含透明舞台边
 
   function setLookAt(x: number, y: number): void {
     const win = windowRect();
@@ -590,7 +586,7 @@ export async function createVrmRuntime(
     lookAtTarget.position.set(t.x, t.y, t.z);
   }
 
-  // ---- 窗口缩放自适应（D4 缩放 → Main 改 bounds → 这里跟随）----
+  // ---- 窗口缩放自适应（㉓ 缩放 → Main 改窗口与模型框 → 这里跟随）----
   const resizeObserver = new ResizeObserver(() => {
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -598,6 +594,8 @@ export async function createVrmRuntime(
     renderer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    // setSize 会清空 drawing buffer：立即补画一帧，否则连续缩放时每次 resize 都闪一帧空白
+    renderer.render(scene, camera);
   });
   resizeObserver.observe(container);
 

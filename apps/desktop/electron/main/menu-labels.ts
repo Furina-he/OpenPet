@@ -10,6 +10,13 @@ const ZH = {
   quit: '退出',
   connected: '已连接',
   disconnected: '未连接',
+  // ㉓ 大小子菜单（{pct} / {k} 由调用方手动替换）
+  size: '大小',
+  sizeCurrent: '大小（当前 {pct}%）',
+  characterSize: '角色大小',
+  characterSizeCurrent: '角色大小（当前 {pct}%）',
+  sizeReset: '恢复 100%',
+  sizePixel: '{k}×（{pct}%）',
 } as const;
 const EN: Record<keyof typeof ZH, string> = {
   chat: 'Chat',
@@ -22,6 +29,12 @@ const EN: Record<keyof typeof ZH, string> = {
   quit: 'Quit',
   connected: 'Connected',
   disconnected: 'Disconnected',
+  size: 'Size',
+  sizeCurrent: 'Size (now {pct}%)',
+  characterSize: 'Character size',
+  characterSizeCurrent: 'Character size (now {pct}%)',
+  sizeReset: 'Reset to 100%',
+  sizePixel: '{k}× ({pct}%)',
 };
 export type MenuLabels = Record<keyof typeof ZH, string>;
 export function menuLabels(locale: string): MenuLabels {

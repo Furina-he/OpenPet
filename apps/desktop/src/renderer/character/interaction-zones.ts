@@ -10,6 +10,19 @@ export interface ContentBox {
   bottom: number;
 }
 
+/**
+ * ㉓ 分区 / 气泡用的轮廓（窗口坐标）：精灵可见轮廓（容器 = 模型框坐标）加模型框偏移；
+ * 无精灵轮廓（VRM / Live2D）= 模型框本身。100% VRM / Live2D 模型框 = 整窗 → 与旧口径一致。
+ */
+export function windowContour(
+  model: { x: number; y: number; width: number; height: number },
+  sprite: ContentBox | null,
+): ContentBox {
+  return sprite
+    ? { top: model.y + sprite.top, bottom: model.y + sprite.bottom }
+    : { top: model.y, bottom: model.y + model.height };
+}
+
 export function tapZone(clientY: number, height: number, box?: ContentBox | null): Zone {
   if (box && box.bottom > box.top) {
     return (clientY - box.top) / (box.bottom - box.top) <= HEAD_RATIO ? 'head' : 'body';

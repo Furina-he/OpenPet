@@ -8,7 +8,7 @@
 // overlay 崩溃自愈后经 chat.snapshot 自动重建会话视图。
 //
 // M4 追加：character.current manifest / asset:// 越级不可达 / behavior.lookAt 直发 /
-// setScale 底边锚定 / idleTimeout 主动行为决策回路。
+// setScale 脚底锚定（㉓ 起窗口 = max(模型框, 最小画布)、放大夹进工作区）/ idleTimeout 主动行为决策回路。
 //
 // 运行：pnpm --filter @openpet/desktop exec electron test/e2e-smoke.mjs
 //（先 pnpm build；file:// 模式下 VRM 模型不可达 → character 走 fallback 脸，
@@ -282,32 +282,60 @@ async function main() {
   }
   console.log(`[smoke] M4 behavior.lookAt delivered (${lookAt.x},${lookAt.y})`);
 
-  // ---- M4-4: character.setScale 底边中点锚定改 bounds（50% / 200% / 复原）----
-  const before = character.getBounds();
+  // ---- M4-4 / ㉓: character.setScale 以脚底为锚（窗口 = max(模型框, 最小画布 300×360)）----
+  // stage 合批窗口 16ms：每次缩放后稍等再读几何。
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+  const layoutOf = () =>
+    overlay.webContents.executeJavaScript(`window.openpet.rpc('character.layout', {})`);
+  const feetOf = (l) => ({
+    x: l.screen.windowBounds.x + l.model.x + l.model.width / 2,
+    y: l.screen.windowBounds.y + l.model.y + l.model.height,
+  });
+  const before = await layoutOf();
   await overlay.webContents.executeJavaScript(
     `window.openpet.rpc('character.setScale', { scale: 0.5 })`,
   );
-  const half = character.getBounds();
-  if (half.width !== 160 || half.height !== 240) {
-    return fail(`setScale 0.5 bounds: ${half.width}x${half.height}`);
+  await settle();
+  const half = await layoutOf();
+  const halfBounds = character.getBounds();
+  if (half.model.width !== 160 || half.model.height !== 240) {
+    return fail(`setScale 0.5 model box: ${half.model.width}x${half.model.height}`);
   }
-  if (Math.abs(half.x + half.width / 2 - (before.x + before.width / 2)) > 1) {
-    return fail('setScale must keep bottom-center x');
+  if (halfBounds.width !== 300 || halfBounds.height !== 360) {
+    return fail(`setScale 0.5 window (min canvas): ${halfBounds.width}x${halfBounds.height}`);
   }
-  if (Math.abs(half.y + half.height - (before.y + before.height)) > 1) {
-    return fail('setScale must keep bottom y');
+  if (
+    Math.abs(feetOf(half).x - feetOf(before).x) > 1 ||
+    Math.abs(feetOf(half).y - feetOf(before).y) > 1
+  ) {
+    return fail('setScale must keep the feet anchored');
   }
   await overlay.webContents.executeJavaScript(
     `window.openpet.rpc('character.setScale', { scale: 2 })`,
   );
-  const dbl = character.getBounds();
-  if (dbl.width !== 640 || dbl.height !== 960) {
-    return fail(`setScale 2 bounds: ${dbl.width}x${dbl.height}`);
+  await settle();
+  const dbl = await layoutOf();
+  const wa = dbl.screen.workArea;
+  const box = {
+    x: dbl.screen.windowBounds.x + dbl.model.x,
+    y: dbl.screen.windowBounds.y + dbl.model.y,
+  };
+  if (dbl.scale !== Math.min(2, dbl.maxScale)) {
+    return fail(`setScale 2 → ${dbl.scale} (maxScale ${dbl.maxScale})`);
+  }
+  if (
+    box.x < wa.x ||
+    box.y < wa.y ||
+    box.x + dbl.model.width > wa.x + wa.width ||
+    box.y + dbl.model.height > wa.y + wa.height
+  ) {
+    return fail(`setScale 2 model box must stay inside the work area: ${JSON.stringify(dbl)}`);
   }
   await overlay.webContents.executeJavaScript(
     `window.openpet.rpc('character.setScale', { scale: 1 })`,
   );
-  console.log('[smoke] M4 setScale 50%/200% bottom-center anchored ok');
+  await settle();
+  console.log('[smoke] M4 setScale 50%/200% feet-anchored + clamped ok');
 
   // ---- M4-5: character.idleTimeout → Main 决策 stub 发回 playAction ----
   await character.webContents.executeJavaScript(`(() => {
@@ -347,7 +375,10 @@ async function main() {
   if (dragAfter.x === dragBefore.x && dragAfter.y === dragBefore.y) {
     return fail('drag did not move the window at all');
   }
-  character.setBounds(dragBefore); // 复位站位
+  // 复位站位：走 moveBy 让 stage 的锚点一起回来（直接 setBounds 会与 stage 真源脱节）
+  await character.webContents.executeJavaScript(
+    `window.openpet.rpc('app.window.moveBy', { dx: -160, dy: -80 })`,
+  );
   console.log('[smoke] M4 drag keeps window size locked ok');
   console.log('[smoke] PASS: M1+M2+M4 acceptance');
   app.exit(0);

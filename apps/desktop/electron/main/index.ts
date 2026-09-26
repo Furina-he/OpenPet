@@ -1,4 +1,13 @@
-import { app, Menu, screen, protocol, shell, globalShortcut, dialog } from 'electron';
+import {
+  app,
+  Menu,
+  screen,
+  protocol,
+  shell,
+  globalShortcut,
+  dialog,
+  powerMonitor,
+} from 'electron';
 import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +32,7 @@ import { createHotkeyService } from './hotkey-service.js';
 import { menuLabels } from './menu-labels.js';
 import { PerfMarks } from './perf-marks.js';
 import { createTray, type TrayHandle } from './tray-service.js';
+import { scaleMenuFromLayout } from './character-menu.js';
 import * as appActions from './app-actions.js';
 import { migrateUserData } from './user-data-migrate.js';
 import { resolveNativeDir, toUnpackedPath } from './packaged-paths.js';
@@ -52,6 +62,11 @@ let updateSvc: ReturnType<typeof createUpdateService> | null = null;
 let trayThinking = false;
 let trayError = false;
 let isQuitting = false;
+/** ㉓ 显示器 / 休眠事件解绑（before-quit）。 */
+let unwatchStage: (() => void) | null = null;
+/** ㉓ 托盘「角色大小」勾选随 layout 刷新；滚轮连续缩放时合批。 */
+let trayRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const TRAY_REFRESH_MS = 250;
 // 性能埋点：进程顶部 mark，character 窗首次加载完成 = 冷启动终点（PRD §7 预算 <3s）。
 const perf = new PerfMarks();
 perf.mark('boot');
@@ -171,6 +186,7 @@ app.whenReady().then(async () => {
   router = registerIpcRouter({
     targets,
     characterWindow,
+    screen,
     settingsWindow,
     onboardingWindow,
     overlayWindow,
@@ -287,9 +303,34 @@ app.whenReady().then(async () => {
       ) {
         // J2：热键 pref 改动即重注册（录制器保存后立即生效）。
         hotkeys?.apply(prefsStore.getAll());
+      } else if (channel === 'character.layoutChanged') {
+        if (trayRefreshTimer) clearTimeout(trayRefreshTimer);
+        trayRefreshTimer = setTimeout(() => {
+          trayRefreshTimer = null;
+          tray?.refreshMenu();
+        }, TRAY_REFRESH_MS);
       }
     },
   });
+
+  // ㉓ 位置记忆（F-DT-02）：显示器拔插 / 分辨率 / DPI 变化 → 按记录重算并夹屏（所在屏消失记它 10s）；
+  // 系统休眠立即存、唤醒按记录重放（防睡眠 / KVM / 驱动重连把位置冲掉）。
+  const stage = router.stage;
+  const onDisplaysChanged = (): void => stage.apply('display');
+  const onSuspend = (): void => stage.suspend();
+  const onResume = (): void => stage.apply('resume');
+  screen.on('display-added', onDisplaysChanged);
+  screen.on('display-removed', onDisplaysChanged);
+  screen.on('display-metrics-changed', onDisplaysChanged);
+  powerMonitor.on('suspend', onSuspend);
+  powerMonitor.on('resume', onResume);
+  unwatchStage = () => {
+    screen.off('display-added', onDisplaysChanged);
+    screen.off('display-removed', onDisplaysChanged);
+    screen.off('display-metrics-changed', onDisplaysChanged);
+    powerMonitor.off('suspend', onSuspend);
+    powerMonitor.off('resume', onResume);
+  };
 
   // M7b-2 首启：未完成引导 → 收起 overlay、弹引导窗（character 照常显示，"先看到角色"）。
   if (decideStartup(prefsStore.getAll()).showOnboarding) {
@@ -372,6 +413,11 @@ app.whenReady().then(async () => {
         app.quit();
       },
     },
+    // ㉓「角色大小 ▸」：穿透开着时角色身上点不到，托盘是入口；选档即按当前角色持久化
+    scale: () =>
+      scaleMenuFromLayout(stage.layout(), (s) => {
+        stage.setScale(s, { persist: true });
+      }),
   });
   // Hub 是持久窗口：关闭 = 收起（hide），非销毁；真正退出时（isQuitting）放行。
   wins.settings.on('close', (e) => {
@@ -401,6 +447,10 @@ app.on('before-quit', () => {
   fsWatch = null;
   tray?.destroy();
   tray = null;
+  if (trayRefreshTimer) clearTimeout(trayRefreshTimer);
+  trayRefreshTimer = null;
+  unwatchStage?.();
+  unwatchStage = null;
   void router?.dispose();
   router = null;
 });

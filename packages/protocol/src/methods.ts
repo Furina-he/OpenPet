@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BodyPackSchema, CharacterManifestSchema } from './character-manifest.js';
+import { CharacterLayoutSchema } from './character-layout.js';
 import { ErrorKindSchema } from './schemas.js';
 import { PrefsSchema } from './prefs.js';
 import {
@@ -370,10 +371,18 @@ export const Methods = {
   // --- notification: Main → Character 窗（主动台词 → 桌面气泡，不入会话，F-IT） ---
   'pet.say': { params: z.object({ text: z.string() }), result: z.null() },
   'character.setScale': {
-    // D4 角色缩放 50%–200%；Main 按底边中点锚定改 character 窗口 bounds。
-    params: z.object({ scale: z.number().min(0.5).max(2) }),
-    result: z.object({ ok: z.literal(true) }),
+    // ㉓ 当前角色缩放：Main character-stage 以脚底为锚改窗口（吸附 / 夹 maxScale / 夹屏）。
+    // persist 缺省 false = 预览（D4 拖动 / 滚轮中），true = 按当前角色落盘 display.characterScales。
+    params: z.object({ scale: z.number().min(0.5).max(2), persist: z.boolean().optional() }),
+    result: z.object({ ok: z.literal(true), scale: z.number() }),
   },
+  'character.layout': {
+    // ㉓ 当前几何（character 窗启动先拉它再建 runtime；D4 屏幕示意同源）。
+    params: z.object({}),
+    result: CharacterLayoutSchema,
+  },
+  // --- notification: Main → character 窗 + Hub D4（缩放 / 切角色 / 显示器变化 / 拖拽落定后）---
+  'character.layoutChanged': { params: CharacterLayoutSchema, result: z.null() },
   'character.idleTimeout': {
     // 渲染端 90s 空闲上报（tech-design §7「主动行为」）；Main 决策（M4 为动作 stub）。
     params: z.object({ idleMs: z.number().int().positive() }),

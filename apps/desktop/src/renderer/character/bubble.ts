@@ -1,5 +1,6 @@
-/** A2 桌面气泡 DOM 控制器：流式追加文本、自动消失、方向。无业务（只反映 chat 文本）。 */
-import { durationMs, bubbleSide, bubbleTop } from './bubble-timer';
+/** A2 桌面气泡 DOM 控制器：流式追加文本、自动消失、定位。无业务（只反映 chat 文本）。 */
+import { durationMs, placeBubble } from './bubble-timer';
+import type { ContentBox } from './interaction-zones';
 import type { Prefs } from '@openpet/protocol';
 
 export interface Bubble {
@@ -8,32 +9,35 @@ export interface Bubble {
   /** F-IT 主动台词（pet.say）：整句显示 + 按 pref 自动消失；不入会话流。 */
   say(text: string): void;
   setDuration(pref: Prefs['display.bubbleDuration']): void;
+  /** ㉓ 几何变了（缩放 / 换屏）：可见时按新轮廓重新定位。 */
+  relayout(): void;
 }
 
-/** ⑳ contentBox：可见轮廓 getter（sprite）——有轮廓时气泡贴在头顶上方；缺省 / null = 原有窗口口径。 */
+/**
+ * ㉓ contour：轮廓（窗口坐标，精灵轮廓 ?? 模型框）；气泡贴在它的顶上方。
+ * workArea：所在显示器工作区（layout.screen.workArea）；null = 只按窗口定位。
+ */
 export function mountBubble(
   el: HTMLElement,
-  contentBox: () => { top: number; bottom: number } | null = () => null,
+  contour: () => ContentBox,
+  workArea: () => { x: number; y: number; width: number; height: number } | null = () => null,
 ): Bubble {
   let pref: Prefs['display.bubbleDuration'] = '5';
   let hideTimer: number | null = null;
   let streaming = false;
 
   function place(): void {
-    const box = contentBox();
-    if (box) {
-      el.classList.remove('bubble-below');
-      el.classList.add('bubble-above');
-      el.style.top = `${bubbleTop(box.top, el.offsetHeight || 80)}px`;
-      return;
-    }
-    el.style.top = '';
-    const side = bubbleSide({
-      charTopY: el.getBoundingClientRect().top,
+    const pos = placeBubble({
+      boxTop: contour().top,
+      bubbleW: el.offsetWidth || 200,
       bubbleH: el.offsetHeight || 80,
+      windowW: window.innerWidth,
+      windowH: window.innerHeight,
+      windowScreen: { x: window.screenX, y: window.screenY },
+      workArea: workArea(),
     });
-    el.classList.remove('bubble-above', 'bubble-below');
-    el.classList.add(side === 'above' ? 'bubble-above' : 'bubble-below');
+    el.style.left = `${pos.left}px`;
+    el.style.top = `${pos.top}px`;
   }
   function show(): void {
     el.classList.remove('bubble-hidden');
@@ -54,7 +58,7 @@ export function mountBubble(
       }
       el.textContent = (el.textContent ?? '') + text;
       if (hideTimer !== null) clearTimeout(hideTimer); // 流式中不消失
-      if (contentBox()) place(); // ⑳ 贴轮廓时随文本增高上移，不压到头上
+      place(); // 贴轮廓：随文本增高上移，不压到头上（100% VRM 轮廓顶 = 0 → 恒 top 12）
     },
     endStream() {
       streaming = false;
@@ -68,6 +72,9 @@ export function mountBubble(
     },
     setDuration(p) {
       pref = p;
+    },
+    relayout() {
+      if (!el.classList.contains('bubble-hidden')) place();
     },
   };
 }
