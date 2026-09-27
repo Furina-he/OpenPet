@@ -105,9 +105,6 @@ const currentCid = computed(
     graph.value?.nodes.find((n) => n.kind === 'relationship' && !n.readonly)?.characterId ??
     'default',
 );
-const graphEmpty = computed(
-  () => !!graph.value && !graph.value.nodes.some((n) => n.kind === 'people' || n.kind === 'topics'),
-);
 const scopeOptions = computed(() => [
   { value: 'current', label: t('settings.memory.graph.scopeCurrent') },
   { value: 'all', label: t('settings.memory.graph.scopeAll') },
@@ -459,13 +456,6 @@ watch(
             :label="ariaLabel"
             @select="selectGraph"
           />
-          <!-- 空态 -->
-          <div
-            v-if="graphEmpty"
-            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-text-sub"
-          >
-            {{ t('settings.memory.graph.empty') }}
-          </div>
           <!-- 试一句结果（左上浮层） -->
           <div
             v-if="probeResult"

@@ -662,7 +662,6 @@ export const en: LocaleMessages = {
         zoomIn: 'Zoom in',
         zoomOut: 'Zoom out',
         fit: 'Fit all',
-        empty: 'The more you chat, the richer the graph',
         aria: 'Memory graph: {pages} pages, {links} links',
         readonly: "Another character's page (read-only)",
         edit: 'Edit',

@@ -638,7 +638,6 @@ export const zhCN = {
         zoomIn: '放大',
         zoomOut: '缩小',
         fit: '适配全部',
-        empty: '聊得越多，图谱越丰富',
         aria: '记忆图谱：{pages} 页，{links} 条链接',
         readonly: '其他角色的页面（只读）',
         edit: '编辑',
