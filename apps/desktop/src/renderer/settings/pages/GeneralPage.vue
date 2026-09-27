@@ -200,6 +200,16 @@ const THINKING = computed(() => [
           @update:model-value="(v) => set('chat.naturalRhythm', v)"
         />
       </SettingCard>
+      <!-- ㉔ 缓存友好上下文 -->
+      <SettingCard
+        :label="t('settings.general.cacheFriendly')"
+        :description="t('settings.general.cacheFriendlyDesc')"
+      >
+        <Switch
+          :model-value="prefs['chat.cacheFriendlyContext']"
+          @update:model-value="(v) => set('chat.cacheFriendlyContext', v)"
+        />
+      </SettingCard>
       <SettingCard :label="t('settings.general.sessionSummary')" :description="t('settings.general.sessionSummaryDesc')">
         <Switch
           :model-value="prefs['chat.sessionSummary']"

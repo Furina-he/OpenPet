@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MemoryGraph, MemoryTree } from '@openpet/protocol';
+import type { MemoryGraph, MemorySource, MemoryTree } from '@openpet/protocol';
+import { zhCN } from '../src/renderer/i18n/locales/zh-CN';
 import {
   backlinksOf,
   buildGroups,
@@ -10,6 +11,9 @@ import {
   isDirty,
   linkResolverFor,
   listSections,
+  sourceDate,
+  sourceLine,
+  sourceOpLabel,
   stripFrontmatter,
   toggleSectionLock,
 } from '../src/renderer/settings/memory-view.js';
@@ -127,5 +131,48 @@ describe('㉒ memory-view：反向链接 / 未建页面建页 / 预览解析器'
     expect(r('王小明', false)).toBe('user/people/王小明.md');
     expect(r('珠峰', false)).toBeNull();
     expect(r('../profile.md', true)).toBe('user/profile.md');
+  });
+});
+
+describe('㉔ 来源追溯文案（阅读栏「来源」）', () => {
+  // 用真词条渲染：zh-CN 模板 + 最小插值（{name} → 参数）
+  const zh = (zhCN as unknown as { settings: { memory: { src: Record<string, string> } } }).settings
+    .memory.src;
+  const t = (key: string, params: Record<string, unknown> = {}): string => {
+    const leaf = key.replace('settings.memory.src.', '');
+    const tpl = zh[leaf] ?? key;
+    return tpl.replace(/\{(\w+)\}/g, (_m, k: string) => String(params[k] ?? ''));
+  };
+  const now = new Date(2026, 8, 27, 12).getTime();
+  const base: MemorySource = {
+    at: new Date(2026, 8, 22, 21).getTime(),
+    characterId: 'default',
+    characterName: '小灵',
+    sessionId: 'default',
+    sessionTitle: '周末计划',
+    ops: [
+      { op: 'upsert_section', detail: '近况' },
+      { op: 'append_timeline', detail: '2026-09-22' },
+      { op: 'append_timeline', detail: '2026-09-21' },
+    ],
+    viewable: true,
+  };
+
+  it('日期 · 会话 · 操作（同类去重）', () => {
+    expect(sourceLine(base, t, now)).toBe('9 月 22 日 · 与小灵的「周末计划」 · 改写「近况」、新增经历');
+  });
+
+  it('跨年带年份；迁移 / 会话已删；各操作文案', () => {
+    expect(sourceDate(new Date(2025, 11, 31).getTime(), t, now)).toBe('2025 年 12 月 31 日');
+    expect(
+      sourceLine({ ...base, sessionId: null, sessionTitle: null, ops: [{ op: 'create_page', detail: '王小明' }] }, t, now),
+    ).toBe('9 月 22 日 · 旧记忆迁移 · 新建此页');
+    expect(sourceLine({ ...base, sessionTitle: null, ops: [] }, t, now)).toBe(
+      '9 月 22 日 · 与小灵的对话（已删除）',
+    );
+    const label = (op: string, detail: string | null = '甲') => sourceOpLabel({ op, detail }, t);
+    expect(
+      ['remove_line', 'merge_page', 'set_props', 'merge_timeline', 'mystery'].map((o) => label(o)),
+    ).toEqual(['删减「甲」', '并入「甲」', '更新属性', '合并旧经历', 'mystery']);
   });
 });

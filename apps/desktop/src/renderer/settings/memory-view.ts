@@ -7,6 +7,7 @@ import {
   memoryFileStem,
   resolveLink,
   type MemoryGraph,
+  type MemorySource,
   type MemoryTree,
   type MemoryTreeNode,
 } from '@openpet/protocol';
@@ -162,4 +163,52 @@ export function linkResolverFor(
 ): (target: string, markdown: boolean) => string | null {
   const pages = (graph?.nodes ?? []).filter((n) => n.kind !== 'ghost').map((n) => ({ path: n.id }));
   return (target, markdown) => resolveLink(target, from, pages, { markdown });
+}
+
+// ---------- ㉔ §5 来源追溯（阅读栏底部「来源」）----------
+
+/** vue-i18n 的 t 的最小形状（纯逻辑可测，组件传 useI18n().t）。 */
+export type Translate = (key: string, params?: Record<string, unknown>) => string;
+const SRC = 'settings.memory.src.';
+
+/** 一条操作 → 文案（改写「近况」/ 新增经历 / 并入「小王」…）；未知操作原样。 */
+export function sourceOpLabel(o: { op: string; detail: string | null }, t: Translate): string {
+  const name = o.detail ?? '';
+  switch (o.op) {
+    case 'upsert_section':
+      return t(`${SRC}upsert`, { name });
+    case 'remove_line':
+      return t(`${SRC}removeLine`, { name });
+    case 'create_page':
+      return t(`${SRC}create`);
+    case 'merge_page':
+      return t(`${SRC}merge`, { name });
+    case 'set_props':
+      return t(`${SRC}props`);
+    case 'append_timeline':
+      return t(`${SRC}appendTimeline`);
+    case 'merge_timeline':
+      return t(`${SRC}mergeTimeline`);
+    default:
+      return o.op;
+  }
+}
+
+/** 日期：今年只写月日，跨年带年份（本地时区）。 */
+export function sourceDate(at: number, t: Translate, now: number = Date.now()): string {
+  const d = new Date(at);
+  const params = { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() };
+  return t(`${SRC}${d.getFullYear() === new Date(now).getFullYear() ? 'date' : 'dateYear'}`, params);
+}
+
+/** 「9 月 22 日 · 与小灵的「周末计划」· 改写「近况」、新增经历」；同类操作去重。 */
+export function sourceLine(s: MemorySource, t: Translate, now: number = Date.now()): string {
+  const who =
+    s.sessionId === null
+      ? t(`${SRC}migrated`)
+      : s.sessionTitle === null
+        ? t(`${SRC}sessionGone`, { name: s.characterName })
+        : t(`${SRC}session`, { name: s.characterName, title: s.sessionTitle });
+  const ops = [...new Set(s.ops.map((o) => sourceOpLabel(o, t)))].join(t(`${SRC}sep`));
+  return [sourceDate(s.at, t, now), who, ops].filter(Boolean).join(' · ');
 }

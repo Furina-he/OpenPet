@@ -8,6 +8,7 @@ import {
   loadBetterSqlite,
   resolveNativeBinding,
 } from '../../electron/main/db/sqlite-store.js';
+import { runMemoryV3Contract } from './memory-v3-contract.js';
 
 // better-sqlite3 是原生模块：CI/本地 Node 可加载则实测；不可加载时跳过（真机覆盖）。
 let available = false;
@@ -193,7 +194,7 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
       );
     }
     s1.sessionSetTitle('s', 'c', '标题');
-    s1.sessionSummarySet('s', '聊了猫', ids[2]!);
+    s1.sessionSummarySet('c', 's', '聊了猫', ids[2]!);
     s1.close();
 
     const s2 = new SqliteStore(path); // 重开：全部持久化
@@ -205,15 +206,15 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
       expect(s2.memoryVectors('c')[0]).toMatchObject({ createdAt: 100, updatedAt: 200 });
       expect(s2.memoryVectors('c')[0]!.vector).toEqual([0, 1]);
 
-      expect(s2.sessionSummaryGet('s')).toEqual({ summary: '聊了猫', upto: ids[2]! });
-      s2.sessionSummarySet('s', '手动改'); // upto 不动
-      expect(s2.sessionSummaryGet('s')).toEqual({ summary: '手动改', upto: ids[2]! });
+      expect(s2.sessionSummaryGet('c', 's')).toEqual({ summary: '聊了猫', upto: ids[2]! });
+      s2.sessionSummarySet('c', 's', '手动改'); // upto 不动
+      expect(s2.sessionSummaryGet('c', 's')).toEqual({ summary: '手动改', upto: ids[2]! });
       expect(s2.sessionList('c')[0]!.title).toBe('标题'); // summary 写入不冲 title
-      s2.sessionSummarySet('s', null);
-      expect(s2.sessionSummaryGet('s').summary).toBeNull();
+      s2.sessionSummarySet('c', 's', null);
+      expect(s2.sessionSummaryGet('c', 's').summary).toBeNull();
 
-      expect(s2.messageStats('s')).toEqual({ count: 5, lastId: ids[4]! });
-      expect(s2.messageStats('nope')).toEqual({ count: 0, lastId: 0 });
+      expect(s2.messageStats('c', 's')).toEqual({ count: 5, lastId: ids[4]! });
+      expect(s2.messageStats('c', 'nope')).toEqual({ count: 0, lastId: 0 });
       expect(s2.messagesBetween('c', 's', ids[1]!, ids[3]!).map((m) => m.text)).toEqual([
         'm3',
         'm4',
@@ -253,9 +254,9 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
       expect(fact).toMatchObject({ text: '旧事实', pinned: true, createdAt: 42, updatedAt: null });
       s.memoryUpdate(fact.id, '新事实', [1], 99);
       expect(s.memoryList('c')[0]).toMatchObject({ text: '新事实', updatedAt: 99 });
-      expect(s.sessionSummaryGet('s')).toEqual({ summary: null, upto: null });
-      s.sessionSummarySet('s', '迁移后可写', 7);
-      expect(s.sessionSummaryGet('s')).toEqual({ summary: '迁移后可写', upto: 7 });
+      expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: null, upto: null });
+      s.sessionSummarySet('c', 's', '迁移后可写', 7);
+      expect(s.sessionSummaryGet('c', 's')).toEqual({ summary: '迁移后可写', upto: 7 });
     } finally {
       s.close();
       rmSync(dir, { recursive: true, force: true });
@@ -264,7 +265,7 @@ describe.skipIf(!available)('SqliteStore 记忆域 T1（与 MemoryStore 语义�
 });
 
 describe.skipIf(!available)('SqliteStore ㉒ 页向量指纹 + 被想起统计', () => {
-  it('v6 旧库（memory_page_index 无 model 列）打开即 ALTER；旧行 model = ""；新写带指纹', () => {
+  it('㉔ v6 / v7 旧库（有 memory_page_index）打开即退役页向量表、建块向量表', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v7-'));
     const path = join(dir, 'sessions.db');
     const Database = loadBetterSqlite();
@@ -278,18 +279,25 @@ describe.skipIf(!available)('SqliteStore ㉒ 页向量指纹 + 被想起统计',
     raw.close();
     const s = new SqliteStore(path);
     try {
-      expect(s.pageIndexList()).toEqual([
-        { path: 'user/profile.md', hash: 'h0', vector: [], model: '' },
+      s.chunkIndexUpsert(
+        [{ id: 'user/people/王小明.md#page', path: 'user/people/王小明.md', hash: 'h1', model: 'src|bge', vector: [0.5, 0.25] }],
+        2,
+      );
+      expect(s.chunkIndexList()).toEqual([
+        { id: 'user/people/王小明.md#page', path: 'user/people/王小明.md', hash: 'h1', model: 'src|bge', vector: [0.5, 0.25] },
       ]);
-      s.pageIndexUpsert('user/people/王小明.md', 'h1', [0.5, 0.25], 2, 'src|bge');
-      expect(s.pageIndexList().find((r) => r.hash === 'h1')).toEqual({
-        path: 'user/people/王小明.md',
-        hash: 'h1',
-        vector: [0.5, 0.25],
-        model: 'src|bge',
-      });
     } finally {
       s.close();
+    }
+    const check = new Database(path);
+    try {
+      const tables = (
+        check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>
+      ).map((r) => r.name);
+      expect(tables).not.toContain('memory_page_index');
+      expect(tables).toContain('memory_chunk_index');
+    } finally {
+      check.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -346,11 +354,148 @@ describe.skipIf(!available)('SqliteStore 会话管理查询（与 MemoryStore �
       expect(list[0]!.title).toBe('改过的名');
       expect(list[0]!.pinned).toBe(true);
       expect(s.sessionMessages('c', 'a').map((m) => m.text)).toEqual(['第一句话题', '回A']);
-      s.sessionDelete('a');
+      s.sessionDelete('c', 'a');
       expect(s.sessionList('c').map((x) => x.id)).toEqual(['b']);
       expect(s.sessionMessages('c', 'a')).toEqual([]);
     } finally {
       s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!available)('SqliteStore ㉔ T1 会话元数据按角色隔离 + v8 迁移', () => {
+  it("两角色同用 'default'：元数据互不覆盖；删会话 / 删尾部只删本角色；清空历史连带清元数据", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v8-'));
+    const s = new SqliteStore(join(dir, 'sessions.db'));
+    try {
+      const a: number[] = [];
+      for (let i = 1; i <= 3; i++) {
+        a.push(s.appendMessage({ characterId: 'A', sessionId: 'default', role: 'user', text: `a${i}`, ts: i }));
+        s.appendMessage({ characterId: 'B', sessionId: 'default', role: 'user', text: `b${i}`, ts: i });
+      }
+      s.sessionSetTitle('default', 'A', 'A 的标题');
+      s.sessionSetPinned('default', 'A', true);
+      s.sessionSummarySet('A', 'default', 'A 的摘要', a[1]!);
+      s.sessionSetTitle('default', 'B', 'B 的标题');
+      s.sessionSummarySet('B', 'default', 'B 的摘要', 1);
+      expect(s.sessionList('A')[0]).toMatchObject({ title: 'A 的标题', pinned: true, count: 3 });
+      expect(s.sessionList('B')[0]).toMatchObject({ title: 'B 的标题', pinned: false, count: 3 });
+      expect(s.sessionSummaryGet('A', 'default')).toEqual({ summary: 'A 的摘要', upto: a[1]! });
+      expect(s.sessionSummaryGet('B', 'default')).toEqual({ summary: 'B 的摘要', upto: 1 });
+      expect(s.messageStats('A', 'default')).toEqual({ count: 3, lastId: a[2]! });
+
+      s.deleteMessagesFrom('A', 'default', a[1]!);
+      expect(s.sessionMessages('A', 'default').map((m) => m.text)).toEqual(['a1']);
+      expect(s.sessionMessages('B', 'default').map((m) => m.text)).toEqual(['b1', 'b2', 'b3']);
+      s.sessionDelete('A', 'default');
+      expect(s.sessionMessages('A', 'default')).toEqual([]);
+      expect(s.sessionMessages('B', 'default')).toHaveLength(3);
+      expect(s.sessionSummaryGet('B', 'default').summary).toBe('B 的摘要');
+
+      s.clearMessages();
+      s.appendMessage({ characterId: 'B', sessionId: 'default', role: 'user', text: '新', ts: 9 });
+      expect(s.sessionList('B')[0]!.title).toBeNull();
+      expect(s.sessionSummaryGet('B', 'default')).toEqual({ summary: null, upto: null });
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('v7 旧库（session_meta 单列主键）打开即重建：行保留、归属原角色、schema_version = 8', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v7to8-'));
+    const path = join(dir, 'sessions.db');
+    const Database = loadBetterSqlite();
+    const raw = new Database(path);
+    raw.exec(`CREATE TABLE session_meta (
+      session_id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+      summary TEXT, summary_upto INTEGER
+    );`);
+    raw
+      .prepare(
+        `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
+         VALUES ('default', 'A', '旧标题', 1, 5, '串味摘要', 7)`,
+      )
+      .run();
+    raw.close();
+
+    const s = new SqliteStore(path);
+    try {
+      expect(s.sessionSummaryGet('A', 'default')).toEqual({ summary: '串味摘要', upto: 7 });
+      expect(s.sessionSummaryGet('B', 'default')).toEqual({ summary: null, upto: null });
+      s.sessionSummarySet('B', 'default', 'B 自己的', 2); // 新主键下两角色可并存
+      expect(s.sessionSummaryGet('A', 'default').summary).toBe('串味摘要');
+    } finally {
+      s.close();
+    }
+    const check = new Database(path);
+    try {
+      const pk = (check.pragma('table_info(session_meta)') as Array<{ name: string; pk: number }>)
+        .filter((c) => c.pk > 0)
+        .map((c) => c.name);
+      expect(pk.sort()).toEqual(['character_id', 'session_id']);
+      const v = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
+        value: string;
+      };
+      expect(v.value).toBe('8');
+      const row = check
+        .prepare("SELECT title, pinned, created_at AS c FROM session_meta WHERE character_id = 'A'")
+        .get();
+      expect(row).toEqual({ title: '旧标题', pinned: 1, c: 5 });
+    } finally {
+      check.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!available)('SqliteStore ㉔ T2 编译账本 / 便签 / 来源日志', () => {
+  it('满足双实现契约', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-v3-'));
+    const s = new SqliteStore(join(dir, 'sessions.db'));
+    try {
+      runMemoryV3Contract(s);
+    } finally {
+      s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('账本首建基线：存量会话记为已整理到最后一条；已有账本的库重开不再重置', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sqlite-store-baseline-'));
+    const path = join(dir, 'sessions.db');
+    const Database = loadBetterSqlite();
+    const raw = new Database(path);
+    raw.exec(`CREATE TABLE messages (
+      id INTEGER PRIMARY KEY, character_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      text TEXT NOT NULL, raw TEXT, ts INTEGER NOT NULL, tokens_in INTEGER, tokens_out INTEGER,
+      finish_reason TEXT, provider TEXT, model TEXT
+    );`);
+    const ins = raw.prepare(
+      "INSERT INTO messages(character_id, session_id, role, text, ts) VALUES (?, ?, 'user', 'x', 1)",
+    );
+    for (const [c, sid] of [['a', 'default'], ['a', 'default'], ['b', 'default'], ['a', 'other']])
+      ins.run(c, sid);
+    raw.close();
+
+    const s1 = new SqliteStore(path);
+    try {
+      expect(s1.compileStateGet('a', 'default').upto).toBe(2);
+      expect(s1.compileStateGet('b', 'default').upto).toBe(3);
+      expect(s1.compileStateGet('a', 'other').upto).toBe(4);
+      s1.compileStatePut('a', 'default', { upto: 1 });
+      s1.appendMessage({ characterId: 'c', sessionId: 'new', role: 'user', text: 'y', ts: 2 });
+    } finally {
+      s1.close();
+    }
+    const s2 = new SqliteStore(path);
+    try {
+      expect(s2.compileStateGet('a', 'default').upto).toBe(1); // 不再重置
+      expect(s2.compileStateGet('c', 'new').upto).toBe(0); // 新会话从头整理
+    } finally {
+      s2.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

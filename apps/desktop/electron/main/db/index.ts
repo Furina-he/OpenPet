@@ -10,6 +10,11 @@ export type {
   StoredRow,
   KbChunkRow,
   KbDocRow,
+  CompileStateRow,
+  ChunkIndexRow,
+  MemoryNoteRow,
+  MemoryOpLogInput,
+  MemoryOpLogRow,
 } from './store.js';
 export { MemoryStore } from './memory-store.js';
 export { SqliteStore, loadBetterSqlite } from './sqlite-store.js';

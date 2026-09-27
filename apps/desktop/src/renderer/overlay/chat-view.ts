@@ -202,3 +202,14 @@ export class ChatView {
     if (!opts.silent) this.onChange();
   }
 }
+
+/** ㉔ 内置工具的显示名 i18n 键（recall_memory / remember）；其余工具显示原名。 */
+const BUILTIN_TOOL_LABELS: Record<string, string> = {
+  recall_memory: 'settings.toolCall.recallMemory',
+  remember: 'settings.toolCall.remember',
+};
+
+export function toolDisplayName(name: string, t: (key: string) => string): string {
+  const key = BUILTIN_TOOL_LABELS[name];
+  return key ? t(key) : name;
+}

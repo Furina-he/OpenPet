@@ -7,9 +7,14 @@ import {
 } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  ChunkIndexRow,
+  CompileStateRow,
   ConversationStore,
   KbChunkRow,
   KbDocRow,
+  MemoryNoteRow,
+  MemoryOpLogInput,
+  MemoryOpLogRow,
   StoredRow,
 } from './store.js';
 import { MIGRATE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
@@ -48,6 +53,10 @@ export class SqliteStore implements ConversationStore {
     const Database = loadBetterSqlite();
     this.db = nativeBinding ? new Database(dbPath, { nativeBinding }) : new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
+    const hadCompileState =
+      this.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'memory_compile_state'")
+        .get() !== undefined;
     this.db.exec(SCHEMA_SQL);
     // CREATE IF NOT EXISTS 不改旧表：缺列的旧库按 table_info 条件 ALTER（⑮ 记忆域起）。
     for (const m of MIGRATE_COLUMNS) {
@@ -56,9 +65,45 @@ export class SqliteStore implements ConversationStore {
         this.db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
       }
     }
+    this.migrateSessionMetaKey();
+    // ㉔ 编译账本首建：存量会话一律记为「已整理到最后一条」。旧计数器下它们已被整理过大半、确切位置
+    // 不可知——宁可漏掉最后不足 8 轮，也不重放整段历史（大批重复经历 + 大笔杂务模型费用）。
+    if (!hadCompileState) {
+      this.db.exec(`INSERT OR IGNORE INTO memory_compile_state(character_id, session_id, upto)
+        SELECT character_id, session_id, MAX(id) FROM messages GROUP BY character_id, session_id`);
+    }
     this.db
       .prepare('INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)')
       .run('schema_version', String(SCHEMA_VERSION));
+  }
+
+  /**
+   * ㉔ v7 → v8：session_meta 单列主键（session_id）→ (session_id, character_id)。SQLite 不能改主键，
+   * 事务内改名 → 建新表 → 原样拷行 → 删旧表。原行归属它记录的 character_id；其他角色在同名会话上的
+   * 标题 / 置顶 / 摘要回到空（那本来就是串过去的）。须在 MIGRATE_COLUMNS 补列之后跑（旧库列齐）。
+   */
+  private migrateSessionMetaKey(): void {
+    const cols = this.db.pragma('table_info(session_meta)') as Array<{ name: string; pk: number }>;
+    const pk = cols.filter((c) => c.pk > 0).map((c) => c.name);
+    if (pk.length !== 1 || pk[0] !== 'session_id') return;
+    this.db.transaction(() => {
+      this.db.exec(`
+        ALTER TABLE session_meta RENAME TO session_meta_v7;
+        CREATE TABLE session_meta (
+          session_id   TEXT NOT NULL,
+          character_id TEXT NOT NULL,
+          title        TEXT,
+          pinned       INTEGER NOT NULL DEFAULT 0,
+          created_at   INTEGER NOT NULL,
+          summary      TEXT,
+          summary_upto INTEGER,
+          PRIMARY KEY (session_id, character_id)
+        );
+        INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
+          SELECT session_id, character_id, title, pinned, created_at, summary, summary_upto FROM session_meta_v7;
+        DROP TABLE session_meta_v7;
+      `);
+    })();
   }
 
   appendMessage(input: AppendMessageInput): number {
@@ -96,7 +141,12 @@ export class SqliteStore implements ConversationStore {
   }
 
   clearMessages(): void {
-    this.db.prepare('DELETE FROM messages').run();
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM messages').run();
+      this.db.prepare('DELETE FROM session_meta').run();
+      this.db.prepare('DELETE FROM memory_compile_state').run();
+      this.db.prepare('DELETE FROM memory_note').run();
+    })();
   }
 
   getPersonaState(characterId: string): PersonaStateBlob | null {
@@ -276,29 +326,27 @@ export class SqliteStore implements ConversationStore {
     return r.n;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（㉒ 带模型指纹）---
-  pageIndexUpsert(
-    path: string,
-    hash: string,
-    vector: number[],
-    updatedAt: number,
-    model: string,
-  ): void {
-    const buf = vector.length > 0 ? Buffer.from(new Float32Array(vector).buffer) : null;
-    this.db
-      .prepare(
-        `INSERT INTO memory_page_index(path, hash, vector, updated_at, model) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, vector = excluded.vector,
-           updated_at = excluded.updated_at, model = excluded.model`,
-      )
-      .run(path, hash, buf, updatedAt, model);
+  // --- ㉔ 块级向量索引 ---
+  chunkIndexUpsert(rows: readonly ChunkIndexRow[], updatedAt: number): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO memory_chunk_index(id, path, hash, model, vector, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET path = excluded.path, hash = excluded.hash,
+         model = excluded.model, vector = excluded.vector, updated_at = excluded.updated_at`,
+    );
+    this.db.transaction((xs: readonly ChunkIndexRow[]) => {
+      for (const r of xs) {
+        const buf = r.vector.length > 0 ? Buffer.from(new Float32Array(r.vector).buffer) : null;
+        stmt.run(r.id, r.path, r.hash, r.model, buf, updatedAt);
+      }
+    })(rows);
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
+  chunkIndexList(): ChunkIndexRow[] {
     const rows = this.db
-      .prepare('SELECT path, hash, vector, model FROM memory_page_index ORDER BY path ASC')
-      .all() as Array<{ path: string; hash: string; vector: Buffer | null; model: string }>;
+      .prepare('SELECT id, path, hash, model, vector FROM memory_chunk_index ORDER BY id ASC')
+      .all() as Array<{ id: string; path: string; hash: string; model: string; vector: Buffer | null }>;
     return rows.map((r) => ({
+      id: r.id,
       path: r.path,
       hash: r.hash,
       model: r.model,
@@ -310,8 +358,19 @@ export class SqliteStore implements ConversationStore {
     }));
   }
 
-  pageIndexDelete(path: string): void {
-    this.db.prepare('DELETE FROM memory_page_index WHERE path = ?').run(path);
+  chunkIndexDeletePath(path: string): void {
+    this.db.prepare('DELETE FROM memory_chunk_index WHERE path = ?').run(path);
+  }
+
+  chunkIndexDelete(ids: readonly string[]): void {
+    const stmt = this.db.prepare('DELETE FROM memory_chunk_index WHERE id = ?');
+    this.db.transaction((xs: readonly string[]) => {
+      for (const id of xs) stmt.run(id);
+    })(ids);
+  }
+
+  chunkIndexClear(): void {
+    this.db.prepare('DELETE FROM memory_chunk_index').run();
   }
 
   // --- ㉒ 被想起的痕迹 ---
@@ -466,7 +525,7 @@ export class SqliteStore implements ConversationStore {
                 (SELECT text FROM messages WHERE session_id = m.session_id AND character_id = m.character_id
                  AND role = 'user' ORDER BY ts ASC, id ASC LIMIT 1) AS firstUserText
          FROM messages m
-         LEFT JOIN session_meta sm ON sm.session_id = m.session_id
+         LEFT JOIN session_meta sm ON sm.session_id = m.session_id AND sm.character_id = m.character_id
          WHERE m.character_id = ?
          GROUP BY m.session_id
          ORDER BY pinnedInt DESC, lastTs DESC`,
@@ -496,7 +555,7 @@ export class SqliteStore implements ConversationStore {
       .prepare(
         `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at)
          VALUES (?, ?, ?, 0, ?)
-         ON CONFLICT(session_id) DO UPDATE SET title = excluded.title`,
+         ON CONFLICT(session_id, character_id) DO UPDATE SET title = excluded.title`,
       )
       .run(sessionId, characterId, title, Date.now());
   }
@@ -506,15 +565,25 @@ export class SqliteStore implements ConversationStore {
       .prepare(
         `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at)
          VALUES (?, ?, NULL, ?, ?)
-         ON CONFLICT(session_id) DO UPDATE SET pinned = excluded.pinned`,
+         ON CONFLICT(session_id, character_id) DO UPDATE SET pinned = excluded.pinned`,
       )
       .run(sessionId, characterId, pinned ? 1 : 0, Date.now());
   }
 
-  sessionDelete(sessionId: string): void {
+  sessionDelete(characterId: string, sessionId: string): void {
     const tx = this.db.transaction(() => {
-      this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
-      this.db.prepare('DELETE FROM session_meta WHERE session_id = ?').run(sessionId);
+      this.db
+        .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM session_meta WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM memory_compile_state WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
+      this.db
+        .prepare('DELETE FROM memory_note WHERE character_id = ? AND session_id = ?')
+        .run(characterId, sessionId);
     });
     tx();
   }
@@ -538,32 +607,47 @@ export class SqliteStore implements ConversationStore {
     return row ?? null;
   }
 
-  deleteMessagesFrom(sessionId: string, fromId: number): void {
-    this.db.prepare('DELETE FROM messages WHERE session_id = ? AND id >= ?').run(sessionId, fromId);
+  deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM messages WHERE character_id = ? AND session_id = ? AND id >= ?')
+        .run(characterId, sessionId, fromId);
+      this.db
+        .prepare(
+          `UPDATE memory_compile_state SET upto = MIN(upto, ?),
+             retries = CASE WHEN pending_to >= ? THEN 0 ELSE retries END,
+             pending_to = CASE WHEN pending_to >= ? THEN NULL ELSE pending_to END
+           WHERE character_id = ? AND session_id = ?`,
+        )
+        .run(fromId - 1, fromId, fromId, characterId, sessionId);
+    })();
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取 ---
-  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
+  sessionSummaryGet(
+    characterId: string,
+    sessionId: string,
+  ): { summary: string | null; upto: number | null } {
     const row = this.db
-      .prepare('SELECT summary, summary_upto AS upto FROM session_meta WHERE session_id = ?')
-      .get(sessionId) as { summary: string | null; upto: number | null } | undefined;
+      .prepare(
+        'SELECT summary, summary_upto AS upto FROM session_meta WHERE session_id = ? AND character_id = ?',
+      )
+      .get(sessionId, characterId) as { summary: string | null; upto: number | null } | undefined;
     return { summary: row?.summary ?? null, upto: row?.upto ?? null };
   }
 
-  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
-    // meta 行可能尚不存在：character_id 从消息表回查（session_meta 列 NOT NULL）。
-    const characterId =
-      (
-        this.db
-          .prepare('SELECT character_id AS cid FROM messages WHERE session_id = ? LIMIT 1')
-          .get(sessionId) as { cid: string } | undefined
-      )?.cid ?? '';
+  sessionSummarySet(
+    characterId: string,
+    sessionId: string,
+    summary: string | null,
+    upto?: number,
+  ): void {
     if (upto === undefined) {
       this.db
         .prepare(
           `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary)
            VALUES (?, ?, NULL, 0, ?, ?)
-           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary`,
+           ON CONFLICT(session_id, character_id) DO UPDATE SET summary = excluded.summary`,
         )
         .run(sessionId, characterId, Date.now(), summary);
     } else {
@@ -571,7 +655,7 @@ export class SqliteStore implements ConversationStore {
         .prepare(
           `INSERT INTO session_meta(session_id, character_id, title, pinned, created_at, summary, summary_upto)
            VALUES (?, ?, NULL, 0, ?, ?, ?)
-           ON CONFLICT(session_id) DO UPDATE SET summary = excluded.summary, summary_upto = excluded.summary_upto`,
+           ON CONFLICT(session_id, character_id) DO UPDATE SET summary = excluded.summary, summary_upto = excluded.summary_upto`,
         )
         .run(sessionId, characterId, Date.now(), summary, upto);
     }
@@ -592,12 +676,126 @@ export class SqliteStore implements ConversationStore {
       .all(characterId, sessionId, afterId, beforeOrEqId) as Array<StoredRow & { id: number }>;
   }
 
-  messageStats(sessionId: string): { count: number; lastId: number } {
+  messageStats(characterId: string, sessionId: string): { count: number; lastId: number } {
     return this.db
       .prepare(
-        'SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS lastId FROM messages WHERE session_id = ?',
+        `SELECT COUNT(*) AS count, COALESCE(MAX(id), 0) AS lastId FROM messages
+         WHERE character_id = ? AND session_id = ?`,
       )
-      .get(sessionId) as { count: number; lastId: number };
+      .get(characterId, sessionId) as { count: number; lastId: number };
+  }
+
+  messagesBefore(
+    characterId: string,
+    sessionId: string,
+    beforeOrEqId: number,
+    limit: number,
+  ): Array<StoredRow & { id: number }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, role, text, finish_reason AS finishReason, ts, tokens_in AS tokensIn, tokens_out AS tokensOut
+         FROM messages WHERE character_id = ? AND session_id = ? AND id <= ?
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(characterId, sessionId, beforeOrEqId, limit) as Array<StoredRow & { id: number }>;
+    return rows.reverse();
+  }
+
+  messageCountAfter(characterId: string, sessionId: string, afterId: number): number {
+    return (
+      this.db
+        .prepare(
+          'SELECT COUNT(*) AS n FROM messages WHERE character_id = ? AND session_id = ? AND id > ?',
+        )
+        .get(characterId, sessionId, afterId) as { n: number }
+    ).n;
+  }
+
+  // --- ㉔ 记忆 v3：编译账本 / 便签 / 来源日志 ---
+  compileStateGet(characterId: string, sessionId: string): CompileStateRow {
+    const row = this.db
+      .prepare(
+        `SELECT upto, pending_to AS pendingTo, retries, last_error AS lastError,
+                last_attempt_at AS lastAttemptAt
+         FROM memory_compile_state WHERE character_id = ? AND session_id = ?`,
+      )
+      .get(characterId, sessionId) as CompileStateRow | undefined;
+    return row ?? { upto: 0, pendingTo: null, retries: 0, lastError: null, lastAttemptAt: null };
+  }
+
+  compileStatePut(characterId: string, sessionId: string, patch: Partial<CompileStateRow>): void {
+    const next = { ...this.compileStateGet(characterId, sessionId), ...patch };
+    this.db
+      .prepare(
+        `INSERT INTO memory_compile_state
+           (character_id, session_id, upto, pending_to, retries, last_error, last_attempt_at)
+         VALUES (@cid, @sid, @upto, @pendingTo, @retries, @lastError, @lastAttemptAt)
+         ON CONFLICT(character_id, session_id) DO UPDATE SET upto = excluded.upto,
+           pending_to = excluded.pending_to, retries = excluded.retries,
+           last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at`,
+      )
+      .run({ cid: characterId, sid: sessionId, ...next });
+  }
+
+  memoryNoteAdd(characterId: string, sessionId: string, text: string, createdAt: number): number {
+    const info = this.db
+      .prepare(
+        'INSERT INTO memory_note(character_id, session_id, text, created_at) VALUES (?, ?, ?, ?)',
+      )
+      .run(characterId, sessionId, text, createdAt);
+    return Number(info.lastInsertRowid);
+  }
+
+  memoryNotes(characterId: string, sessionId: string): MemoryNoteRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, text, created_at AS createdAt FROM memory_note
+         WHERE character_id = ? AND session_id = ? ORDER BY id ASC`,
+      )
+      .all(characterId, sessionId) as MemoryNoteRow[];
+  }
+
+  memoryNotesDelete(ids: readonly number[]): void {
+    const stmt = this.db.prepare('DELETE FROM memory_note WHERE id = ?');
+    this.db.transaction((xs: readonly number[]) => {
+      for (const id of xs) stmt.run(id);
+    })(ids);
+  }
+
+  memoryNotesClear(): void {
+    this.db.prepare('DELETE FROM memory_note').run();
+  }
+
+  opLogAdd(rows: readonly MemoryOpLogInput[]): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO memory_op_log(at, character_id, session_id, msg_from, msg_to, path, op, detail)
+       VALUES (@at, @characterId, @sessionId, @msgFrom, @msgTo, @path, @op, @detail)`,
+    );
+    this.db.transaction((xs: readonly MemoryOpLogInput[]) => {
+      for (const x of xs) stmt.run(x);
+    })(rows);
+  }
+
+  opLogForPath(path: string, limit: number): MemoryOpLogRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, at, character_id AS characterId, session_id AS sessionId, msg_from AS msgFrom,
+                msg_to AS msgTo, path, op, detail
+         FROM memory_op_log WHERE path = ? ORDER BY at DESC, id ASC LIMIT ?`,
+      )
+      .all(path, limit) as MemoryOpLogRow[];
+  }
+
+  opLogRenamePath(from: string, to: string): void {
+    this.db.prepare('UPDATE memory_op_log SET path = ? WHERE path = ?').run(to, from);
+  }
+
+  opLogDeletePath(path: string): void {
+    this.db.prepare('DELETE FROM memory_op_log WHERE path = ?').run(path);
+  }
+
+  opLogClear(): void {
+    this.db.prepare('DELETE FROM memory_op_log').run();
   }
 
   async backupTo(dbPath: string): Promise<void> {

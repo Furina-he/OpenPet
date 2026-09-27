@@ -189,7 +189,7 @@ export class TurnOrchestrator {
       try {
         if (this.mcp) {
           // MVP：tool_call 均来自 MCP 注入的工具，直接走 callTool；未配 mcp 时回退 plugin 网关。
-          result = await this.mcp.callTool(t.name, t.args);
+          result = await this.mcp.callTool(t.name, t.args, { sessionId });
         } else {
           const r = await this.plugins.handle({
             kind: 'plugin.request',

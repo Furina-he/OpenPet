@@ -100,6 +100,7 @@ export async function* openaiCompatChat(
   let prompt = 0;
   let completion = 0;
   let sawUsage = false;
+  let cached: number | undefined;
   let completionText = '';
   const toolAcc = new Map<number, { id: string; name: string; args: string }>();
   try {
@@ -122,7 +123,13 @@ export async function* openaiCompatChat(
           };
           finish_reason?: string;
         }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          // ㉔ 前缀缓存命中：OpenAI / Qwen / GLM 报在 details 里，DeepSeek 报顶层 hit 数
+          prompt_tokens_details?: { cached_tokens?: number };
+          prompt_cache_hit_tokens?: number;
+        };
       };
       try {
         json = JSON.parse(sse.data);
@@ -144,6 +151,9 @@ export async function* openaiCompatChat(
         sawUsage = true;
         prompt = json.usage.prompt_tokens ?? 0;
         completion = json.usage.completion_tokens ?? 0;
+        const hit =
+          json.usage.prompt_tokens_details?.cached_tokens ?? json.usage.prompt_cache_hit_tokens;
+        if (typeof hit === 'number' && hit >= 0) cached = hit;
       }
       const tcs = json?.choices?.[0]?.delta?.tool_calls;
       if (Array.isArray(tcs)) {
@@ -180,7 +190,7 @@ export async function* openaiCompatChat(
     yield { type: 'tool_call', id: tc.id || `call_${tc.name}`, name: tc.name, args: parsed };
   }
   if (sawUsage) {
-    yield { type: 'usage', prompt, completion };
+    yield { type: 'usage', prompt, completion, ...(cached !== undefined ? { cached } : {}) };
   } else if (completionText) {
     // provider 未返回 usage：本地估算（prompt 从请求 messages，completion 从累积文本）
     yield {

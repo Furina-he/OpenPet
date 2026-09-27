@@ -26,6 +26,9 @@ export const ChatEventSchema = z.discriminatedUnion('type', [
     prompt: z.number().int().nonnegative(),
     completion: z.number().int().nonnegative(),
     cost: z.number().optional(),
+    // ㉔ 命中前缀缓存的 prompt token 数（openai 兼容：prompt_tokens_details.cached_tokens /
+    // DeepSeek prompt_cache_hit_tokens）；端点不报 = 缺省。
+    cached: z.number().int().nonnegative().optional(),
   }),
   z.object({
     type: z.literal('done'),

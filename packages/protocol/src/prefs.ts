@@ -37,6 +37,11 @@ export const PrefsSchema = z.object({
   'display.dndManual': z.boolean().default(false),
   'display.focusMode': z.boolean().default(false),
   'privacy.longTermMemory': z.boolean().default(true),
+  // ㉔ 记忆 v3：语义回想门槛（块向量相似度门的最低分；实际门 = max(它, 中位数 + 0.12)）
+  'memory.recallMinScore': z.number().min(0).max(1).default(0.25),
+  // ㉔ 主动记忆工具（需默认对话模型勾了 tool 能力）：recall_memory 主动回想 / remember「记住」立即记下
+  'memory.recallTool': z.boolean().default(true),
+  'memory.rememberTool': z.boolean().default(true),
   'privacy.anonymousStats': z.boolean().default(false),
   'privacy.crashReport': z.boolean().default(true),
   // general（D2 通用）
@@ -137,6 +142,8 @@ export const PrefsSchema = z.object({
   'chat.regexRules': z.array(RegexRuleSchema).default(REGEX_PRESETS),
   // ⑮ 记忆域：会话滚动摘要总闸（窗口外轮末合并 ≤300 字，会额外调用杂务模型）
   'chat.sessionSummary': z.boolean().default(true),
+  // ㉔ 缓存友好上下文：稳定前缀 + 句尾一条易变 system + 分档历史窗口（关 = 本批前布局逐字节不变）
+  'chat.cacheFriendlyContext': z.boolean().default(true),
   // trace（§7 诊断）
   'trace.enabled': z.boolean().default(true),
   // voice（F-VC 语音运行时 + ⑩.6 音色工坊）

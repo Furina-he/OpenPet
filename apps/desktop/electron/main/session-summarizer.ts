@@ -39,9 +39,9 @@ export function createSessionSummarizer(deps: SessionSummarizerDeps) {
         const target = deps.resolveTarget();
         if (!target || target.adapter !== 'openai') return;
         const cid = deps.character().id;
-        const { count, lastId } = deps.store.messageStats(sessionId);
+        const { count, lastId } = deps.store.messageStats(cid, sessionId);
         if (count <= windowN) return;
-        const { summary: oldSummary, upto } = deps.store.sessionSummaryGet(sessionId);
+        const { summary: oldSummary, upto } = deps.store.sessionSummaryGet(cid, sessionId);
         // 未摘要集 = id > upto 的全部；其中窗口外（= 会话前 count-windowN 条）的条数：
         const unsummarized = deps.store.messagesBetween(cid, sessionId, upto ?? 0, lastId);
         const outsideCount = unsummarized.length - windowN;
@@ -72,7 +72,7 @@ export function createSessionSummarizer(deps: SessionSummarizerDeps) {
         const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const text = (json.choices?.[0]?.message?.content ?? '').trim();
         if (!text) return;
-        deps.store.sessionSummarySet(sessionId, text, segment[segment.length - 1]!.id);
+        deps.store.sessionSummarySet(cid, sessionId, text, segment[segment.length - 1]!.id);
       } catch (e) {
         console.warn('[summary] summarize failed:', e);
       }

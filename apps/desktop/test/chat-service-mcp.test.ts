@@ -48,8 +48,13 @@ describe('ChatService · MCP 工具路由 (§4)', () => {
 
     // 注入路径触发：send 时取了 active 工具定义
     expect(mcp.activeToolDefs).toHaveBeenCalled();
+    // ㉔ 工具口上下文：定义阶段带会话 + 本轮用户输入，执行阶段带会话
+    expect(mcp.activeToolDefs).toHaveBeenCalledWith(expect.any(Function), {
+      sessionId: 's1',
+      userText: 'use a tool',
+    });
     // 执行路由到 MCP（非 plugin 网关）
-    expect(mcp.callTool).toHaveBeenCalledWith('echo', { v: 42 });
+    expect(mcp.callTool).toHaveBeenCalledWith('echo', { v: 42 }, { sessionId: 's1' });
 
     // 工具卡三态：pending（§3 core）+ result（§4 执行后）
     const toolCalls = sent.filter((s) => s.channel === 'chat.toolCall');

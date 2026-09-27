@@ -182,7 +182,23 @@ describe('⑲ / ㉒ memory wiki schema', () => {
         lastCompile: { at: 1, ok: true, ops: 1, merged: [['小王', 'user/people/王小明.md']] },
         migration: null,
         legacyFacts: 0,
+        backlog: null,
+        gaveUp: null,
       }).pageCount,
     ).toBe(3);
+    // ㉔ 编译积压 / 放弃记录；compileNow 可带 idle
+    const st = Methods['memory.status'].result.parse({
+      enabled: true,
+      pageCount: 0,
+      lastCompile: null,
+      migration: null,
+      legacyFacts: 0,
+      backlog: { messages: 12, retries: 1, error: 'LLM HTTP 500' },
+      gaveUp: { at: 5, messages: 24, error: 'LLM 输出不是 JSON' },
+    });
+    expect(st.backlog).toEqual({ messages: 12, retries: 1, error: 'LLM HTTP 500' });
+    expect(
+      Methods['memory.compileNow'].result.parse({ ok: true, ops: 0, idle: true }).idle,
+    ).toBe(true);
   });
 });

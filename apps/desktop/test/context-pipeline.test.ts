@@ -44,7 +44,7 @@ describe('context-pipeline', () => {
       character: () => ({ id: 'c', name: '小灵' }),
       retrieveMemory: async (_q, h) => {
         gotHistory = h;
-        return { ...MEM_SZ, stats: { resident: 1, keyword: 2, vector: 0, chars: 30 } };
+        return { ...MEM_SZ, stats: { resident: 1, keyword: 2, text: 1, vector: 0, hybrid: 1, chars: 30 } };
       },
     });
     await p2.build({ sessionId: 's', userText: 'hi', trace: (a, f) => trace.push([a, f]) });
@@ -52,7 +52,9 @@ describe('context-pipeline', () => {
     expect(trace.find(([a]) => a === 'context.memory')?.[1]).toEqual({
       resident: 1,
       keyword: 2,
+      text: 1,
       vector: 0,
+      hybrid: 1,
       chars: 30,
     });
     const pipeline = createContextPipeline({
@@ -164,5 +166,56 @@ describe('⑫ loreStage', () => {
     expect(trace.some(([a, f]) => a === 'context.lore' && (f as { hits: number }).hits === 1)).toBe(
       true,
     );
+  });
+});
+
+describe('㉔ 缓存友好开关 + context.prefix', () => {
+  it('开关透传：开 = 句尾一条易变 system；trace context.prefix 带前缀 hash（覆盖开场白）且两轮相同', async () => {
+    const store = new MemoryStore();
+    let on = true;
+    const trace: Array<[string, unknown]> = [];
+    const pipeline = createContextPipeline({
+      store,
+      character: () => ({ id: 'a', name: 'A' }),
+      persona: () => ({ systemPrompt: '你是 A。', beginDialogs: ['嗨', '你好呀'] }),
+      mood: () => (trace.length > 5 ? -0.9 : 0.9), // 心情变了也不动前缀
+      cacheFriendly: () => on,
+    });
+    const run = async (text: string) =>
+      pipeline.build({ sessionId: 's', userText: text, trace: (a, f) => trace.push([a, f]) });
+    const r1 = await run('一');
+    const r2 = await run('二');
+    const prefixes = trace.filter(([a]) => a === 'context.prefix').map(([, f]) => f);
+    expect(prefixes).toHaveLength(2);
+    expect(prefixes[0]).toEqual(prefixes[1]);
+    expect(prefixes[0]).toMatchObject({ hash: expect.stringMatching(/^[0-9a-f]{8}$/), cacheFriendly: true });
+    expect(r1.messages.at(-2)!.content).toMatch(/^【关系记忆】/);
+    expect(r2.messages[0]).toEqual(r1.messages[0]);
+    on = false;
+    const r3 = await run('三');
+    expect(r3.messages[0]!.content).toContain('关系记忆');
+    expect(r3.messages.filter((m) => m.role === 'system')).toHaveLength(1);
+    expect(trace.filter(([a]) => a === 'context.prefix').at(-1)![1]).toMatchObject({
+      cacheFriendly: false,
+    });
+  });
+});
+
+describe('㉔ toolsStage 工具口上下文', () => {
+  it('activeToolDefs 收到 {sessionId, userText}', async () => {
+    const got: unknown[] = [];
+    const pipeline = createContextPipeline({
+      store: new MemoryStore(),
+      character: () => ({ id: 'a', name: 'A' }),
+      mcp: {
+        activeToolDefs: (_sa, ctx) => {
+          got.push(ctx);
+          return [{ name: 'remember' }];
+        },
+      },
+    });
+    const req = await pipeline.build({ sessionId: 's9', userText: '记住这个' });
+    expect(got).toEqual([{ sessionId: 's9', userText: '记住这个' }]);
+    expect(req.tools?.map((t) => t.name)).toEqual(['remember']);
   });
 });

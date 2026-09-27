@@ -114,6 +114,29 @@ export interface SystemPromptOptions {
   personaPrompt?: string;
   emotions?: readonly string[];
   actions?: readonly string[];
+  /**
+   * ㉔ 【关系记忆】行是否拼在人设之后（缺省 true = 旧行为）。缓存友好布局传 false：这一行每轮都变
+   * （亲密度 / 轮数 / 心情），由组装侧用 buildRelationshipLine 挪到对话末尾的易变块。
+   */
+  relationshipInPrefix?: boolean;
+}
+
+/**
+ * ㉔ 【关系记忆】行（亲密度 / 已互动轮数 / 上次心情 / 心情句）；两者皆无 → null。
+ * buildSystemPrompt 的同一行由它产出（拆分后拼回与旧输出逐字相同）。
+ */
+export function buildRelationshipLine(
+  opts: Pick<SystemPromptOptions, 'persona' | 'moodValue'>,
+): string | null {
+  const mood = moodSentence(opts.moodValue);
+  if (opts.persona) {
+    const p = opts.persona;
+    const bits = [`你与用户的亲密度 ${p.affinity}/100`, `已经互动了 ${p.turns} 轮`];
+    if (p.lastMood) bits.push(`上次对话你的心情是「${p.lastMood}」`);
+    if (mood) bits.push(mood);
+    return `【关系记忆】${bits.join('，')}。`;
+  }
+  return mood ? `【关系记忆】${mood}。` : null;
 }
 
 /**
@@ -127,16 +150,8 @@ export function buildSystemPrompt(opts: SystemPromptOptions): string {
       ? opts.personaPrompt.trim()
       : `你是${opts.name}，用户的桌面 AI 伙伴。用自然、有温度的口吻陪伴用户。`;
   const parts: string[] = [intro];
-  const mood = moodSentence(opts.moodValue);
-  if (opts.persona) {
-    const p = opts.persona;
-    const bits = [`你与用户的亲密度 ${p.affinity}/100`, `已经互动了 ${p.turns} 轮`];
-    if (p.lastMood) bits.push(`上次对话你的心情是「${p.lastMood}」`);
-    if (mood) bits.push(mood);
-    parts.push(`【关系记忆】${bits.join('，')}。`);
-  } else if (mood) {
-    parts.push(`【关系记忆】${mood}。`);
-  }
+  const relationship = opts.relationshipInPrefix === false ? null : buildRelationshipLine(opts);
+  if (relationship) parts.push(relationship);
   parts.push(
     buildBehaviorPrompt({
       ...(opts.emotions ? { emotions: opts.emotions } : {}),

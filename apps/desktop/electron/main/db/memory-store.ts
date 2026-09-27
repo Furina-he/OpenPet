@@ -1,9 +1,14 @@
 import type { PersonaStateBlob, StorageUsage } from '@openpet/protocol';
 import type {
   AppendMessageInput,
+  ChunkIndexRow,
+  CompileStateRow,
   ConversationStore,
   KbChunkRow,
   KbDocRow,
+  MemoryNoteRow,
+  MemoryOpLogInput,
+  MemoryOpLogRow,
   StoredRow,
 } from './store.js';
 
@@ -61,6 +66,9 @@ export class MemoryStore implements ConversationStore {
 
   clearMessages(): void {
     this.rows.length = 0;
+    this.sessionMeta.clear();
+    this.compileState.clear();
+    this.notes.length = 0;
   }
 
   getPersonaState(characterId: string): PersonaStateBlob | null {
@@ -203,27 +211,29 @@ export class MemoryStore implements ConversationStore {
     return this.memoryRows.filter((r) => r.characterId === characterId).length;
   }
 
-  // --- ⑲ 记忆 v2：wiki 页级向量索引（内存等价表；㉒ 带模型指纹）---
-  private readonly pageIndex = new Map<string, { hash: string; vector: number[]; model: string }>();
+  // --- ㉔ 块级向量索引（内存等价表）---
+  private readonly chunkIndex = new Map<string, ChunkIndexRow>();
 
-  pageIndexUpsert(
-    path: string,
-    hash: string,
-    vector: number[],
-    _updatedAt: number,
-    model: string,
-  ): void {
-    this.pageIndex.set(path, { hash, vector: [...vector], model });
+  chunkIndexUpsert(rows: readonly ChunkIndexRow[], _updatedAt: number): void {
+    for (const r of rows) this.chunkIndex.set(r.id, { ...r, vector: [...r.vector] });
   }
 
-  pageIndexList(): Array<{ path: string; hash: string; vector: number[]; model: string }> {
-    return [...this.pageIndex.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([path, v]) => ({ path, hash: v.hash, vector: [...v.vector], model: v.model }));
+  chunkIndexList(): ChunkIndexRow[] {
+    return [...this.chunkIndex.values()]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map((r) => ({ ...r, vector: [...r.vector] }));
   }
 
-  pageIndexDelete(path: string): void {
-    this.pageIndex.delete(path);
+  chunkIndexDeletePath(path: string): void {
+    for (const [id, r] of this.chunkIndex) if (r.path === path) this.chunkIndex.delete(id);
+  }
+
+  chunkIndexDelete(ids: readonly string[]): void {
+    for (const id of ids) this.chunkIndex.delete(id);
+  }
+
+  chunkIndexClear(): void {
+    this.chunkIndex.clear();
   }
 
   // --- ㉒ 被想起的痕迹（内存等价表）---
@@ -336,11 +346,10 @@ export class MemoryStore implements ConversationStore {
     return this.rows.length ? Math.min(...this.rows.map((r) => r.ts)) : null;
   }
 
-  // --- 会话管理（session_meta 等价内存表；语义与 SqliteStore SQL 对齐）---
+  // --- 会话管理（session_meta 等价内存表；语义与 SqliteStore SQL 对齐；㉔ 键 = 角色 + 会话）---
   private readonly sessionMeta = new Map<
     string,
     {
-      characterId: string;
       title: string | null;
       pinned: boolean;
       createdAt: number;
@@ -348,6 +357,10 @@ export class MemoryStore implements ConversationStore {
       summaryUpto: number | null;
     }
   >();
+
+  private metaKey(characterId: string, sessionId: string): string {
+    return JSON.stringify([characterId, sessionId]);
+  }
 
   private metaUpsert(
     sessionId: string,
@@ -359,15 +372,15 @@ export class MemoryStore implements ConversationStore {
       summaryUpto: number | null;
     }>,
   ): void {
-    const cur = this.sessionMeta.get(sessionId) ?? {
-      characterId,
+    const key = this.metaKey(characterId, sessionId);
+    const cur = this.sessionMeta.get(key) ?? {
       title: null as string | null,
       pinned: false,
       createdAt: ++this.clock,
       summary: null as string | null,
       summaryUpto: null as number | null,
     };
-    this.sessionMeta.set(sessionId, { ...cur, ...patch });
+    this.sessionMeta.set(key, { ...cur, ...patch });
   }
 
   sessionList(characterId: string): Array<{
@@ -387,7 +400,7 @@ export class MemoryStore implements ConversationStore {
       byId.set(r.sessionId, g);
     }
     const list = [...byId.entries()].map(([id, rows]) => {
-      const meta = this.sessionMeta.get(id);
+      const meta = this.sessionMeta.get(this.metaKey(characterId, id));
       const firstUser = rows.find((r) => r.role === 'user');
       const last = rows[rows.length - 1]!;
       return {
@@ -411,11 +424,14 @@ export class MemoryStore implements ConversationStore {
     this.metaUpsert(sessionId, characterId, { pinned });
   }
 
-  sessionDelete(sessionId: string): void {
+  sessionDelete(characterId: string, sessionId: string): void {
     for (let i = this.rows.length - 1; i >= 0; i--) {
-      if (this.rows[i]!.sessionId === sessionId) this.rows.splice(i, 1);
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId) this.rows.splice(i, 1);
     }
-    this.sessionMeta.delete(sessionId);
+    this.sessionMeta.delete(this.metaKey(characterId, sessionId));
+    this.compileState.delete(this.metaKey(characterId, sessionId));
+    this.dropNotes((n) => n.characterId === characterId && n.sessionId === sessionId);
   }
 
   sessionMessages(characterId: string, sessionId: string): StoredRow[] {
@@ -440,24 +456,39 @@ export class MemoryStore implements ConversationStore {
     return null;
   }
 
-  deleteMessagesFrom(sessionId: string, fromId: number): void {
+  deleteMessagesFrom(characterId: string, sessionId: string, fromId: number): void {
     for (let i = this.rows.length - 1; i >= 0; i--) {
-      if (this.rows[i]!.sessionId === sessionId && this.rows[i]!.id >= fromId)
+      const r = this.rows[i]!;
+      if (r.characterId === characterId && r.sessionId === sessionId && r.id >= fromId)
         this.rows.splice(i, 1);
+    }
+    const key = this.metaKey(characterId, sessionId);
+    const st = this.compileState.get(key);
+    if (st) {
+      const cut = st.pendingTo !== null && st.pendingTo >= fromId;
+      this.compileState.set(key, {
+        ...st,
+        upto: Math.min(st.upto, fromId - 1),
+        ...(cut ? { pendingTo: null, retries: 0 } : {}),
+      });
     }
   }
 
   // --- ⑮ 记忆域：会话滚动摘要 + 区间读取（语义与 SqliteStore 对齐）---
-  sessionSummaryGet(sessionId: string): { summary: string | null; upto: number | null } {
-    const meta = this.sessionMeta.get(sessionId);
+  sessionSummaryGet(
+    characterId: string,
+    sessionId: string,
+  ): { summary: string | null; upto: number | null } {
+    const meta = this.sessionMeta.get(this.metaKey(characterId, sessionId));
     return { summary: meta?.summary ?? null, upto: meta?.summaryUpto ?? null };
   }
 
-  sessionSummarySet(sessionId: string, summary: string | null, upto?: number): void {
-    const characterId =
-      this.sessionMeta.get(sessionId)?.characterId ??
-      this.rows.find((r) => r.sessionId === sessionId)?.characterId ??
-      '';
+  sessionSummarySet(
+    characterId: string,
+    sessionId: string,
+    summary: string | null,
+    upto?: number,
+  ): void {
     this.metaUpsert(
       sessionId,
       characterId,
@@ -490,9 +521,98 @@ export class MemoryStore implements ConversationStore {
       }));
   }
 
-  messageStats(sessionId: string): { count: number; lastId: number } {
-    const hit = this.rows.filter((r) => r.sessionId === sessionId);
+  messageStats(characterId: string, sessionId: string): { count: number; lastId: number } {
+    const hit = this.rows.filter((r) => r.characterId === characterId && r.sessionId === sessionId);
     return { count: hit.length, lastId: hit.length ? Math.max(...hit.map((r) => r.id)) : 0 };
+  }
+
+  messagesBefore(
+    characterId: string,
+    sessionId: string,
+    beforeOrEqId: number,
+    limit: number,
+  ): Array<StoredRow & { id: number }> {
+    return this.messagesBetween(characterId, sessionId, 0, beforeOrEqId).slice(-limit);
+  }
+
+  messageCountAfter(characterId: string, sessionId: string, afterId: number): number {
+    return this.rows.filter(
+      (r) => r.characterId === characterId && r.sessionId === sessionId && r.id > afterId,
+    ).length;
+  }
+
+  // --- ㉔ 记忆 v3：编译账本 / 便签 / 来源日志（语义与 SqliteStore 对齐）---
+  private readonly compileState = new Map<string, CompileStateRow>();
+  private readonly notes: Array<MemoryNoteRow & { characterId: string; sessionId: string }> = [];
+  private noteSeq = 0;
+  private readonly opLog: MemoryOpLogRow[] = [];
+  private opLogSeq = 0;
+
+  private dropNotes(
+    pred: (n: { id: number; characterId: string; sessionId: string }) => boolean,
+  ): void {
+    for (let i = this.notes.length - 1; i >= 0; i--)
+      if (pred(this.notes[i]!)) this.notes.splice(i, 1);
+  }
+
+  compileStateGet(characterId: string, sessionId: string): CompileStateRow {
+    const st = this.compileState.get(this.metaKey(characterId, sessionId));
+    return st
+      ? { ...st }
+      : { upto: 0, pendingTo: null, retries: 0, lastError: null, lastAttemptAt: null };
+  }
+
+  compileStatePut(characterId: string, sessionId: string, patch: Partial<CompileStateRow>): void {
+    this.compileState.set(this.metaKey(characterId, sessionId), {
+      ...this.compileStateGet(characterId, sessionId),
+      ...patch,
+    });
+  }
+
+  memoryNoteAdd(characterId: string, sessionId: string, text: string, createdAt: number): number {
+    const id = ++this.noteSeq;
+    this.notes.push({ id, characterId, sessionId, text, createdAt });
+    return id;
+  }
+
+  memoryNotes(characterId: string, sessionId: string): MemoryNoteRow[] {
+    return this.notes
+      .filter((n) => n.characterId === characterId && n.sessionId === sessionId)
+      .map((n) => ({ id: n.id, text: n.text, createdAt: n.createdAt }));
+  }
+
+  memoryNotesDelete(ids: readonly number[]): void {
+    const set = new Set(ids);
+    this.dropNotes((n) => set.has(n.id));
+  }
+
+  memoryNotesClear(): void {
+    this.notes.length = 0;
+  }
+
+  opLogAdd(rows: readonly MemoryOpLogInput[]): void {
+    for (const r of rows) this.opLog.push({ ...r, id: ++this.opLogSeq });
+  }
+
+  opLogForPath(path: string, limit: number): MemoryOpLogRow[] {
+    return this.opLog
+      .filter((r) => r.path === path)
+      .sort((a, b) => b.at - a.at || a.id - b.id)
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
+  }
+
+  opLogRenamePath(from: string, to: string): void {
+    for (const r of this.opLog) if (r.path === from) r.path = to;
+  }
+
+  opLogDeletePath(path: string): void {
+    for (let i = this.opLog.length - 1; i >= 0; i--)
+      if (this.opLog[i]!.path === path) this.opLog.splice(i, 1);
+  }
+
+  opLogClear(): void {
+    this.opLog.length = 0;
   }
 
   async backupTo(): Promise<void> {

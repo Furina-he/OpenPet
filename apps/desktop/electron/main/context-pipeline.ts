@@ -13,11 +13,18 @@ import {
   type ChatTool,
   type PackLorebook,
 } from '@openpet/protocol';
-import { assembleContext, type MemoryInjection } from './context-assembler.js';
+import { assembleContext, prefixDigest, type MemoryInjection } from './context-assembler.js';
 
 /** retrieveMemory 返回形状（memory-service.MemoryRetrieval 的管道视角；stats 只进 trace）。 */
 export interface MemoryRetrievalLite extends MemoryInjection {
-  stats?: { resident: number; keyword: number; vector: number; chars: number };
+  stats?: {
+    resident: number;
+    keyword: number;
+    text: number;
+    vector: number;
+    hybrid: number;
+    chars: number;
+  };
 }
 import type { ConversationStore } from './db/index.js';
 
@@ -37,8 +44,15 @@ export interface ContextPipelineDeps {
   retrieveMemory?:
     | ((query: string, history: readonly string[]) => Promise<MemoryRetrievalLite>)
     | undefined;
-  /** §4 MCP 工具定义源；缺省无工具。 */
-  mcp?: { activeToolDefs: (serverActive: (id: string) => boolean) => ChatTool[] } | undefined;
+  /** §4 MCP 工具定义源（㉔ 带本轮上下文：自有工具按会话 / 用户输入决定挂不挂）；缺省无工具。 */
+  mcp?:
+    | {
+        activeToolDefs: (
+          serverActive: (id: string) => boolean,
+          ctx?: { sessionId: string; userText?: string },
+        ) => ChatTool[];
+      }
+    | undefined;
   /** §6 当前生效 persona（绑定>默认>null=内置）；ipc-router 注入 persona-service.resolveFor。 */
   persona?: (() => { systemPrompt: string; beginDialogs: string[] } | null) | undefined;
   /** ⑫ 当前角色 lorebook 供给（ipc-router 注入 characters.current().manifest.lorebook）；缺省不注入。 */
@@ -51,6 +65,8 @@ export interface ContextPipelineDeps {
   styleAnchor?: (() => string | null) | undefined;
   /** ⑱ 当前心情供给（MoodState.current()，ChatService 从 InteractionService 取）；缺省不注入。 */
   mood?: (() => number) | undefined;
+  /** ㉔ 缓存友好上下文开关（ipc-router 读 chat.cacheFriendlyContext）；缺省 false = 旧布局。 */
+  cacheFriendly?: (() => boolean) | undefined;
 }
 
 export interface BuildInput {
@@ -125,7 +141,9 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       got?.stats ?? {
         resident: got?.resident.length ?? 0,
         keyword: got?.pages.length ?? 0,
+        text: 0,
         vector: 0,
+        hybrid: 0,
         chars: 0,
       },
     );
@@ -149,9 +167,13 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
     input.trace?.('context.summary', { present: bag.sessionSummary.length > 0 });
   };
 
-  const toolsStage = async (_input: BuildInput, bag: StageBag): Promise<void> => {
+  const toolsStage = async (input: BuildInput, bag: StageBag): Promise<void> => {
     // §4：注入 active MCP 工具定义（worker buildBody 映射成 provider tools）。
-    bag.tools = deps.mcp?.activeToolDefs(() => true) ?? [];
+    bag.tools =
+      deps.mcp?.activeToolDefs(() => true, {
+        sessionId: input.sessionId,
+        userText: input.userText,
+      }) ?? [];
   };
 
   // ⑮ 并行检索（spec §5）：四个检索 stage 互不依赖（各写 bag 自己的槽位），并行后
@@ -175,6 +197,7 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
       const anchor = deps.styleAnchor?.() ?? null;
       const moodValue = deps.mood?.();
       if (moodValue !== undefined) input.trace?.('context.mood', { value: Number(moodValue.toFixed(3)) });
+      const cacheFriendly = deps.cacheFriendly?.() === true;
       const assembled = assembleContext({
         store: deps.store,
         character: deps.character(),
@@ -188,9 +211,15 @@ export function createContextPipeline(deps: ContextPipelineDeps): ContextPipelin
         ...(mc ? { macroCtx: mc } : {}),
         ...(anchor ? { styleAnchor: anchor } : {}),
         ...(moodValue !== undefined ? { moodValue } : {}),
+        ...(cacheFriendly ? { cacheFriendly: true } : {}),
         ...(personaSel
           ? { personaPrompt: personaSel.systemPrompt, beginDialogs: personaSel.beginDialogs }
           : {}),
+      });
+      // ㉔ 稳定前缀（开头 system + 开场白）摘要：连续几轮 hash 相同 = 前缀缓存可命中。
+      input.trace?.('context.prefix', {
+        ...prefixDigest(assembled.messages, personaSel?.beginDialogs.length ?? 0),
+        cacheFriendly,
       });
       // 空 tools 不设，避免空 tools 干扰 provider。
       const request: ChatRequest =

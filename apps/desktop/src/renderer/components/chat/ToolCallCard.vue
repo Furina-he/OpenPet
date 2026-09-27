@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Check, ChevronDown, ChevronRight, Wrench, X } from 'lucide-vue-next';
+import { toolDisplayName } from '../../overlay/chat-view.js';
 
 const props = defineProps<{
   call: {
@@ -18,6 +19,8 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const open = ref(false);
+// ㉔ 内置记忆工具显示成「回想记忆」「记下这件事」
+const displayName = computed(() => toolDisplayName(props.call.name, t));
 
 const PHASE_LABEL = computed<Record<'pending' | 'result' | 'error', string>>(() => ({
   pending: t('settings.toolCall.pending'),
@@ -48,7 +51,7 @@ function pretty(value: unknown): string {
       >
         <Wrench :size="13" :stroke-width="1.75" />
       </span>
-      <span class="min-w-0 flex-1 truncate font-medium text-text-main">{{ call.name }}</span>
+      <span class="min-w-0 flex-1 truncate font-medium text-text-main">{{ displayName }}</span>
 
       <!-- 三态徽标 -->
       <span v-if="props.call.phase === 'pending'" class="flex items-center gap-1.5 text-text-sub">

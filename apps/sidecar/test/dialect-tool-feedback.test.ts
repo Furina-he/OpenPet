@@ -88,7 +88,8 @@ describe('非 openai 方言工具回灌两轮闭环（anthropic × TurnOrchestra
     await finished;
 
     // orchestrator 走了 fake mcp.callTool（参数来自流解析的 tool_use input）
-    expect(mcp.callTool).toHaveBeenCalledWith('search', { q: 'cats' });
+    // ㉔ 第三参 = 工具口上下文 {sessionId}
+    expect(mcp.callTool).toHaveBeenCalledWith('search', { q: 'cats' }, { sessionId: expect.any(String) });
     // 工具卡 result 相广播
     expect(broadcasts).toContainEqual({
       channel: 'chat.toolCall',

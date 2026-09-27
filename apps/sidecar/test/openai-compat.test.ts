@@ -46,7 +46,28 @@ describe('openaiCompatChat', () => {
         .join(''),
     ).toBe('Hi there');
     expect(ev.find((e) => e.type === 'usage')).toMatchObject({ prompt: 3, completion: 2 });
+    expect(ev.find((e) => e.type === 'usage')).not.toHaveProperty('cached');
     expect(ev.at(-1)).toEqual({ type: 'done', finishReason: 'stop' });
+  });
+
+  it('㉔ usage 读前缀缓存命中：prompt_tokens_details.cached_tokens（OpenAI / Qwen / GLM）与 prompt_cache_hit_tokens（DeepSeek）', async () => {
+    const run = async (usage: string) => {
+      globalThis.fetch = vi.fn(async () =>
+        sseResponse([
+          'data: {"choices":[{"delta":{"content":"x"}}]}\n\n',
+          `data: {"choices":[],"usage":${usage}}\n\n`,
+          'data: [DONE]\n\n',
+        ]),
+      ) as typeof fetch;
+      const ev = await collect(openaiCompatChat(dialect, req, new AbortController().signal));
+      return ev.find((e) => e.type === 'usage');
+    };
+    expect(
+      await run('{"prompt_tokens":900,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":768}}'),
+    ).toEqual({ type: 'usage', prompt: 900, completion: 20, cached: 768 });
+    expect(
+      await run('{"prompt_tokens":900,"completion_tokens":20,"prompt_cache_hit_tokens":640,"prompt_cache_miss_tokens":260}'),
+    ).toEqual({ type: 'usage', prompt: 900, completion: 20, cached: 640 });
   });
 
   it('classifies a 401 as auth error done', async () => {

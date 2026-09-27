@@ -4,6 +4,7 @@ import {
   ChatView,
   explodeSegments,
   isEmptyReply,
+  toolDisplayName,
 } from '../src/renderer/overlay/chat-view';
 
 const S = 'default';
@@ -216,5 +217,14 @@ describe('ChatView · 重试 / 编辑重发乐观视图', () => {
     const empty = make().view;
     empty.beginEdit('首句');
     expect(empty.messages.map((m) => m.text)).toEqual(['首句', '']);
+  });
+});
+
+describe('㉔ toolDisplayName', () => {
+  it('内置记忆工具显示成 i18n 名；其余工具原名', () => {
+    const t = (k: string) => `T(${k})`;
+    expect(toolDisplayName('recall_memory', t)).toBe('T(settings.toolCall.recallMemory)');
+    expect(toolDisplayName('remember', t)).toBe('T(settings.toolCall.remember)');
+    expect(toolDisplayName('mcp/weather', t)).toBe('mcp/weather');
   });
 });

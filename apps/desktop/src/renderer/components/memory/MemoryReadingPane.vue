@@ -1,10 +1,11 @@
 <!-- components/memory/MemoryReadingPane.vue — ㉒ 图谱阅读栏（spec §4.1 / §3.1 / §4.4）。
      标题 · 路径 · 更新于 / #标签 / 安全渲染正文（双链可点）/ 反向链接 / 被想起的痕迹 / [编辑] [重命名]；
-     未建页面：一键建为人物或话题页。读页走请求代数守卫：快速连点时慢到的旧响应丢弃。 -->
+     未建页面：一键建为人物或话题页。读页走请求代数守卫：快速连点时慢到的旧响应丢弃。
+     ㉔ 底部「来源」：该页最近几次编译出自哪天、哪个会话、做了什么；[查看对话] 只读打开那段会话。 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { MemoryGraph, MemoryGraphNode } from '@openpet/protocol';
+import type { MemoryGraph, MemoryGraphNode, MemorySource } from '@openpet/protocol';
 import { formatIdleDuration, memoryPageKind } from '@openpet/protocol';
 import Button from '../Button.vue';
 import Input from '../Input.vue';
@@ -13,6 +14,7 @@ import {
   backlinksOf,
   ghostPageSkeleton,
   linkResolverFor,
+  sourceLine,
   stripFrontmatter,
 } from '../../settings/memory-view.js';
 import { createLatestRequest } from '../../settings/latest-request.js';
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   edit: [string];
   close: [];
   changed: [string];
+  viewSession: [string];
 }>();
 const { t } = useI18n();
 
@@ -34,6 +37,8 @@ const busy = ref(false);
 /** 正文里点到的未建页面名（node 本身是 ghost 时用 node.title）。 */
 const ghostName = ref<string | null>(null);
 const guard = createLatestRequest();
+const sources = ref<MemorySource[]>([]);
+const sourceGuard = createLatestRequest();
 
 const isGhost = computed(() => props.node.kind === 'ghost');
 const renamable = computed(() => {
@@ -83,6 +88,32 @@ watch(
 watch(() => [props.node.id, props.node.updated, props.node.chars] as const, load, {
   immediate: true,
 });
+
+/** ㉔ 来源：同页内容变了（新一次编译）也重取；未建页面没有来源。 */
+async function loadSources(): Promise<void> {
+  const n = sourceGuard.next();
+  if (isGhost.value) {
+    sources.value = [];
+    return;
+  }
+  try {
+    const r = await window.openpet.rpc('memory.sources', { path: props.node.id });
+    if (sourceGuard.isCurrent(n)) sources.value = r.sources;
+  } catch {
+    if (sourceGuard.isCurrent(n)) sources.value = [];
+  }
+}
+watch(() => [props.node.id, props.node.updated, props.node.chars] as const, loadSources, {
+  immediate: true,
+});
+const sourceRows = computed(() =>
+  sources.value.map((s) => ({
+    key: `${s.at}|${s.characterId}|${s.sessionId ?? ''}`,
+    text: sourceLine(s, t),
+    session: s.viewable ? s.sessionId : null,
+    hint: !s.viewable && s.sessionTitle !== null ? t('settings.memory.sourceOtherCharacter') : '',
+  })),
+);
 
 function onBodyClick(e: MouseEvent): void {
   const a = (e.target as HTMLElement | null)?.closest<HTMLAnchorElement>('a.ds-wikilink');
@@ -231,6 +262,28 @@ async function doRename(): Promise<void> {
           class="mt-2 text-text-sub"
         >
           ✦ {{ recallText }}
+        </div>
+        <!-- ㉔ 来源追溯 -->
+        <div class="mt-2 text-text-sub">{{ t('settings.memory.sources') }}</div>
+        <div v-if="sourceRows.length === 0" class="py-1 text-text-sub opacity-70">
+          {{ t('settings.memory.noSources') }}
+        </div>
+        <div v-else class="mt-1 flex max-h-28 flex-col gap-0.5 overflow-y-auto">
+          <div
+            v-for="row in sourceRows"
+            :key="row.key"
+            class="flex items-center gap-2 px-2 py-0.5"
+            :title="row.hint || row.text"
+          >
+            <span class="min-w-0 flex-1 truncate text-text-main">{{ row.text }}</span>
+            <button
+              v-if="row.session"
+              class="ds-focus shrink-0 rounded-btn px-1.5 text-text-sub underline-offset-2 hover:text-text-main hover:underline"
+              @click="emit('viewSession', row.session)"
+            >
+              {{ t('settings.memory.viewSession') }}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -84,8 +84,34 @@ export function createMockBridge(): MockBridge {
           return DEMO_GRAPH;
         case 'memory.probe':
           return DEMO_PROBE;
+        case 'memory.sources':
+          return {
+            sources: [
+              {
+                at: Date.now() - 86_400_000,
+                characterId: 'default',
+                characterName: '小灵',
+                sessionId: 'default',
+                sessionTitle: '周末计划',
+                ops: [
+                  { op: 'upsert_section', detail: '近况' },
+                  { op: 'append_timeline', detail: '2026-09-22' },
+                ],
+                viewable: true,
+              },
+              {
+                at: Date.now() - 20 * 86_400_000,
+                characterId: 'default',
+                characterName: '小灵',
+                sessionId: null,
+                sessionTitle: null,
+                ops: [{ op: 'create_page', detail: String(p.path ?? '') }],
+                viewable: false,
+              },
+            ],
+          };
         case 'memory.status':
-          return { enabled: true, pageCount: DEMO_GRAPH.stats.pages, lastCompile: null, migration: null, legacyFacts: 0 };
+          return { enabled: true, pageCount: DEMO_GRAPH.stats.pages, lastCompile: null, migration: null, legacyFacts: 0, backlog: null, gaveUp: null };
         case 'memory.tree': {
           const tn = (id: string) => {
             const n = DEMO_GRAPH.nodes.find((x) => x.id === id)!;

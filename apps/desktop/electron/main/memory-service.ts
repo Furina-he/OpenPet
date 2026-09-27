@@ -1,24 +1,38 @@
 /**
  * MemoryService —— ⑲ 记忆 v2：memory.* RPC（F3 wiki 浏览器 + 兼容期旧面）+ retrieveForChat
- * （memoryStage 三路注入源，spec §2）。
+ * （memoryStage 注入源，spec §2）。
  *
- * 三路：① 常驻（profile 一句话档案 + relationship + timeline 最近 3 条）② 关键词（wiki 投影成
- * PackLorebook → 复用 activateLorebook）③ 向量兜底（页级向量 cosineTopK 取 2 页，排除已命中；
- * 无 embedding 静默跳过）。总预算 2500 字，按 常驻 > 关键词 > 向量 顺序截断。
- * `privacy.longTermMemory=false` → 三路全停（文件不删）。
+ * ㉔ 记忆 v3（spec 2026-09-26-memory-v3-design §3）三路：① 常驻（profile 一句话档案 + relationship +
+ * timeline 最近 3 条，不变）② 名字（wiki 投影成 PackLorebook → 复用 activateLorebook：人物 / 话题的
+ * 标题、别名、文件名出现在最近 4 条 + 当前输入里 → 整页）③ 块混合（取代 ⑲ 的页向量兜底）：候选 = 全部
+ * 块（档案各节 / 人物话题页 / 更早的经历）减去名字路已命中的页；BM25（只用当前输入）+ 块向量（相似度门 =
+ * max(最低分, 中位数 + 0.12)）→ RRF × 新近度 → 前 3 个单元（更早的经历合并成一个单元）。总预算 2500 字，
+ * 按 常驻 > 名字 > 块混合 截断。`privacy.longTermMemory=false` → 全停（文件不删）。
  *
- * ㉒：页向量带嵌入模型指纹（换模型 → 旧行不参与检索并后台单飞全量重算）；真正注入的人物 / 话题页
- * 记「被想起的痕迹」（memory_page_stats，只展示不参与排序）；memory.probe「试一句」走同一条检索链、
- * 同一个 formatMemoryBlock，但不记统计。
+ * 块向量带嵌入模型指纹（换模型 → 旧行不参与检索并后台单飞全量重算）；每批 10 条逐批落库；未配置嵌入
+ * 模型直接跳过；删行只删当前角色可见范围（user/* + characters/<cid>/*）。真正注入的人物 / 话题页记
+ * 「被想起的痕迹」（只展示不参与排序）；memory.probe「试一句」走同一条检索链、同一个记忆块渲染，
+ * 不记统计。recall() = recall_memory 工具的执行体；relatedPagePaths() = 编译器相关页。
  */
-import type { Prefs } from '@openpet/protocol';
-import { activateLorebook, MEMORY_QUOTAS, memoryPageKind, toPlainText } from '@openpet/protocol';
-import { formatMemoryBlock } from './context-assembler.js';
+import type { MemoryRecallVia, Prefs } from '@openpet/protocol';
+import { activateLorebook, MEMORY_QUOTAS, memoryPageKind } from '@openpet/protocol';
+import { formatMemoryPreview } from './context-assembler.js';
 import type { ConversationStore } from './db/index.js';
-import { cosineTopK } from './kb-search.js';
+import { cosineSim } from './kb-search.js';
 import { buildMemoryGraph } from './memory-graph.js';
+import { deriveTitle } from './session-export.js';
+import {
+  createBm25,
+  hasTerms,
+  recencyBoost,
+  rrfFuse,
+  tokenize,
+  vectorGate,
+  type Bm25Index,
+} from './memory-rank.js';
 import {
   joinSections,
+  type MemoryChunk,
   MemoryOpError,
   MemoryWiki,
   PROFILE_PATH,
@@ -40,33 +54,67 @@ export interface MemoryServiceDeps {
   now?: () => number;
 }
 
+/** 一个注入单元：人物 / 话题整页、档案一节、或合并后的「更早的经历」。 */
+export interface MemoryUnit {
+  /** 页路径（「试一句」高亮 /「被想起」记录）；同一页可出多个单元（档案不同节）。 */
+  path: string;
+  title: string;
+  body: string;
+  via: MemoryRecallVia;
+  /** 向量路相似度（中了向量路才有）。 */
+  score?: number;
+}
+
 export interface MemoryRetrieval {
   resident: string[];
-  /** 命中页（关键词 ∪ 向量），已按预算截断；title 由 content 首行 `### 标题` 提供。 */
-  pages: Array<{
-    /** ㉒ 页路径（「试一句」高亮 /「被想起」记录）。 */
-    path: string;
-    title: string;
-    body: string;
-    via: 'keyword' | 'vector';
-    /** 向量路相似度。 */
-    score?: number;
-  }>;
+  /** 命中单元（名字 ∪ 块混合），已按预算截断。 */
+  pages: MemoryUnit[];
   /** trace 用。 */
-  stats: { resident: number; keyword: number; vector: number; chars: number };
+  stats: {
+    resident: number;
+    keyword: number;
+    text: number;
+    vector: number;
+    hybrid: number;
+    chars: number;
+  };
 }
 
 const EMPTY: MemoryRetrieval = {
   resident: [],
   pages: [],
-  stats: { resident: 0, keyword: 0, vector: 0, chars: 0 },
+  stats: { resident: 0, keyword: 0, text: 0, vector: 0, hybrid: 0, chars: 0 },
 };
+
+/** 块向量重算每批条数（DashScope 等单次上限 10）。 */
+const EMBED_BATCH = 10;
+/** BM25 候选下限：得分 ≥ 最高分 × 该比例。 */
+const TEXT_REL_FLOOR = 0.25;
+/** 合并的「更早的经历」单元最多带几条。 */
+const TIMELINE_UNIT_ENTRIES = 5;
+export const TIMELINE_UNIT_TITLE = '更早的经历（我记下的）';
+/** ㉔ 来源：最多展示几次编译 / 最多读几行日志。 */
+const SOURCE_GROUPS = 10;
+const SOURCE_ROWS = 200;
 
 function splitEntry(content: string): { title: string; body: string } {
   const nl = content.indexOf('\n');
   const head = nl < 0 ? content : content.slice(0, nl);
   const title = head.replace(/^###\s*/, '').trim();
   return { title, body: nl < 0 ? '' : content.slice(nl + 1).trim() };
+}
+
+const isPeopleOrTopic = (p: string): boolean => {
+  const k = p ? memoryPageKind(p) : null;
+  return k === 'people' || k === 'topics';
+};
+
+interface RankedChunk {
+  chunk: MemoryChunk;
+  via: 'text' | 'vector' | 'hybrid';
+  score: number;
+  /** 余弦相似度（中了向量路才有）。 */
+  sim?: number;
 }
 
 export function createMemoryService(deps: MemoryServiceDeps) {
@@ -76,30 +124,42 @@ export function createMemoryService(deps: MemoryServiceDeps) {
   const modelKey = (): string => deps.embedModelKey?.() ?? '';
 
   /**
-   * 页级向量重算（变更页；hash 未变且模型指纹一致则跳过；写入带指纹）；失败静默 = 向量过期，
-   * 下次再算。
+   * 块级向量重算（hash 变 / 指纹变 / 缺失才嵌；每批 10 条逐批落库）；未配置嵌入模型直接跳过；
+   * onlyPaths = 只看这些页的块。失败静默 = 向量过期，下次再算。
    */
   async function reindexVectors(onlyPaths?: readonly string[]): Promise<void> {
     try {
       const key = modelKey();
-      const pages = deps.wiki.pagesForIndex(cid());
-      const known = new Map(deps.store.pageIndexList().map((r) => [r.path, r]));
-      const alive = new Set(pages.map((p) => p.path));
-      for (const [p] of known)
-        if (!alive.has(p) && (!onlyPaths || onlyPaths.includes(p))) deps.store.pageIndexDelete(p);
-      const todo = pages.filter((p) => {
-        if (onlyPaths && !onlyPaths.includes(p.path)) return false;
-        const k = known.get(p.path);
-        return !k || k.hash !== p.hash || k.model !== key;
+      if (!key) return;
+      const c = cid();
+      const chunks = deps.wiki.chunks(c);
+      const inScope = (p: string): boolean => !onlyPaths || onlyPaths.includes(p);
+      const visible = (p: string): boolean =>
+        p.startsWith('user/') || p.startsWith(`characters/${c}/`);
+      const known = new Map(deps.store.chunkIndexList().map((r) => [r.id, r]));
+      const alive = new Set(chunks.map((ch) => ch.id));
+      const dead = [...known.values()]
+        .filter((r) => visible(r.path) && inScope(r.path) && !alive.has(r.id))
+        .map((r) => r.id);
+      if (dead.length) deps.store.chunkIndexDelete(dead);
+      const todo = chunks.filter((ch) => {
+        if (!inScope(ch.path)) return false;
+        const k = known.get(ch.id);
+        return !k || k.hash !== ch.hash || k.model !== key || k.vector.length === 0;
       });
-      if (todo.length === 0) return;
-      const vectors = await deps.embed(todo.map((p) => p.text.slice(0, 4000)));
-      todo.forEach((p, i) => {
-        const v = vectors[i];
-        if (v && v.length > 0) deps.store.pageIndexUpsert(p.path, p.hash, v, now(), key);
-      });
+      for (let i = 0; i < todo.length; i += EMBED_BATCH) {
+        const batch = todo.slice(i, i + EMBED_BATCH);
+        const vectors = await deps.embed(batch.map((ch) => ch.indexText.slice(0, 4000)));
+        const rows = batch.flatMap((ch, j) => {
+          const v = vectors[j];
+          return v && v.length > 0
+            ? [{ id: ch.id, path: ch.path, hash: ch.hash, model: key, vector: v }]
+            : [];
+        });
+        if (rows.length) deps.store.chunkIndexUpsert(rows, now());
+      }
     } catch {
-      /* 未配 embedding / 网络失败：向量路静默缺席 */
+      /* 未配 embedding / 网络失败：向量路静默缺席，已落库的批次保留 */
     }
   }
 
@@ -112,12 +172,164 @@ export function createMemoryService(deps: MemoryServiceDeps) {
     });
   }
 
-  /** 只用指纹一致的行；有不一致即触发后台重算。 */
-  function freshIndex(): Array<{ path: string; vector: number[] }> {
-    const key = modelKey();
-    const rows = deps.store.pageIndexList().filter((r) => r.vector.length > 0);
-    if (rows.some((r) => r.model !== key)) refreshStaleVectors();
-    return rows.filter((r) => r.model === key);
+  /** BM25 索引按块 hash 缓存（块没变不重新分词）。 */
+  let bmCache: { key: string; index: Bm25Index } | null = null;
+  function bm25For(chunks: readonly MemoryChunk[]): Bm25Index {
+    const key = chunks.map((c) => `${c.id}:${c.hash}`).join('|');
+    if (bmCache?.key !== key)
+      bmCache = { key, index: createBm25(chunks.map((c) => ({ id: c.id, text: c.indexText }))) };
+    return bmCache.index;
+  }
+
+  /**
+   * 块混合排名：BM25（得分 ≥ 最高分 × 0.25 的前 20）+ 向量（过相似度门的前 20；gate=false 不设门）
+   * → RRF × 新近度。exclude = 名字路已命中的页。查询分不出实词 → 不检索。
+   */
+  async function rankChunks(
+    c: string,
+    query: string,
+    exclude: ReadonlySet<string>,
+    opts: { gate: boolean },
+  ): Promise<RankedChunk[]> {
+    if (!hasTerms(tokenize(query))) return [];
+    const all = deps.wiki.chunks(c);
+    if (all.length === 0) return [];
+    const byId = new Map(all.map((ch) => [ch.id, ch]));
+    const allowed = (id: string): boolean => !exclude.has(byId.get(id)?.path ?? '');
+    const cap = MEMORY_QUOTAS.recallCandidates;
+
+    const textHits = bm25For(all)
+      .search(query)
+      .filter((h) => allowed(h.id));
+    const top = textHits[0]?.score ?? 0;
+    const textIds = textHits
+      .filter((h) => h.score >= top * TEXT_REL_FLOOR)
+      .slice(0, cap)
+      .map((h) => h.id);
+
+    const sims = new Map<string, number>();
+    let vecIds: string[] = [];
+    try {
+      const key = modelKey();
+      const rows = deps.store.chunkIndexList().filter((r) => r.vector.length > 0);
+      if (rows.some((r) => r.model !== key)) refreshStaleVectors();
+      const fresh = rows.filter((r) => r.model === key && byId.get(r.id)?.hash === r.hash);
+      if (key && fresh.length > 0) {
+        const qv = (await deps.embed([query]))[0];
+        if (qv && qv.length > 0) {
+          const scored = fresh.map((r) => ({ id: r.id, sim: cosineSim(qv, r.vector) }));
+          const gate = opts.gate
+            ? vectorGate(
+                scored.map((s) => s.sim),
+                deps.getPrefs()['memory.recallMinScore'] ?? 0.25,
+              )
+            : -Infinity;
+          vecIds = scored
+            .filter((s) => s.sim >= gate && allowed(s.id))
+            .sort((a, b) => b.sim - a.sim)
+            .slice(0, cap)
+            .map((s) => {
+              sims.set(s.id, s.sim);
+              return s.id;
+            });
+        }
+      }
+    } catch {
+      /* 向量路静默：只剩 BM25 */
+    }
+
+    const inText = new Set(textIds);
+    const today = deps.wiki.today();
+    return rrfFuse([textIds, vecIds])
+      .map(({ id, score }): RankedChunk => {
+        const chunk = byId.get(id)!;
+        const sim = sims.get(id);
+        const via = sim !== undefined ? (inText.has(id) ? 'hybrid' : 'vector') : 'text';
+        return {
+          chunk,
+          via,
+          score: score * recencyBoost(chunk.date, today),
+          ...(sim !== undefined ? { sim } : {}),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /** 排名 → 单元：人物 / 话题 / 档案节各一个；更早的经历合并成一个（按日期新→旧）。 */
+  function toUnits(ranked: readonly RankedChunk[], maxUnits: number): MemoryUnit[] {
+    const units: MemoryUnit[] = [];
+    let tl: { unit: MemoryUnit; entries: RankedChunk[] } | null = null;
+    for (const r of ranked) {
+      if (r.chunk.kind === 'timeline') {
+        if (!tl) {
+          if (units.length >= maxUnits) continue;
+          tl = {
+            unit: { path: r.chunk.path, title: TIMELINE_UNIT_TITLE, body: '', via: r.via },
+            entries: [],
+          };
+          units.push(tl.unit);
+        }
+        if (tl.entries.length < TIMELINE_UNIT_ENTRIES) tl.entries.push(r);
+        continue;
+      }
+      if (units.length >= maxUnits) continue;
+      units.push({
+        path: r.chunk.path,
+        title: r.chunk.label,
+        body: r.chunk.text,
+        via: r.via,
+        ...(r.sim !== undefined ? { score: r.sim } : {}),
+      });
+    }
+    if (tl) {
+      const entries = [...tl.entries].sort((a, b) =>
+        a.chunk.date < b.chunk.date ? 1 : a.chunk.date > b.chunk.date ? -1 : 0,
+      );
+      tl.unit.body = entries.map((e) => `- ${e.chunk.date} ${e.chunk.text}`).join('\n');
+      const vias = new Set(entries.map((e) => e.via));
+      tl.unit.via = vias.size > 1 || vias.has('hybrid') ? 'hybrid' : entries[0]!.via;
+      const sims = entries.flatMap((e) => (e.sim !== undefined ? [e.sim] : []));
+      if (sims.length) tl.unit.score = Math.max(...sims);
+    }
+    return units;
+  }
+
+  /** 名字路：人物 / 话题的标题、别名、文件名出现在 history + 当前输入里 → 整页。 */
+  function nameRoute(c: string, query: string, history: readonly string[]): MemoryUnit[] {
+    const book = deps.wiki.projectToLorebook(c);
+    if (!book.entries.length) return [];
+    return activateLorebook(book, { history, current: query }).map((h) => ({
+      path: book.entries.find((e) => e.content === h)?.name ?? '',
+      ...splitEntry(h),
+      via: 'keyword' as const,
+    }));
+  }
+
+  /** 预算内截断（按顺序，超出的最后一个单元截断正文）。 */
+  function fit(units: readonly MemoryUnit[], budget: number): MemoryUnit[] {
+    const out: MemoryUnit[] = [];
+    for (const p of units) {
+      if (budget <= 0) break;
+      const cost = p.title.length + p.body.length + 5;
+      out.push(
+        cost > budget
+          ? { ...p, body: p.body.slice(0, Math.max(0, budget - p.title.length - 5)) }
+          : p,
+      );
+      budget -= cost;
+    }
+    return out;
+  }
+
+  /** §3.1 被想起的痕迹：真正注入 / 返回的人物 / 话题页（常驻页不记）。 */
+  function recordRecall(units: readonly MemoryUnit[]): void {
+    const recalled = [...new Set(units.map((p) => p.path).filter(isPeopleOrTopic))];
+    if (!recalled.length) return;
+    try {
+      deps.store.pageStatsBump(recalled, now());
+    } catch {
+      /* 统计是派生数据：写失败不影响聊天 */
+    }
   }
 
   async function retrieveForChat(
@@ -128,50 +340,11 @@ export function createMemoryService(deps: MemoryServiceDeps) {
     if (!enabled()) return EMPTY;
     const c = cid();
     if (!deps.wiki.hasCharacter(c)) return EMPTY;
-    // 路 1 常驻
     const resident = deps.wiki.residentBlocks(c);
-    // 路 2 关键词（复用 activateLorebook，零新增匹配代码）
-    const book = deps.wiki.projectToLorebook(c);
-    const kwHits = book.entries.length ? activateLorebook(book, { history, current: query }) : [];
-    const pages: MemoryRetrieval['pages'] = kwHits.map((h) => ({
-      path: book.entries.find((e) => e.content === h)?.name ?? '',
-      ...splitEntry(h),
-      via: 'keyword',
-    }));
-    const hitPaths = new Set(pages.map((p) => p.path));
-    // 路 3 向量兜底（排除已命中页；无 embedding 静默；只用当前嵌入模型算出的向量）
-    let vectorN = 0;
-    const index = freshIndex().filter((r) => !hitPaths.has(r.path));
-    if (index.length > 0) {
-      try {
-        const qv = (await deps.embed([query]))[0];
-        if (qv && qv.length > 0) {
-          const top = cosineTopK(
-            index.map((r) => ({ meta: r.path, vector: r.vector })),
-            qv,
-            MEMORY_QUOTAS.vectorPages,
-          );
-          for (const t of top) {
-            const page = deps.wiki.readPage(t.meta);
-            if (!page || !page.body.trim()) continue;
-            // 固定页（profile/relationship/timeline）已在常驻路，向量兜底只补 people/topics。
-            if (!t.meta.startsWith('user/people/') && !t.meta.startsWith('user/topics/'))
-              continue;
-            pages.push({
-              path: t.meta,
-              title: page.frontmatter.title,
-              body: toPlainText(page.body),
-              via: 'vector',
-              score: t.score,
-            });
-            vectorN++;
-          }
-        }
-      } catch {
-        /* 向量路静默 */
-      }
-    }
-    // 总预算：常驻 > 关键词 > 向量 顺序截断
+    const named = nameRoute(c, query, history);
+    const ranked = await rankChunks(c, query, new Set(named.map((p) => p.path)), { gate: true });
+    const blocks = toUnits(ranked, MEMORY_QUOTAS.recallUnits);
+    // 总预算：常驻 > 名字 > 块混合 顺序截断
     let budget = MEMORY_QUOTAS.injectBudgetChars;
     const outResident: string[] = [];
     for (const r of resident) {
@@ -179,46 +352,55 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       outResident.push(r.slice(0, budget));
       budget -= r.length;
     }
-    const outPages: MemoryRetrieval['pages'] = [];
-    for (const p of pages) {
-      if (budget <= 0) break;
-      const cost = p.title.length + p.body.length + 5;
-      outPages.push(
-        cost > budget
-          ? { ...p, body: p.body.slice(0, Math.max(0, budget - p.title.length - 5)) }
-          : p,
-      );
-      budget -= cost;
-    }
-    // §3.1 被想起的痕迹：真正注入的人物 / 话题页（常驻三页每轮都在，不记；试一句不记）
-    if (opts.record !== false) {
-      const recalled = outPages
-        .map((p) => p.path)
-        .filter((p) => {
-          const k = p ? memoryPageKind(p) : null;
-          return k === 'people' || k === 'topics';
-        });
-      if (recalled.length) {
-        try {
-          deps.store.pageStatsBump(recalled, now());
-        } catch {
-          /* 统计是派生数据：写失败不影响聊天 */
-        }
-      }
-    }
+    const outPages = fit([...named, ...blocks], budget);
+    if (opts.record !== false) recordRecall(outPages);
     const chars =
       outResident.reduce((n, r) => n + r.length, 0) +
       outPages.reduce((n, p) => n + p.title.length + p.body.length, 0);
+    const count = (v: MemoryRecallVia): number => outPages.filter((p) => p.via === v).length;
     return {
       resident: outResident,
       pages: outPages,
       stats: {
         resident: outResident.length,
-        keyword: outPages.filter((p) => p.via === 'keyword').length,
-        vector: Math.min(vectorN, outPages.filter((p) => p.via === 'vector').length),
+        keyword: count('keyword'),
+        text: count('text'),
+        vector: count('vector'),
+        hybrid: count('hybrid'),
         chars,
       },
     };
+  }
+
+  /**
+   * ㉔ 主动回想（recall_memory 工具）：query 只用参数、不带历史；名字路 + 块混合，单元上限 units、
+   * 总字数 ≤ chars；常驻内容不在块里（天然排除）。record = 真正返回的人物 / 话题页记「被想起」。
+   */
+  async function recall(
+    query: string,
+    opts: { units?: number; chars?: number; record?: boolean } = {},
+  ): Promise<MemoryUnit[]> {
+    if (!enabled()) return [];
+    const c = cid();
+    if (!deps.wiki.hasCharacter(c)) return [];
+    const maxUnits = opts.units ?? MEMORY_QUOTAS.toolRecallUnits;
+    const named = nameRoute(c, query, []).slice(0, maxUnits);
+    const ranked = await rankChunks(c, query, new Set(named.map((p) => p.path)), { gate: true });
+    const units = fit(
+      [...named, ...toUnits(ranked, maxUnits - named.length)],
+      opts.chars ?? MEMORY_QUOTAS.toolRecallChars,
+    ).filter((u) => u.body.trim());
+    if (opts.record) recordRecall(units);
+    return units;
+  }
+
+  /**
+   * ㉔ §3.4 编译器相关页：块混合排名映射回人物 / 话题页（不设相似度门——编译器宁多看不漏）。
+   * 名字路由编译器自己跑（查询 = 本段对话）。
+   */
+  async function relatedPagePaths(c: string, probe: string): Promise<string[]> {
+    const ranked = await rankChunks(c, probe, new Set(), { gate: false });
+    return [...new Set(ranked.map((r) => r.chunk.path).filter(isPeopleOrTopic))];
   }
 
   return {
@@ -257,12 +439,17 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       return { ok: true as const, id: parsed.sections.indexOf(misc) + 1 };
     },
 
-    /** ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 页向量索引 + ㉒ 被想起统计。 */
+    /**
+     * ⑲ 清 wiki（本角色 + 共享 user/）+ 旧 memory_fact 表 + 块向量索引 + ㉒ 被想起统计 +
+     * ㉔ remember 便签与来源日志。
+     */
     'memory.clear': async () => {
       deps.wiki.clear(cid());
       deps.store.memoryClear(cid());
-      for (const r of deps.store.pageIndexList()) deps.store.pageIndexDelete(r.path);
+      deps.store.chunkIndexClear();
       deps.store.pageStatsClear();
+      deps.store.memoryNotesClear();
+      deps.store.opLogClear();
       return { ok: true as const };
     },
 
@@ -287,8 +474,9 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       if (p.path.startsWith('characters/') && !p.path.startsWith(`characters/${cid()}/`))
         throw new MemoryOpError('不可删其他角色页面');
       deps.wiki.deletePage(p.path, cid());
-      deps.store.pageIndexDelete(p.path);
+      deps.store.chunkIndexDeletePath(p.path);
       deps.store.pageStatsDelete(p.path);
+      deps.store.opLogDeletePath(p.path); // ㉔ 删页 / 固定页重置：来源随之作废
       return { ok: true as const };
     },
 
@@ -309,16 +497,67 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       });
     },
 
-    /** ㉒ §4.4 重命名：全库链接跟着改；旧路径向量行删、新路径与被改写页重算。 */
+    /** ㉒ §4.4 重命名：全库链接跟着改；旧路径块向量删、新路径与被改写页重算。 */
     'memory.renamePage': async (p: { path: string; title: string }) => {
       const r = deps.wiki.renamePage(p.path, p.title);
       if (r.path !== p.path) {
-        deps.store.pageIndexDelete(p.path);
+        deps.store.chunkIndexDeletePath(p.path);
         deps.store.pageStatsRename(p.path, r.path);
+        deps.store.opLogRenamePath(p.path, r.path);
       }
       void reindexVectors([r.path, ...r.changed]);
       deps.onChanged?.([r.path, ...r.changed]);
       return { ok: true as const, path: r.path };
+    },
+
+    /**
+     * ㉔ §5 来源：该页最近 10 次编译改动（同一次编译 = 同 at + 角色 + 会话，合并成一条）；会话标题按
+     * B3 派生规则；viewable = 同一角色且会话仍在。
+     */
+    'memory.sources': async (p: { path: string }) => {
+      const groups = new Map<
+        string,
+        {
+          at: number;
+          characterId: string;
+          sessionId: string | null;
+          ops: Array<{ op: string; detail: string | null }>;
+        }
+      >();
+      for (const r of deps.store.opLogForPath(p.path, SOURCE_ROWS)) {
+        const key = JSON.stringify([r.at, r.characterId, r.sessionId]);
+        const g = groups.get(key);
+        if (g) g.ops.push({ op: r.op, detail: r.detail });
+        else if (groups.size < SOURCE_GROUPS)
+          groups.set(key, {
+            at: r.at,
+            characterId: r.characterId,
+            sessionId: r.sessionId,
+            ops: [{ op: r.op, detail: r.detail }],
+          });
+      }
+      const cur = cid();
+      const lists = new Map<string, ReturnType<ConversationStore['sessionList']>>();
+      const sessionsOf = (c: string): ReturnType<ConversationStore['sessionList']> => {
+        let l = lists.get(c);
+        if (!l) lists.set(c, (l = deps.store.sessionList(c)));
+        return l;
+      };
+      return {
+        sources: [...groups.values()].map((g) => {
+          const meta =
+            g.sessionId === null ? undefined : sessionsOf(g.characterId).find((s) => s.id === g.sessionId);
+          return {
+            at: g.at,
+            characterId: g.characterId,
+            characterName: deps.characterName?.(g.characterId) ?? g.characterId,
+            sessionId: g.sessionId,
+            sessionTitle: meta ? deriveTitle(meta.title, meta.firstUserText, meta.id) : null,
+            ops: g.ops,
+            viewable: !!meta && g.characterId === cur,
+          };
+        }),
+      };
     },
 
     /** ㉒ §4.6「试一句」：与聊天同一条检索链 + 同一个记忆块渲染；不记被想起统计。 */
@@ -338,15 +577,22 @@ export function createMemoryService(deps: MemoryServiceDeps) {
         })),
         injectedChars: r.stats.chars,
         budget: MEMORY_QUOTAS.injectBudgetChars,
-        preview: formatMemoryBlock(r),
+        // ㉔ 按当前布局拼（开 = 常驻块 + 相关记忆块；关 = 旧合并块）：所见即所注入
+        preview: formatMemoryPreview(r, Boolean(deps.getPrefs()['chat.cacheFriendlyContext'])),
       };
     },
 
-    /** 编译器 / 迁移 / 用户保存后的向量重算入口（ipc-router 接线）。 */
+    /** 编译器 / 迁移 / 用户保存 / 启动与切角色后的块向量重算入口（ipc-router 接线）。 */
     reindexVectors,
 
-    /** memoryStage 三路注入源。history = 最近若干条消息文本（旧→新），与 loreStage 同源。 */
+    /** memoryStage 注入源。history = 最近若干条消息文本（旧→新），与 loreStage 同源。 */
     retrieveForChat,
+
+    /** ㉔ recall_memory 工具的执行体。 */
+    recall,
+
+    /** ㉔ 编译器相关页（块混合排名映射回人物 / 话题页，无门）。 */
+    relatedPagePaths,
   };
 }
 

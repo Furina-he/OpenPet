@@ -22,7 +22,7 @@ const pct = computed(() => {
 </script>
 <template>
   <div class="flex min-w-[220px] items-center gap-2">
-    <span v-if="minLabel" class="text-xs text-text-sub">{{ minLabel }}</span>
+    <span v-if="minLabel" class="whitespace-nowrap text-xs text-text-sub">{{ minLabel }}</span>
     <input
       type="range"
       class="ds-slider"
@@ -34,7 +34,7 @@ const pct = computed(() => {
       @input="emit('update:modelValue', Number(($event.target as HTMLInputElement).value))"
       @change="emit('change', Number(($event.target as HTMLInputElement).value))"
     />
-    <span v-if="maxLabel" class="text-xs text-text-sub">{{ maxLabel }}</span>
+    <span v-if="maxLabel" class="whitespace-nowrap text-xs text-text-sub">{{ maxLabel }}</span>
   </div>
 </template>
 <style scoped>
