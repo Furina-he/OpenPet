@@ -462,16 +462,9 @@ watch(
           <!-- 空态 -->
           <div
             v-if="graphEmpty"
-            class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-text-sub"
+            class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-text-sub"
           >
-            <span>{{ t('settings.memory.graph.empty') }}</span>
-            <Button
-              class="pointer-events-auto"
-              variant="secondary"
-              :disabled="busy || !status?.enabled"
-              @click="compileNow"
-              >{{ t('settings.memory.compileNow') }}</Button
-            >
+            {{ t('settings.memory.graph.empty') }}
           </div>
           <!-- 试一句结果（左上浮层） -->
           <div
