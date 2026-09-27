@@ -68,8 +68,16 @@ function groupActive(groupId: string): boolean {
 const openGroups = ref<Set<string>>(new Set());
 // 会话管理：历史页点 IM 行 → 只读查看（不写指针；离开会话页即退出只读）。
 const readonlySessionId = ref<string | null>(null);
+/** ㉔ 只读查看的来由：IM 会话 / 记忆来源（横幅文案不同）。 */
+const readonlyOrigin = ref<'im' | 'memory'>('im');
 function viewImSession(id: string): void {
   readonlySessionId.value = id;
+  readonlyOrigin.value = 'im';
+  active.value = 'conversation.chat';
+}
+function viewMemorySession(id: string): void {
+  readonlySessionId.value = id;
+  readonlyOrigin.value = 'memory';
   active.value = 'conversation.chat';
 }
 // ⑩.7 E4：库页「编辑」→ 编辑器带初始角色。
@@ -321,7 +329,11 @@ const navTree = computed(() =>
             </div>
           </div>
           <OverviewPage v-if="active === 'overview'" @navigate="active = $event" />
-          <ChatPage v-else-if="active === 'conversation.chat'" :readonly-session-id="readonlySessionId" />
+          <ChatPage
+            v-else-if="active === 'conversation.chat'"
+            :readonly-session-id="readonlySessionId"
+            :readonly-origin="readonlyOrigin"
+          />
           <HistoryPage
             v-else-if="active === 'conversation.history'"
             @navigate="active = $event"
@@ -336,7 +348,10 @@ const navTree = computed(() =>
           <PluginsPage v-else-if="active === 'plugins'" />
           <KnowledgePage v-else-if="active === 'knowledge'" />
           <PersonaPage v-else-if="active === 'conversation.persona'" />
-          <MemoryPage v-else-if="active === 'conversation.memory'" />
+          <MemoryPage
+            v-else-if="active === 'conversation.memory'"
+            @view-session="viewMemorySession"
+          />
           <DataPage v-else-if="active === 'system.data'" />
           <VoicePage v-else-if="active === 'system.voice'" @saved="saved" @navigate="active = $event" />
           <CharacterLibraryPage v-else-if="active === 'character.library'" @edit="openEditor" />

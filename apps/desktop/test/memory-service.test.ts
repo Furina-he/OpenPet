@@ -725,3 +725,53 @@ describe('㉔ 试一句预览随缓存友好布局', () => {
     expect(old.preview).toContain('程序员\n\n### 工作\n写代码');
   });
 });
+
+describe('㉔ memory.sources（来源追溯）', () => {
+  it('同一次编译合并成一条；最近在前；会话标题按派生规则；viewable = 同角色且会话仍在', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ds-msvc-'));
+    cleanups.push(dir);
+    const store = new MemoryStore();
+    const wiki = new MemoryWiki(dir, { now: () => Date.UTC(2026, 8, 22, 12) });
+    wiki.ensureLayout('default');
+    const svc = createMemoryService({
+      store,
+      wiki,
+      embed: throwEmbed,
+      getPrefs: () => ({ 'privacy.longTermMemory': true }) as unknown as Prefs,
+      character: () => ({ id: 'default' }),
+      characterName: (c) => (c === 'default' ? '小灵' : '芙宁娜'),
+    });
+    store.appendMessage({ characterId: 'default', sessionId: 's1', role: 'user', text: '周末去爬山吧', ts: 1 });
+    store.appendMessage({ characterId: 'furina', sessionId: 'default', role: 'user', text: '你好', ts: 2 });
+    const row = (at: number, cid: string, sid: string | null, op: string, detail: string | null) => ({
+      at,
+      characterId: cid,
+      sessionId: sid,
+      msgFrom: 0,
+      msgTo: 2,
+      path: 'user/profile.md',
+      op,
+      detail,
+    });
+    store.opLogAdd([
+      row(100, 'default', 's1', 'upsert_section', '近况'),
+      row(100, 'default', 's1', 'upsert_section', '身份'),
+      row(200, 'furina', 'default', 'remove_line', '杂项'),
+      row(300, 'default', 'gone', 'set_props', 'tags'),
+      row(50, 'default', null, 'upsert_section', '工作学习'),
+    ]);
+    const { sources } = await svc['memory.sources']({ path: 'user/profile.md' });
+    expect(sources.map((s) => [s.at, s.characterName, s.sessionTitle, s.viewable])).toEqual([
+      [300, '小灵', null, false], // 会话已删
+      [200, '芙宁娜', '你好', false], // 他角色：只显示文字
+      [100, '小灵', '周末去爬山吧', true],
+      [50, '小灵', null, false], // 旧记忆迁移
+    ]);
+    expect(sources[2]!.ops).toEqual([
+      { op: 'upsert_section', detail: '近况' },
+      { op: 'upsert_section', detail: '身份' },
+    ]);
+    expect(sources[3]!.sessionId).toBeNull();
+    expect((await svc['memory.sources']({ path: 'user/topics/无.md' })).sources).toEqual([]);
+  });
+});

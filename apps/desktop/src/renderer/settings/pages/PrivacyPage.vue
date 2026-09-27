@@ -8,6 +8,7 @@ import SettingSection from '../../components/SettingSection.vue';
 import SettingCard from '../../components/SettingCard.vue';
 import Switch from '../../components/Switch.vue';
 import Select from '../../components/Select.vue';
+import Slider from '../../components/Slider.vue';
 import ConfirmDialog from '../../components/ConfirmDialog.vue';
 import { needsConfirm } from '../privacy-risk';
 
@@ -105,6 +106,44 @@ const CTX = computed(() => [
           @update:model-value="(v) => set('privacy.longTermMemory', v)"
         />
       </SettingCard>
+      <!-- ㉔ 主动记忆工具 + 语义回想门槛（总闸关时收起） -->
+      <template v-if="prefs['privacy.longTermMemory']">
+        <SettingCard
+          indent
+          :label="t('settings.privacy.recallTool')"
+          :description="t('settings.privacy.recallToolDesc')"
+        >
+          <Switch
+            :model-value="prefs['memory.recallTool']"
+            @update:model-value="(v) => set('memory.recallTool', v)"
+          />
+        </SettingCard>
+        <SettingCard
+          indent
+          :label="t('settings.privacy.rememberTool')"
+          :description="t('settings.privacy.rememberToolDesc')"
+        >
+          <Switch
+            :model-value="prefs['memory.rememberTool']"
+            @update:model-value="(v) => set('memory.rememberTool', v)"
+          />
+        </SettingCard>
+        <SettingCard
+          indent
+          :label="t('settings.privacy.recallMinScore')"
+          :description="t('settings.privacy.recallMinScoreDesc')"
+        >
+          <Slider
+            :model-value="Math.round(prefs['memory.recallMinScore'] * 100)"
+            :min="0"
+            :max="60"
+            :min-label="t('settings.privacy.recallLoose')"
+            :max-label="t('settings.privacy.recallStrict')"
+            @update:model-value="(v) => (prefs = { ...prefs, 'memory.recallMinScore': v / 100 })"
+            @change="(v) => set('memory.recallMinScore', v / 100)"
+          />
+        </SettingCard>
+      </template>
       <SettingCard :label="t('settings.privacy.knowledgeBase')">
         <Switch
           :model-value="prefs['privacy.knowledgeBase']"

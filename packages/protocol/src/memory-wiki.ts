@@ -332,6 +332,21 @@ export type MemoryGraph = z.infer<typeof MemoryGraphSchema>;
  * ㉔ 路线：keyword = 名字路（标题 / 别名出现在对话里）；text = 只中 BM25；vector = 只中向量；
  * hybrid = 两路都中。同一页可出现多次（档案不同节各一个单元）。
  */
+/**
+ * ㉔ §5 来源追溯：某页最近一次次编译改动（同一次编译合并成一条）。sessionId = null ⇒ 旧记忆迁移；
+ * sessionTitle = null ⇒ 会话已删；viewable = 同一角色且会话仍在（可只读打开那段对话）。
+ */
+export const MemorySourceSchema = z.object({
+  at: z.number(),
+  characterId: z.string(),
+  characterName: z.string(),
+  sessionId: z.string().nullable(),
+  sessionTitle: z.string().nullable(),
+  ops: z.array(z.object({ op: z.string(), detail: z.string().nullable() })),
+  viewable: z.boolean(),
+});
+export type MemorySource = z.infer<typeof MemorySourceSchema>;
+
 export const MemoryRecallViaSchema = z.enum(['keyword', 'text', 'vector', 'hybrid']);
 export type MemoryRecallVia = z.infer<typeof MemoryRecallViaSchema>;
 

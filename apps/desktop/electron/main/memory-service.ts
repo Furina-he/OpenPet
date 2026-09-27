@@ -20,6 +20,7 @@ import { formatMemoryPreview } from './context-assembler.js';
 import type { ConversationStore } from './db/index.js';
 import { cosineSim } from './kb-search.js';
 import { buildMemoryGraph } from './memory-graph.js';
+import { deriveTitle } from './session-export.js';
 import {
   createBm25,
   hasTerms,
@@ -92,6 +93,9 @@ const TEXT_REL_FLOOR = 0.25;
 /** 合并的「更早的经历」单元最多带几条。 */
 const TIMELINE_UNIT_ENTRIES = 5;
 export const TIMELINE_UNIT_TITLE = '更早的经历（我记下的）';
+/** ㉔ 来源：最多展示几次编译 / 最多读几行日志。 */
+const SOURCE_GROUPS = 10;
+const SOURCE_ROWS = 200;
 
 function splitEntry(content: string): { title: string; body: string } {
   const nl = content.indexOf('\n');
@@ -504,6 +508,56 @@ export function createMemoryService(deps: MemoryServiceDeps) {
       void reindexVectors([r.path, ...r.changed]);
       deps.onChanged?.([r.path, ...r.changed]);
       return { ok: true as const, path: r.path };
+    },
+
+    /**
+     * ㉔ §5 来源：该页最近 10 次编译改动（同一次编译 = 同 at + 角色 + 会话，合并成一条）；会话标题按
+     * B3 派生规则；viewable = 同一角色且会话仍在。
+     */
+    'memory.sources': async (p: { path: string }) => {
+      const groups = new Map<
+        string,
+        {
+          at: number;
+          characterId: string;
+          sessionId: string | null;
+          ops: Array<{ op: string; detail: string | null }>;
+        }
+      >();
+      for (const r of deps.store.opLogForPath(p.path, SOURCE_ROWS)) {
+        const key = JSON.stringify([r.at, r.characterId, r.sessionId]);
+        const g = groups.get(key);
+        if (g) g.ops.push({ op: r.op, detail: r.detail });
+        else if (groups.size < SOURCE_GROUPS)
+          groups.set(key, {
+            at: r.at,
+            characterId: r.characterId,
+            sessionId: r.sessionId,
+            ops: [{ op: r.op, detail: r.detail }],
+          });
+      }
+      const cur = cid();
+      const lists = new Map<string, ReturnType<ConversationStore['sessionList']>>();
+      const sessionsOf = (c: string): ReturnType<ConversationStore['sessionList']> => {
+        let l = lists.get(c);
+        if (!l) lists.set(c, (l = deps.store.sessionList(c)));
+        return l;
+      };
+      return {
+        sources: [...groups.values()].map((g) => {
+          const meta =
+            g.sessionId === null ? undefined : sessionsOf(g.characterId).find((s) => s.id === g.sessionId);
+          return {
+            at: g.at,
+            characterId: g.characterId,
+            characterName: deps.characterName?.(g.characterId) ?? g.characterId,
+            sessionId: g.sessionId,
+            sessionTitle: meta ? deriveTitle(meta.title, meta.firstUserText, meta.id) : null,
+            ops: g.ops,
+            viewable: !!meta && g.characterId === cur,
+          };
+        }),
+      };
     },
 
     /** ㉒ §4.6「试一句」：与聊天同一条检索链 + 同一个记忆块渲染；不记被想起统计。 */

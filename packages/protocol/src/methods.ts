@@ -20,6 +20,7 @@ import {
   MemoryGraphSchema,
   MemoryPageSchema,
   MemoryProbeResultSchema,
+  MemorySourceSchema,
   MemoryStatusSchema,
   MemoryTreeSchema,
 } from './memory-wiki.js';
@@ -1006,6 +1007,11 @@ export const Methods = {
     // 「试一句」：与聊天同一检索链，不记被想起统计。
     params: z.object({ text: z.string().trim().min(1).max(500) }),
     result: MemoryProbeResultSchema,
+  },
+  'memory.sources': {
+    // ㉔ §5 来源追溯：该页最近 10 次编译改动（同一次编译合并）。
+    params: z.object({ path: z.string().refine(isMemoryPagePath, '非法页面路径') }),
+    result: z.object({ sources: z.array(MemorySourceSchema) }),
   },
   // --- notification: Main → Hub（⑲ wiki 页变更：编译器落盘 / 用户保存 / 迁移完成）---
   'memory.changed': { params: z.object({ pages: z.array(z.string()) }), result: z.null() },

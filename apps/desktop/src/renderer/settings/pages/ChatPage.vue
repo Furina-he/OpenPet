@@ -13,7 +13,8 @@ import { resolveActiveSession, newSessionId } from '../history-view.js';
 
 // 会话管理：sessionId 由 prefs 指针驱动（chat.activeSessions[当前角色]，Hub/浮层共享）；
 // readonlySessionId 传入 = 只读查看 IM 会话（不写指针，离开页面即退出）。
-const props = defineProps<{ readonlySessionId?: string | null }>();
+// ㉔ readonlyOrigin：'memory' = 从记忆来源打开（横幅「只读 · 记忆来源」）；缺省 IM。
+const props = defineProps<{ readonlySessionId?: string | null; readonlyOrigin?: 'im' | 'memory' }>();
 const { t } = useI18n();
 const sessionId = ref('default');
 const sessionTitle = ref('');
@@ -226,7 +227,11 @@ function isTyping(m: ChatMessage): boolean {
             v-if="readonly"
             class="shrink-0 rounded-full border border-glass-border px-2 py-0.5 text-xs text-text-sub"
           >
-            {{ t('settings.chat.readonlyBanner') }}
+            {{
+              readonlyOrigin === 'memory'
+                ? t('settings.chat.readonlyMemoryBanner')
+                : t('settings.chat.readonlyBanner')
+            }}
           </span>
         </div>
         <button

@@ -48,6 +48,8 @@ import {
 import { renderMemoryMarkdown } from '../memory-markdown.js';
 
 const { t } = useI18n();
+/** ㉔ 阅读栏「来源」→ [查看对话]：App 以只读方式打开该会话。 */
+const emit = defineEmits<{ viewSession: [string] }>();
 const tree = ref<MemoryTree | null>(null);
 /** ㉒ 当前角色范围的图谱：预览双链解析 + 反向链接。 */
 const graph = ref<MemoryGraph | null>(null);
@@ -255,6 +257,7 @@ async function compileNow(): Promise<void> {
   try {
     const r = await window.openpet.rpc('memory.compileNow', {});
     if (!r.ok) say('err', t('settings.memory.compileFailed', { detail: r.error ?? '' }));
+    else if (r.idle) say('ok', t('settings.memory.compiledIdle'));
     else if (r.ops === 0) say('ok', t('settings.memory.compiledNone'));
     else say('ok', t('settings.memory.compiledOk', { ops: r.ops }));
     await loadTree();
@@ -358,13 +361,23 @@ watch(
     <!-- 状态行 / 横幅 -->
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-sub">
       <span v-if="status">{{ t('settings.memory.pages', { n: status.pageCount }) }}</span>
-      <span v-if="status?.lastCompile?.ok === false" style="color: var(--ds-danger)">
+      <!-- ㉔ 编译积压：待整理 / 失败将自动重试 / 放弃过的段 -->
+      <span v-if="status?.backlog?.error" style="color: var(--ds-danger)">
+        {{ t('settings.memory.backlogError', { detail: status.backlog.error }) }}
+      </span>
+      <span v-else-if="status?.lastCompile?.ok === false" style="color: var(--ds-danger)">
         {{ t('settings.memory.lastCompileFailed', { detail: status.lastCompile.error ?? '' }) }}
       </span>
       <span v-else-if="status?.lastCompile">{{
         t('settings.memory.lastCompile', { rel: rel(status.lastCompile.at) })
       }}</span>
       <span v-else-if="status">{{ t('settings.memory.neverCompiled') }}</span>
+      <span v-if="status?.backlog && status.backlog.messages > 0">{{
+        t('settings.memory.backlog', { n: status.backlog.messages })
+      }}</span>
+      <span v-if="status?.gaveUp">{{
+        t('settings.memory.gaveUp', { n: status.gaveUp.messages })
+      }}</span>
       <span v-if="status?.lastCompile?.merged?.length">{{
         t('settings.memory.mergedNote', { n: status.lastCompile.merged.length })
       }}</span>
@@ -480,6 +493,7 @@ watch(
               @edit="editInList"
               @close="selectGraph(null)"
               @changed="onPaneChanged"
+              @view-session="(id) => emit('viewSession', id)"
             />
           </div>
           <!-- 图例 + 缩放 -->
