@@ -260,7 +260,7 @@ flowchart TB
     S4["记忆 v1<br/>事实生命周期 · 会话摘要 · 世界设定"]:::done
     S5["记忆 v2 · 角色 wiki<br/>可读可编辑档案 · 三路注入"]:::active
     S6["记忆图谱<br/>双链 · Obsidian 兼容"]:::done
-    S7["记忆 v3<br/>主动回想 · 缓存友好"]:::active
+    S7["记忆 v3<br/>主动回想 · 缓存友好"]:::done
     S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
   end
 
